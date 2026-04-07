@@ -1,0 +1,19 @@
+{
+  "name": "courier-worker",
+  "version": "1.0.0",
+  "description": "Render background worker — route deviation detection and map matching",
+  "main": "index.js",
+  "type": "module",
+  "engines": {
+    "node": ">=20.9.0"
+  },
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "dependencies": {
+    "dotenv": "^17.3.1",
+    "express": "^5.1.0",
+    "mongodb": "^7.1.1"
+  }
+}

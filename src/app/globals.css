@@ -1,0 +1,199 @@
+@import "tailwindcss";
+@import "mapbox-gl/dist/mapbox-gl.css";
+
+/* ─── Design Tokens — Light Theme ───────────────────────────────────────── */
+:root {
+  /* Backgrounds */
+  --bg:           #f4f6fb;
+  --bg-2:         #eef1f8;
+  --surface:      #ffffff;
+  --surface-2:    #f8f9fc;
+  --surface-3:    #f0f2f8;
+
+  /* Text */
+  --fg:           #0f1117;
+  --fg-2:         #4a5568;
+  --fg-3:         #8492a6;
+
+  /* Accent — electric indigo */
+  --accent:       #4f46e5;
+  --accent-hover: #4338ca;
+  --accent-dim:   rgba(79,70,229,0.10);
+  --accent-glow:  rgba(79,70,229,0.18);
+
+  /* Semantic */
+  --success:      #16a34a;
+  --success-bg:   rgba(22,163,74,0.08);
+  --warning:      #d97706;
+  --warning-bg:   rgba(217,119,6,0.08);
+  --danger:       #dc2626;
+  --danger-bg:    rgba(220,38,38,0.08);
+  --info:         #2563eb;
+  --info-bg:      rgba(37,99,235,0.08);
+
+  /* Borders */
+  --border:       #e2e8f0;
+  --border-2:     #cbd5e1;
+
+  /* Primary (alias of accent) */
+  --primary:      #4f46e5;
+  --primary-hover:#4338ca;
+  --primary-bg:   rgba(79,70,229,0.08);
+
+  /* Legacy compat */
+  --background:   var(--bg);
+  --foreground:   var(--fg);
+  --muted:        var(--fg-3);
+}
+
+@theme inline {
+  --color-background: var(--bg);
+  --color-foreground: var(--fg);
+  --color-primary:    var(--primary);
+  --color-surface:    var(--surface);
+  --color-border:     var(--border);
+  --color-muted:      var(--fg-3);
+  --color-success:    var(--success);
+  --color-warning:    var(--warning);
+  --color-danger:     var(--danger);
+  --color-accent:     var(--accent);
+  --font-sans: var(--font-outfit), system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), monospace;
+}
+
+/* ─── Base ───────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-outfit), system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ─── Scrollbar ──────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--fg-3); }
+
+/* ─── Selection ──────────────────────────────────────────────────────────── */
+::selection { background: var(--accent-dim); color: var(--accent); }
+
+/* ─── Focus ──────────────────────────────────────────────────────────────── */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ─── Animations ─────────────────────────────────────────────────────────── */
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.anim-fade-up { animation: fade-up 0.3s ease both; }
+.anim-fade-in { animation: fade-in 0.2s ease both; }
+.s1 { animation-delay: 0.05s; }
+.s2 { animation-delay: 0.10s; }
+.s3 { animation-delay: 0.15s; }
+.s4 { animation-delay: 0.20s; }
+.s5 { animation-delay: 0.25s; }
+.s6 { animation-delay: 0.30s; }
+
+@media (prefers-reduced-motion: reduce) {
+  .anim-fade-up, .anim-fade-in { animation: none !important; }
+}
+
+/* ─── Data table ─────────────────────────────────────────────────────────── */
+.data-table { width: 100%; border-collapse: collapse; }
+.data-table th {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+  padding: 10px 16px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+  white-space: nowrap;
+}
+.data-table td {
+  padding: 11px 16px;
+  font-size: 0.875rem;
+  color: var(--fg-2);
+  border-bottom: 1px solid var(--border);
+  transition: background 0.12s;
+}
+.data-table tbody tr:hover td {
+  background: var(--surface-2);
+  color: var(--fg);
+}
+.data-table tbody tr:last-child td { border-bottom: none; }
+
+/* ─── Mono ───────────────────────────────────────────────────────────────── */
+.mono { font-family: var(--font-jetbrains-mono), monospace; font-size: 0.8em; }
+
+/* ─── Map container ──────────────────────────────────────────────────────── */
+.map-container { width: 100%; height: 100%; min-height: 300px; }
+
+/* ─── Mapbox overrides ───────────────────────────────────────────────────── */
+.mapboxgl-popup-content {
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  background: #ffffff !important;
+  color: var(--fg) !important;
+  border: 1px solid var(--border-2);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.12);
+}
+.mapboxgl-popup-tip { display: none !important; }
+
+/* ─── Custom dropdown ────────────────────────────────────────────────────── */
+.dropdown-menu {
+  position: absolute;
+  z-index: 200;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: #ffffff;
+  border: 1px solid var(--border-2);
+  border-radius: 10px;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06);
+  overflow: hidden;
+  animation: fade-up 0.15s ease both;
+}
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 12px;
+  font-size: 0.875rem;
+  color: var(--fg-2);
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+  border: none;
+  background: transparent;
+  text-align: left;
+}
+.dropdown-item:hover, .dropdown-item[data-highlighted] {
+  background: var(--surface-2);
+  color: var(--fg);
+}
+.dropdown-item[data-selected] {
+  background: var(--accent-dim);
+  color: var(--accent);
+  font-weight: 600;
+}
