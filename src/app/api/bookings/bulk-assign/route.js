@@ -7,139 +7,185 @@ import { revalidateTag } from 'next/cache'
 import redis from '@/lib/redis'
 import { ObjectId } from 'mongodb'
 
+const MAX_STOPS_PER_ROUTE = 11 // Mapbox Optimization v1 limit (12 waypoints incl. driver)
+
+// kind → { allowedFromStatuses[], newBookingStatus, stopTypes[] }
+// `failed_pickup` is re-assignable the same as `pending`; `failed_dropoff`
+// the same as `picked_up` — the admin just picks the kind again.
+const KIND_CONFIG = {
+  pickup_only:   { allowedFromStatuses: ['pending',   'failed_pickup'],  newBookingStatus: 'assigned_pickup',   stopTypes: ['pickup'] },
+  delivery_only: { allowedFromStatuses: ['picked_up', 'failed_dropoff'], newBookingStatus: 'assigned_delivery', stopTypes: ['dropoff'] },
+}
+
+// Legacy aliases so existing single-booking /assign calls still work
+const LEGACY_ASSIGNMENT_TYPE_ALIASES = {
+  pickup:   'pickup_only',
+  delivery: 'delivery_only',
+}
+
 /**
  * POST /api/bookings/bulk-assign
- * Body: {
- *   bookingIds: string[],
- *   driverId: string,
- *   assignmentType: 'pickup' | 'delivery'
- * }
  *
- * Assigns multiple bookings to one driver for either pickup or delivery.
+ * Preferred payload (atomic, per-booking kinds):
+ *   { driverId, assignments: [{ bookingId, kind }] }
+ *   kind ∈ 'pickup_only' | 'delivery_only'
  *
- * pickup assignment:
- *   - bookings must be in 'pending' status
- *   - takes the pickup stop from each booking
- *   - optimizes all pickup stops together
- *   - sets booking status → 'assigned_pickup'
+ * Backward-compatible payload (one kind for all):
+ *   { driverId, bookingIds: [id], assignmentType: 'pickup'|'delivery' }
  *
- * delivery assignment:
- *   - bookings must be in 'picked_up' status
- *   - takes the dropoff stop from each booking
- *   - optimizes all dropoff stops together
- *   - sets booking status → 'assigned_delivery'
+ * Behaviour:
+ *   - A single bulk-assign call may mix pickup_only and delivery_only kinds,
+ *     letting the driver pick up new packages AND drop off previously picked-up
+ *     packages in the same route.
+ *   - Each stop carries an `assignmentKind` field — this is the authoritative
+ *     signal for booking-status transitions (stop-complete derives from it,
+ *     NOT from route.routePhase).
+ *   - If the driver has an active route, stops are merged and the route is
+ *     re-optimized using the driver's last known GPS (from driverProfile).
+ *     Completed stops stay frozen at the front of optimizedStops.
  */
 export async function POST(request) {
   try {
     await requireAdmin()
+    const body = await request.json()
 
-    const { bookingIds, driverId, assignmentType } = await request.json()
-
-    if (!bookingIds?.length) {
-      return NextResponse.json({ error: 'bookingIds is required' }, { status: 400 })
-    }
+    // ── Normalize payload to { driverId, assignments: [{ bookingId, kind }] } ──
+    const driverId = body.driverId
     if (!driverId) {
       return NextResponse.json({ error: 'driverId is required' }, { status: 400 })
     }
-    if (assignmentType !== 'pickup' && assignmentType !== 'delivery') {
-      return NextResponse.json({ error: 'assignmentType must be pickup or delivery' }, { status: 400 })
+
+    let assignments
+    if (Array.isArray(body.assignments) && body.assignments.length > 0) {
+      assignments = body.assignments.map((a) => ({
+        bookingId: a.bookingId,
+        kind: LEGACY_ASSIGNMENT_TYPE_ALIASES[a.kind] ?? a.kind,
+      }))
+    } else if (Array.isArray(body.bookingIds) && body.bookingIds.length > 0) {
+      const kind = LEGACY_ASSIGNMENT_TYPE_ALIASES[body.assignmentType] ?? body.assignmentType
+      assignments = body.bookingIds.map((bookingId) => ({ bookingId, kind }))
+    } else {
+      return NextResponse.json({ error: 'assignments (or bookingIds + assignmentType) is required' }, { status: 400 })
     }
 
-    // Verify driver exists
+    for (const a of assignments) {
+      if (!a.bookingId) {
+        return NextResponse.json({ error: 'Each assignment must have a bookingId' }, { status: 400 })
+      }
+      if (!KIND_CONFIG[a.kind]) {
+        return NextResponse.json({ error: `Invalid kind '${a.kind}'` }, { status: 400 })
+      }
+    }
+
+    // ── Load driver + bookings ──
     const driver = await findDriverById(driverId)
     if (!driver) return NextResponse.json({ error: 'Driver not found' }, { status: 404 })
 
-    // Load all bookings
+    const bookingIds = assignments.map((a) => a.bookingId)
     const bookings = await findBookingsByIds(bookingIds)
-    if (bookings.length === 0) {
-      return NextResponse.json({ error: 'No bookings found' }, { status: 404 })
+    if (bookings.length !== assignments.length) {
+      return NextResponse.json({ error: 'One or more bookings not found' }, { status: 404 })
     }
 
-    // Validate each booking is in the right status for this assignment type
-    const requiredStatus    = assignmentType === 'pickup' ? 'pending'   : 'picked_up'
-    const newBookingStatus  = assignmentType === 'pickup' ? 'assigned_pickup' : 'assigned_delivery'
-    const stopTypeToUse     = assignmentType === 'pickup' ? 'pickup'    : 'dropoff'
-    const routePhase        = assignmentType === 'pickup' ? 'pickup'    : 'dropoff'
+    const bookingById = new Map(bookings.map((b) => [String(b._id), b]))
 
-    const invalid = bookings.filter((b) => b.status !== requiredStatus)
+    // ── Validate each booking's status matches the requested kind ──
+    const invalid = []
+    for (const a of assignments) {
+      const b = bookingById.get(String(a.bookingId))
+      const cfg = KIND_CONFIG[a.kind]
+      if (!cfg.allowedFromStatuses.includes(b.status)) {
+        invalid.push({ bookingId: a.bookingId, status: b.status, expected: cfg.allowedFromStatuses.join(' | ') })
+      }
+    }
     if (invalid.length > 0) {
       return NextResponse.json({
-        error: `${invalid.length} booking(s) are not in '${requiredStatus}' status`,
+        error: `${invalid.length} booking(s) have an incompatible status for the requested assignment kind`,
+        details: invalid,
       }, { status: 409 })
     }
 
-    // Extract the relevant stop from each booking
-    const flatStops = []
-    for (const booking of bookings) {
-      const stop = booking.stops.find((s) => s.type === stopTypeToUse)
-      if (!stop) continue
-      flatStops.push({
-        bookingId:    String(booking._id),
-        stopType:     stopTypeToUse,
-        coordinates:  stop.coordinates,
-        address:      stop.address,
-        contactName:  stop.contactName  ?? null,
-        contactPhone: stop.contactPhone ?? null,
-        notes:        stop.notes        ?? null,
-        status:       'pending',
-        completedAt:  null,
-        estimatedArrivalAt: null,
-      })
+    // ── Build new stops with per-stop assignmentKind ──
+    const newStops = []
+    for (const a of assignments) {
+      const booking = bookingById.get(String(a.bookingId))
+      const cfg = KIND_CONFIG[a.kind]
+      for (const stopType of cfg.stopTypes) {
+        const stop = booking.stops.find((s) => s.type === stopType)
+        if (!stop) continue
+        newStops.push({
+          bookingId:       String(booking._id),
+          stopType,
+          assignmentKind:  a.kind, // ← authoritative for status transitions
+          coordinates:     stop.coordinates,
+          address:         stop.address,
+          contactName:     stop.contactName  ?? null,
+          contactPhone:    stop.contactPhone ?? null,
+          notes:           stop.notes        ?? null,
+          status:          'pending',
+          completedAt:     null,
+          estimatedArrivalAt: null,
+        })
+      }
     }
-
-    if (flatStops.length === 0) {
+    if (newStops.length === 0) {
       return NextResponse.json({ error: 'No valid stops found in selected bookings' }, { status: 400 })
     }
 
-    // Store stops in insertion order — optimization happens at navigate time using driver's GPS
-    const optimizedStops = flatStops.map((s, i) => ({
-      ...s,
-      stopIndex:     i,
-      originalIndex: i,
-    }))
-
-    // Check if driver already has an active route for this same phase
+    // ── Branch: new route vs merge into existing ──
     const existingRoute = await findActiveRoute(driverId)
-    const existingPhase = existingRoute?.routePhase
 
-    if (existingRoute && existingPhase === routePhase) {
-      // Merge: keep completed stops, re-optimize all pending + new stops together
-      const completedStops  = (existingRoute.optimizedStops ?? []).filter((s) => s.completedAt)
-      const existingPending = (existingRoute.optimizedStops ?? []).filter((s) => !s.completedAt)
+    let merged = false
+    let finalRouteId
 
-      // Append new stops after existing pending — optimization happens at navigate time
-      const allPending = [
-        ...existingPending,
-        ...optimizedStops,
-      ]
+    if (existingRoute) {
+      merged = true
+      const existingStops    = existingRoute.optimizedStops ?? []
+      const completedStops   = existingStops.filter((s) => s.completedAt)
+      const existingPending  = existingStops.filter((s) => !s.completedAt && s.stopType !== 'endpoint')
+      const endpointStop     = existingStops.find((s) => s.stopType === 'endpoint' && !s.completedAt) // preserve
 
-      const mergedOptimizedStops = allPending.map((s, visitOrder) => ({
+      if (existingPending.length + newStops.length > MAX_STOPS_PER_ROUTE) {
+        return NextResponse.json({
+          error: `Route would exceed ${MAX_STOPS_PER_ROUTE} pending stops. Wait for driver to complete some first.`,
+        }, { status: 409 })
+      }
+
+      // Append new stops to pending queue (reroute will re-optimize)
+      const mergedPending = [...existingPending, ...newStops]
+      const mergedStops = mergedPending.map((s, i) => ({
         ...s,
-        stopIndex:     completedStops.length + visitOrder,
-        originalIndex: visitOrder,
+        stopIndex:     completedStops.length + i,
+        originalIndex: i,
       }))
+
+      const finalStops = [...completedStops, ...mergedStops]
+      if (endpointStop) finalStops.push({ ...endpointStop, stopIndex: finalStops.length })
+
+      // routePhase is a UI hint only — derived from whether any pending stop is a pickup
+      const hasAnyPickup = finalStops.some((s) => !s.completedAt && s.stopType === 'pickup')
+      const finalPhase = hasAnyPickup ? 'pickup' : 'dropoff'
 
       await mergeIntoActiveRoute(
         String(existingRoute._id),
         bookings.map((b) => new ObjectId(b._id)),
-        [...completedStops, ...mergedOptimizedStops],
+        finalStops,
         null,
-        routePhase,
+        finalPhase,
       )
-    } else if (existingRoute && existingPhase !== routePhase) {
-      // Driver has a route for a different phase — create a new route doc
-      await upsertDriverRoute(driverId, {
-        assignmentIds:        bookings.map((b) => b._id),
-        routePhase,
-        optimizedStops,
-        encodedPolyline:      null,
-        totalDistanceMeters:  null,
-        totalDurationSeconds: null,
-        lastMatchedAt:        null,
-      })
+      finalRouteId = String(existingRoute._id)
     } else {
-      // No existing route — create fresh
-      await upsertDriverRoute(driverId, {
+      // Fresh route — phase is UI-hint: 'pickup' if any pickup stop, else 'dropoff'
+      const hasAnyPickup = newStops.some((s) => s.stopType === 'pickup')
+      const routePhase = hasAnyPickup ? 'pickup' : 'dropoff'
+
+      const optimizedStops = newStops.map((s, i) => ({
+        ...s,
+        stopIndex:     i,
+        originalIndex: i,
+      }))
+
+      const created = await upsertDriverRoute(driverId, {
         assignmentIds:        bookings.map((b) => b._id),
         routePhase,
         optimizedStops,
@@ -147,21 +193,27 @@ export async function POST(request) {
         totalDistanceMeters:  null,
         totalDurationSeconds: null,
         lastMatchedAt:        null,
+        endPoint:             null,
       })
+      finalRouteId = String(created._id)
     }
 
-    // Update all bookings status and notify via Pusher
+    // ── Update booking statuses + notify ──
     await Promise.all(
-      bookings.map(async (booking) => {
+      assignments.map(async (a) => {
+        const booking = bookingById.get(String(a.bookingId))
+        const cfg = KIND_CONFIG[a.kind]
         await assignDriverToBooking(String(booking._id), driverId, {
           estimatedDistanceMeters:  null,
           estimatedDurationSeconds: null,
-          newStatus:        newBookingStatus,
-          allowedFromStatus: requiredStatus,
+          newStatus:         cfg.newBookingStatus,
+          // Booking's current status was validated above; allow any of the
+          // configured from-statuses (covers failed_pickup/failed_dropoff retry).
+          allowedFromStatus: booking.status,
         })
         try {
           await pushBookingStatusChange(String(booking._id), {
-            status: newBookingStatus,
+            status: cfg.newBookingStatus,
             updatedAt: new Date().toISOString(),
             etaSeconds: null,
           })
@@ -169,15 +221,39 @@ export async function POST(request) {
       })
     )
 
-    // Fetch the freshly written route and push it into Redis immediately.
-    // This prevents any window where route-data serves a stale completed route from cache.
+    // ── On merge: auto-trigger reroute using driver's last known GPS ──
+    // Completed stops are preserved; only pending stops get re-optimized.
+    // If no GPS known, we skip reroute — the driver's own client will reroute
+    // on next GPS tick via route:updated push.
+    if (merged) {
+      const gps = driver?.driverProfile?.currentLocation
+      if (gps && typeof gps.lat === 'number' && typeof gps.lng === 'number') {
+        try {
+          // Direct internal re-optimization (avoid HTTP self-call)
+          const { reoptimizeRoute } = await import('@/lib/routing/reoptimize')
+          await reoptimizeRoute({ driverId, currentLng: gps.lng, currentLat: gps.lat })
+        } catch {
+          // Non-fatal — driver client will reroute on its own GPS update
+        }
+      }
+    }
+
+    // ── Refresh Redis cache + push live update to driver ──
     try {
       const freshRoute = await findActiveRoute(driverId)
       if (freshRoute) {
-        const serialized = JSON.parse(JSON.stringify(freshRoute))
-        await redis.set(`driver:${driverId}:route`, serialized, { ex: 300 })
-        // Push live update if driver already has the map open
-        try { await pushRouteUpdate(driverId, serialized) } catch { /* non-fatal */ }
+        const { hydrateRouteItems } = await import('@/lib/routing/hydrate')
+        const hydrated = await hydrateRouteItems(JSON.parse(JSON.stringify(freshRoute)))
+        // Store hydrated so route-data cache hits need no extra DB queries.
+        await redis.set(`driver:${driverId}:route`, hydrated, { ex: 300 })
+        try {
+          await pushRouteUpdate(driverId, {
+            ...hydrated,
+            _mergeNotice: merged
+              ? { addedBookingIds: bookings.map((b) => String(b._id)), addedAt: new Date().toISOString() }
+              : null,
+          })
+        } catch { /* non-fatal */ }
       } else {
         await redis.del(`driver:${driverId}:route`)
       }
@@ -188,7 +264,8 @@ export async function POST(request) {
     return NextResponse.json({
       success: true,
       assigned: bookings.length,
-      merged: Boolean(existingRoute && existingPhase === routePhase),
+      merged,
+      routeId: finalRouteId,
     })
   } catch (err) {
     return handleApiError(err, '[POST /api/bookings/bulk-assign]')

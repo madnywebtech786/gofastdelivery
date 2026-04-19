@@ -1,31 +1,47 @@
 import { requireAdmin } from '@/lib/dal'
-import { findAllBookings } from '@/lib/db/bookings'
+import { findAllBookings, countAllBookings } from '@/lib/db/bookings'
 import AdminBookingsClient from './AdminBookingsClient'
 
 export const metadata = { title: 'Bookings — Courier Admin' }
 
+const VALID_STATUSES = [
+  'pending',
+  'failed_pickup',
+  'assigned_pickup',
+  'picked_up',
+  'failed_dropoff',
+  'assigned_delivery',
+  'delivered',
+  'cancelled',
+]
+
+const PAGE_SIZE = 5
+
 export default async function AdminBookingsPage({ searchParams }) {
   await requireAdmin()
   const sp = await searchParams
-  const validTabs = ['pickup', 'delivery', 'assigned']
-  const tab = validTabs.includes(sp?.tab) ? sp.tab : 'pickup'
 
-  const [pendingBookings, pickedUpBookings, assignedPickup, assignedDelivery] = await Promise.all([
-    findAllBookings({ status: 'pending', limit: 100 }),
-    findAllBookings({ status: 'picked_up', limit: 100 }),
-    findAllBookings({ status: 'assigned_pickup', limit: 100 }),
-    findAllBookings({ status: 'assigned_delivery', limit: 100 }),
+  const rawStatus = typeof sp?.status === 'string' ? sp.status : ''
+  const statusFilter = VALID_STATUSES.includes(rawStatus) ? rawStatus : ''
+
+  const rawPage = parseInt(sp?.page, 10)
+  const page = rawPage >= 1 ? rawPage : 1
+  const skip = (page - 1) * PAGE_SIZE
+
+  const statusArg = statusFilter ? [statusFilter] : undefined
+
+  const [bookings, total] = await Promise.all([
+    findAllBookings({ status: statusArg, limit: PAGE_SIZE, skip }),
+    countAllBookings({ status: statusArg }),
   ])
-
-  const assignedBookings = [...assignedPickup, ...assignedDelivery]
-    .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
 
   return (
     <AdminBookingsClient
-      initialTab={tab}
-      pendingBookings={JSON.parse(JSON.stringify(pendingBookings))}
-      pickedUpBookings={JSON.parse(JSON.stringify(pickedUpBookings))}
-      assignedBookings={JSON.parse(JSON.stringify(assignedBookings))}
+      initialStatusFilter={statusFilter}
+      initialPage={page}
+      bookings={JSON.parse(JSON.stringify(bookings))}
+      total={total}
+      pageSize={PAGE_SIZE}
     />
   )
 }

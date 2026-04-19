@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import bcrypt from 'bcryptjs'
 import { requireAdmin, handleApiError } from '@/lib/dal'
-import { findAllDrivers, findActiveRoute } from '@/lib/db/drivers'
+import { findAllDrivers, findActiveRoutesByDriverIds } from '@/lib/db/drivers'
 import { createUser, emailExists } from '@/lib/db/users'
 import { nanoid } from 'nanoid'
 
@@ -10,17 +10,16 @@ export async function GET() {
     await requireAdmin()
     const drivers = await findAllDrivers()
 
-    // Annotate each driver with how many pending stops they currently have
-    // so the admin can see which drivers are already loaded before assigning more.
-    const annotated = await Promise.all(
-      drivers.map(async (d) => {
-        const route = await findActiveRoute(String(d._id))
-        const pendingStopCount = route
-          ? (route.optimizedStops ?? []).filter((s) => !s.completedAt).length
-          : 0
-        return { ...d, pendingStopCount }
-      })
-    )
+    // Single bulk query instead of N+1 per-driver lookups.
+    const routesByDriver = await findActiveRoutesByDriverIds(drivers.map((d) => String(d._id)))
+
+    const annotated = drivers.map((d) => {
+      const route = routesByDriver.get(String(d._id))
+      const pendingStopCount = route
+        ? (route.optimizedStops ?? []).filter((s) => !s.completedAt).length
+        : 0
+      return { ...d, pendingStopCount }
+    })
 
     return NextResponse.json(JSON.parse(JSON.stringify(annotated)))
   } catch (err) {

@@ -57,12 +57,32 @@ export const getUser = cache(async () => {
 })
 
 /**
+ * Map a non-matching role to its canonical landing page so we can redirect
+ * rather than throwing a dev-overlay 403 when a page guard fails.
+ */
+function landingFor(role) {
+  if (role === 'driver')   return '/route'
+  if (role === 'customer') return '/home'
+  return '/login'
+}
+
+/**
  * Verifies session and asserts the role is 'admin'.
- * Safe to call from both Server Components and API Route Handlers.
+ * Safe to call from both Server Components and API Route Handlers — in a
+ * Server Component we redirect the user to their own landing page; in a
+ * Route Handler we throw AuthError(403) which the handler catches and
+ * returns as a JSON error.
  */
 export async function requireAdmin() {
   const { userId, role } = await verifySession()
-  if (role !== 'admin') throw new AuthError('Forbidden: admin only', 403)
+  if (role !== 'admin') {
+    try {
+      redirect(landingFor(role))
+    } catch (e) {
+      if (e?.digest?.startsWith('NEXT_REDIRECT')) throw e
+      throw new AuthError('Forbidden: admin only', 403)
+    }
+  }
   return { userId, role }
 }
 
@@ -71,7 +91,14 @@ export async function requireAdmin() {
  */
 export async function requireDriver() {
   const { userId, role } = await verifySession()
-  if (role !== 'driver') throw new AuthError('Forbidden: driver only', 403)
+  if (role !== 'driver') {
+    try {
+      redirect(landingFor(role))
+    } catch (e) {
+      if (e?.digest?.startsWith('NEXT_REDIRECT')) throw e
+      throw new AuthError('Forbidden: driver only', 403)
+    }
+  }
   return { userId, role }
 }
 

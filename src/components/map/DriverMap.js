@@ -7,10 +7,6 @@ import polyline from '@mapbox/polyline'
 const OFF_ROUTE_THRESHOLD_M  = 300
 // How long (ms) the driver must stay off-route before we trigger a reroute
 const OFF_ROUTE_DURATION_MS  = 30000
-// Minimum movement (m) before re-fetching the active leg (heading update + step refresh)
-const LEG_REFETCH_DISTANCE_M = 50
-// Minimum time (ms) between active-leg fetches
-const LEG_REFETCH_MIN_MS     = 15000
 // Speak when this close to the next turn (metres)
 const SPEAK_AT_M             = 150
 
@@ -121,6 +117,7 @@ export default function DriverMap({
   driverId = null,
   onStepUpdate,
   onReroute,
+  newStopIds = null,
 }) {
   const containerRef       = useRef(null)
   const mapRef             = useRef(null)
@@ -134,11 +131,18 @@ export default function DriverMap({
   const prevPosRef         = useRef(null)
 
   const activeStopIndexRef = useRef(activeStopIndex)
+  // Initialised directly from the prop so map init can read the GPS immediately
+  // before any useEffect has run.
   const driverPosRef       = useRef(driverPos)
   const routeRef           = useRef(route)
   const onStepUpdateRef    = useRef(onStepUpdate)
   const onRerouteRef       = useRef(onReroute)
   const driverIdRef        = useRef(driverId)
+  const newStopIdsRef          = useRef(newStopIds)
+  // Holds the renderStopMarkers callback once it is defined below.
+  // Using a ref avoids a temporal-dead-zone ReferenceError that occurs when
+  // the useEffect dep-array is evaluated before the useCallback declaration.
+  const renderStopMarkersRef   = useRef(null)
 
   // Turn-by-turn state
   const stepsRef           = useRef([])   // steps for current active leg
@@ -148,12 +152,10 @@ export default function DriverMap({
   // Last step index for which we spoke — prevents repeating the same announcement
   const lastSpokenStepRef  = useRef(-1)
 
-  // Active leg fetch throttle
-  const lastLegFetchPos    = useRef(null)
-  const lastLegFetchTime   = useRef(0)
-
   // Active leg route corridor coords [[lng,lat],...] for off-route detection
   const corridorCoordsRef  = useRef([])
+  // In-flight active-leg fetch — aborted when a newer request supersedes it
+  const legAbortRef        = useRef(null)
 
   // Off-route tracking
   const offRouteSinceRef   = useRef(null)  // timestamp when we first went off-route; null = on-route
@@ -166,10 +168,25 @@ export default function DriverMap({
   useEffect(() => { onStepUpdateRef.current = onStepUpdate }, [onStepUpdate])
   useEffect(() => { onRerouteRef.current = onReroute }, [onReroute])
   useEffect(() => { driverIdRef.current = driverId }, [driverId])
+  useEffect(() => { newStopIdsRef.current = newStopIds }, [newStopIds])
+
+  // Re-render markers when the set of new stops changes so pulse animation
+  // appears/disappears without requiring a route change.
+  // renderStopMarkersRef is used instead of the callback directly to avoid a
+  // temporal-dead-zone ReferenceError (useCallback is a const, declared later).
+  useEffect(() => {
+    const map      = mapRef.current
+    const mapboxgl = mapboxglRef.current
+    if (!map || !mapboxgl || !map.isStyleLoaded()) return
+    if (!renderStopMarkersRef.current) return
+    const stops = routeRef.current?.optimizedStops ?? []
+    renderStopMarkersRef.current(map, stops, mapboxgl, activeStopIndexRef.current, newStopIds)
+  }, [newStopIds])
 
   // ── Banner state ──────────────────────────────────────────────────────────
   const [banner, setBanner] = useState(null) // { icon, instruction, distance }
   const [offRoute, setOffRoute] = useState(false)
+  const [locating, setLocating] = useState(false)
 
   // ── Gray full route ───────────────────────────────────────────────────────
   const renderFullRouteGray = useCallback((map, enc) => {
@@ -189,22 +206,38 @@ export default function DriverMap({
   }, [])
 
   // ── Active leg in blue + extract steps ───────────────────────────────────
+  // Fires ONLY when:
+  //   - driver switches to a new destination (activeStopIndex changes),
+  //   - a reroute has returned (onReroute callback),
+  //   - map first mounts.
+  // No periodic GPS-tick refetch — we drive turn-by-turn entirely from the
+  // cached `stepsRef.current` + local Haversine in updateTurnBanner.
+  //
   // resetStepTracking=true when switching to a new destination (clears spoken state)
-  // resetStepTracking=false for mid-route refreshes (preserves spoken state)
   const renderActiveLeg = useCallback(async (map, fromLng, fromLat, toStop, resetStepTracking = false) => {
-    const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN
-    if (!token || !toStop || !map) return
-    try {
-      const wpts = `${fromLng},${fromLat};${toStop.coordinates.lng},${toStop.coordinates.lat}`
-      const url  = `https://api.mapbox.com/directions/v5/mapbox/driving/${encodeURIComponent(wpts)}?geometries=polyline6&overview=full&steps=true&access_token=${token}`
-      const res  = await fetch(url)
-      if (!res.ok) return
-      const data  = await res.json()
-      const route = data.routes?.[0]
-      if (!route) return
+    if (!toStop || !map) return
 
-      // Draw blue line
-      const coords = polyline.decode(route.geometry, 6).map(([lat, lng]) => [lng, lat])
+    // Abort any in-flight request so a slower response can't overwrite a newer corridor
+    legAbortRef.current?.abort()
+    const ctrl = new AbortController()
+    legAbortRef.current = ctrl
+
+    try {
+      const res = await fetch('/api/mapbox/directions', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          from: { lng: fromLng, lat: fromLat },
+          to:   { lng: toStop.coordinates.lng, lat: toStop.coordinates.lat },
+          withSteps: true,
+        }),
+        signal: ctrl.signal,
+      })
+      if (!res.ok) return
+      const data = await res.json()
+      if (!data?.geometry) return
+
+      const coords = polyline.decode(data.geometry, 6).map(([lat, lng]) => [lng, lat])
       corridorCoordsRef.current = coords
 
       if (map.getLayer('route-active')) map.removeLayer('route-active')
@@ -219,20 +252,17 @@ export default function DriverMap({
         paint: { 'line-color': '#2563eb', 'line-width': 6, 'line-opacity': 0.95 },
       })
 
-      // Store steps for turn-by-turn
-      const steps = route.legs?.[0]?.steps ?? []
+      const steps = data.steps ?? []
       stepsRef.current = steps
 
       if (resetStepTracking) {
-        nextStepIdxRef.current   = 0
+        nextStepIdxRef.current    = 0
         lastSpokenStepRef.current = -1
       }
 
-      // Reset off-route state — we have a fresh corridor
       offRouteSinceRef.current = null
       setOffRoute(false)
 
-      // Show first upcoming step in banner
       if (steps.length > 0) {
         const first = steps[nextStepIdxRef.current] ?? steps[0]
         setBanner({
@@ -240,10 +270,10 @@ export default function DriverMap({
           instruction: first.maneuver?.instruction ?? '',
           distance:    formatDist(first.distance),
         })
-        // Only announce on new destination, not on mid-route refreshes
         if (resetStepTracking) onStepUpdateRef.current?.(first)
       }
     } catch (err) {
+      if (err?.name === 'AbortError') return
       console.warn('[DriverMap] active leg fetch failed:', err)
     }
   }, [])
@@ -292,6 +322,24 @@ export default function DriverMap({
       lastSpokenStepRef.current = idx
       onStepUpdateRef.current?.(step, distToTurn)
     }
+  }, [])
+
+  // ── Jump to current location ──────────────────────────────────────────────
+  const handleUseCurrentLocation = useCallback(() => {
+    if (!navigator.geolocation || !mapRef.current) return
+    setLocating(true)
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { longitude: lng, latitude: lat } = pos.coords
+        mapRef.current?.flyTo({ center: [lng, lat], zoom: 15, duration: 700 })
+        setLocating(false)
+      },
+      () => {
+        console.warn('Geolocation permission denied')
+        setLocating(false)
+      },
+      { enableHighAccuracy: true, timeout: 8000 }
+    )
   }, [])
 
   // ── Off-route detection + server-side reroute trigger ─────────────────────
@@ -389,37 +437,54 @@ export default function DriverMap({
   }, [])
 
   // ── Stop markers ─────────────────────────────────────────────────────────
-  const renderStopMarkers = useCallback((map, stops, mapboxgl, currentIndex) => {
+  const renderStopMarkers = useCallback((map, stops, mapboxgl, currentIndex, pulseIds) => {
     markersRef.current.forEach((m) => m.remove())
     markersRef.current = []
 
     stops.forEach((stop, i) => {
       const done   = i < currentIndex
       const active = i === currentIndex
-      // Completed → checkmark. Others → fixed 1-based position (never renumbers)
-      const label  = done ? '✓' : String(i + 1)
+      const isEndpoint = stop.stopType === 'endpoint'
+      const isNew  = !done && !!pulseIds && stop.bookingId && pulseIds.has(String(stop.bookingId))
+
+      // Endpoint → "E", completed → checkmark, others → 1-based position
+      let label = done ? '✓' : isEndpoint ? 'E' : String(i + 1)
+
+      // Determine color: gray if done, blue if active, endpoint is purple, pickup is green, dropoff is red
+      let bgColor
+      if (done) bgColor = '#9ca3af'
+      else if (active) bgColor = '#2563eb'
+      else if (isEndpoint) bgColor = '#7c3aed'
+      else bgColor = stop.stopType === 'pickup' ? '#16a34a' : '#dc2626'
 
       const el = document.createElement('div')
+      const baseShadow = active ? '0 0 0 4px rgba(37,99,235,0.35)' : '0 2px 6px rgba(0,0,0,.3)'
       el.style.cssText = `
         width:34px;height:34px;border-radius:50%;
-        background:${done ? '#9ca3af' : active ? '#2563eb' : stop.stopType === 'pickup' ? '#16a34a' : '#dc2626'};
+        background:${bgColor};
         color:#fff;font-size:${done ? '16px' : '13px'};font-weight:700;
         display:flex;align-items:center;justify-content:center;
-        box-shadow:${active ? '0 0 0 4px rgba(37,99,235,0.35)' : '0 2px 6px rgba(0,0,0,.3)'};
+        box-shadow:${baseShadow};
         border:2px solid #fff;opacity:${done ? 0.5 : 1};
+        ${isNew ? 'animation:driverMapPulse 1s ease-out infinite;' : ''}
       `
       el.textContent = label
+
+      const stopTypeLabel = stop.stopType === 'endpoint' ? '🟣 End Point' : stop.stopType === 'pickup' ? '🟢 Pickup' : '🔴 Drop-off'
 
       const marker = new mapboxgl.Marker({ element: el })
         .setLngLat([stop.coordinates.lng, stop.coordinates.lat])
         .setPopup(new mapboxgl.Popup({ offset: 20, closeButton: false }).setHTML(
-          `<div style="font-size:12px;font-weight:600">${stop.stopType === 'pickup' ? '🟢 Pickup' : '🔴 Drop-off'}</div>
+          `<div style="font-size:12px;font-weight:600">${stopTypeLabel}${isNew ? ' <span style="color:#d97706">• NEW</span>' : ''}</div>
            <div style="font-size:11px;color:#555;margin-top:2px">${stop.address}</div>`
         ))
         .addTo(map)
       markersRef.current.push(marker)
     })
   }, [])
+  // Keep the ref in sync so the early useEffect (above the declaration) can
+  // call through the ref without hitting a temporal dead zone.
+  renderStopMarkersRef.current = renderStopMarkers
 
   // ── Map init ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -438,10 +503,18 @@ export default function DriverMap({
       const stops      = route.optimizedStops ?? []
       const activeStop = stops[idx] ?? stops[0]
 
+      // Centre on driver GPS first — fall back to first stop if GPS not yet resolved
+      const initPos = driverPosRef.current
+      const initCenter = initPos
+        ? [initPos.lng, initPos.lat]
+        : activeStop
+          ? [activeStop.coordinates.lng, activeStop.coordinates.lat]
+          : [74.2010, 32.6420]
+
       map = new mapboxgl.Map({
         container: containerRef.current,
         style: 'mapbox://styles/mapbox/streets-v12',
-        center: activeStop ? [activeStop.coordinates.lng, activeStop.coordinates.lat] : [101.6869, 3.139],
+        center: initCenter,
         zoom: 15,
       })
       mapRef.current = map
@@ -449,16 +522,17 @@ export default function DriverMap({
       const geolocate = new mapboxgl.GeolocateControl({
         positionOptions: { enableHighAccuracy: true },
         trackUserLocation: true,
-        showUserHeading: false,
-        showUserLocation: false,
+        showUserHeading: true,   // shows the blue heading arc
+        showUserLocation: true,  // shows the native blue dot (we keep our car marker too)
       })
-      map.addControl(geolocate, 'bottom-right')
-      map.addControl(new mapboxgl.NavigationControl({ showCompass: true }), 'bottom-right')
+      // Place above the bottom sheet — bottom-right with CSS offset via mapboxgl-ctrl-bottom-right
+      map.addControl(geolocate, 'top-right')
+      map.addControl(new mapboxgl.NavigationControl({ showCompass: true }), 'top-right')
 
       map.on('load', () => {
         const i    = activeStopIndexRef.current
         const stps = routeRef.current?.optimizedStops ?? []
-        renderStopMarkers(map, stps, mapboxgl, i)
+        renderStopMarkers(map, stps, mapboxgl, i, newStopIdsRef.current)
         renderFullRouteGray(map, routeRef.current?.encodedPolyline)
 
         const pos      = driverPosRef.current
@@ -468,42 +542,28 @@ export default function DriverMap({
           const fromLat = pos?.lat ?? nextStop.coordinates.lat
           if (pos) updateDriverMarker(map, mapboxgl, fromLng, fromLat, null)
           renderActiveLeg(map, fromLng, fromLat, nextStop, true)
-          lastLegFetchPos.current  = { lng: fromLng, lat: fromLat }
-          lastLegFetchTime.current = Date.now()
         }
 
         geolocate.trigger()
       })
 
+      // GPS tick handler: purely LOCAL updates (car marker + turn banner + off-route timer).
+      // No Mapbox Directions refetch here — the step list cached on the first render
+      // is authoritative; updateTurnBanner advances through it using Haversine.
+      // The off-route detector will trigger a full /reroute when the driver genuinely
+      // leaves the corridor, which is the only path that produces a new Directions call.
       geolocate.on('geolocate', (e) => {
         const { longitude: lng, latitude: lat, heading } = e.coords
         driverPosRef.current = { lng, lat }
 
-        const i        = activeStopIndexRef.current
-        const nextStop = routeRef.current?.optimizedStops?.[i]
-
         updateDriverMarker(map, mapboxgl, lng, lat, heading)
         updateTurnBanner(lng, lat)
         checkOffRoute(lng, lat)
-
-        if (!nextStop) return
-
-        const now     = Date.now()
-        const lastPos = lastLegFetchPos.current
-        const moved   = lastPos ? haversineM(lastPos, { lng, lat }) : Infinity
-        const elapsed = now - lastLegFetchTime.current
-
-        // Refresh active leg if we've moved enough AND enough time has passed
-        // resetStepTracking=false — preserve step pointer, just update corridor geometry
-        if (moved >= LEG_REFETCH_DISTANCE_M && elapsed >= LEG_REFETCH_MIN_MS) {
-          lastLegFetchPos.current  = { lng, lat }
-          lastLegFetchTime.current = now
-          renderActiveLeg(map, lng, lat, nextStop, false)
-        }
       })
     })
 
     return () => {
+      legAbortRef.current?.abort()
       driverMarkerRef.current = null
       map?.remove()
     }
@@ -516,7 +576,7 @@ export default function DriverMap({
     if (!map || !mapboxgl || !map.isStyleLoaded()) return
 
     const stops    = routeRef.current?.optimizedStops ?? []
-    renderStopMarkers(map, stops, mapboxgl, activeStopIndex)
+    renderStopMarkers(map, stops, mapboxgl, activeStopIndex, newStopIdsRef.current)
 
     const nextStop = stops[activeStopIndex]
     if (nextStop) {
@@ -526,8 +586,6 @@ export default function DriverMap({
       const fromLat = pos?.lat ?? nextStop.coordinates.lat
       // New destination — reset step tracking
       renderActiveLeg(map, fromLng, fromLat, nextStop, true)
-      lastLegFetchPos.current  = { lng: fromLng, lat: fromLat }
-      lastLegFetchTime.current = Date.now()
     } else {
       setBanner(null)
       if (map.getLayer('route-active')) map.removeLayer('route-active')
@@ -537,6 +595,13 @@ export default function DriverMap({
 
   return (
     <div className="w-full h-full relative">
+      <style jsx global>{`
+        @keyframes driverMapPulse {
+          0%   { box-shadow: 0 0 0 0 rgba(245,158,11,0.75), 0 2px 6px rgba(0,0,0,.3); }
+          70%  { box-shadow: 0 0 0 14px rgba(245,158,11,0), 0 2px 6px rgba(0,0,0,.3); }
+          100% { box-shadow: 0 0 0 0 rgba(245,158,11,0), 0 2px 6px rgba(0,0,0,.3); }
+        }
+      `}</style>
       <div ref={containerRef} className="w-full h-full" />
 
       {/* ── Turn-by-turn banner ─────────────────────────────────────────── */}
@@ -567,6 +632,30 @@ export default function DriverMap({
           <p className="text-white text-xs font-semibold">Off route — recalculating in {OFF_ROUTE_DURATION_MS / 1000}s…</p>
         </div>
       )}
+
+      {/* ── Re-centre button — below the off-route banner, above safe area ── */}
+      <button
+        onClick={handleUseCurrentLocation}
+        disabled={locating}
+        title="Jump to my location"
+        className="absolute bottom-4 left-3 z-30 w-11 h-11 rounded-full bg-white shadow-lg border border-gray-200 flex items-center justify-center transition hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+        style={{ color: '#2563eb' }}
+      >
+        {locating ? (
+          <svg width="16" height="16" viewBox="0 0 16 16" style={{ animation: 'spin 0.8s linear infinite' }}>
+            <circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="25 10" />
+          </svg>
+        ) : (
+          // Standard GPS crosshair — same icon used in the endpoint modal
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="4" />
+            <line x1="12" y1="2"  x2="12" y2="6"  />
+            <line x1="12" y1="18" x2="12" y2="22" />
+            <line x1="2"  y1="12" x2="6"  y2="12" />
+            <line x1="18" y1="12" x2="22" y2="12" />
+          </svg>
+        )}
+      </button>
     </div>
   )
 }

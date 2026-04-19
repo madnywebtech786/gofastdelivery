@@ -41,3 +41,10 @@ yarn-error.log*
 next-env.d.ts
 /docs
 /scripts
+# Added by code-review-graph
+.code-review-graph/
+.claude
+.mcp.json
+
+AGENTS.md
+CLAUDE.md

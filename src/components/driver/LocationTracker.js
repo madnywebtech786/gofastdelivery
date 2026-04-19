@@ -47,6 +47,28 @@ export default function LocationTracker({ routeId, routeStops, onDeviationDetect
   useEffect(() => {
     if (!navigator.geolocation) return
 
+    // Seed currentPositionRef immediately so merge-triggered auto-reroute has
+    // fresh coords without waiting for the first watchPosition callback.
+    function primeImmediate() {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          currentPositionRef.current = {
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude,
+            ts: Date.now(),
+          }
+        },
+        () => { /* swallow — watchPosition will take over */ },
+        { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
+      )
+    }
+    primeImmediate()
+
+    function onVisibility() {
+      if (!document.hidden) primeImmediate()
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+
     watchIdRef.current = navigator.geolocation.watchPosition(
       (pos) => {
         currentPositionRef.current = {
@@ -81,6 +103,7 @@ export default function LocationTracker({ routeId, routeStops, onDeviationDetect
     }, SAMPLE_INTERVAL_MS)
 
     return () => {
+      document.removeEventListener('visibilitychange', onVisibility)
       if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current)
       clearInterval(sampleTimerRef.current)
     }

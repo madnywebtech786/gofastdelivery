@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import BookingStatusListener from '@/components/realtime/BookingStatusListener'
+import OnlineIndicator from '@/components/ui/OnlineIndicator'
 
 const STATUS_COLORS = {
   pending:           { bg: 'bg-slate-100',  text: 'text-slate-600',  dot: 'bg-slate-400',  ring: 'ring-slate-200'  },
@@ -65,28 +66,31 @@ export default function TrackingClient({ initialBooking }) {
 
       {/* Current status hero */}
       <div className={`rounded-2xl shadow-sm border border-slate-100 p-5 ${colors.bg}`}>
-        <div className="flex items-center gap-3">
-          <span className={`inline-flex items-center justify-center w-10 h-10 rounded-full ${colors.dot} shadow shrink-0`}>
-            {isDelivered ? (
-              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-              </svg>
-            ) : isCancelled ? (
-              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            ) : (
-              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8" />
-              </svg>
-            )}
-          </span>
-          <div>
-            <p className={`font-bold text-lg ${colors.text}`}>
-              {STATUS_LABELS[status] ?? status}
-            </p>
-            <p className="text-xs text-slate-500">Current status</p>
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <span className={`inline-flex items-center justify-center w-10 h-10 rounded-full ${colors.dot} shadow shrink-0`}>
+              {isDelivered ? (
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              ) : isCancelled ? (
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              ) : (
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8" />
+                </svg>
+              )}
+            </span>
+            <div className="min-w-0">
+              <p className={`font-bold text-lg ${colors.text} truncate`}>
+                {STATUS_LABELS[status] ?? status}
+              </p>
+              <p className="text-xs text-slate-500">Current status</p>
+            </div>
           </div>
+          <OnlineIndicator className="shrink-0 mt-1" />
         </div>
       </div>
 

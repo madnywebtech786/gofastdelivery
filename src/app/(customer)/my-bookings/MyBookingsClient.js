@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import Link from 'next/link'
 import Badge from '@/components/ui/Badge'
 import { useToast } from '@/components/ui/Toast'
@@ -35,6 +35,24 @@ function formatTime(d) {
 export default function MyBookingsClient({ bookings: initial }) {
   const toast  = useToast()
   const [bookings, setBookings] = useState(initial)
+  const [loading, setLoading] = useState(false)
+
+  // On mount, check if there's a newly created booking and fetch fresh data
+  useEffect(() => {
+    const newBookingId = typeof window !== 'undefined' ? sessionStorage.getItem('newBookingId') : null
+    if (newBookingId) {
+      sessionStorage.removeItem('newBookingId')
+      setLoading(true)
+      fetch('/api/bookings')
+        .then((r) => r.ok ? r.json() : [])
+        .then((freshBookings) => {
+          setBookings(freshBookings)
+          toast.success('Booking created', 'Your new booking has been added to the list.')
+        })
+        .catch(() => console.error('Failed to refresh bookings'))
+        .finally(() => setLoading(false))
+    }
+  }, [])
   const [search,   setSearch]   = useState('')
   const [filter,   setFilter]   = useState('all')
   const [page,     setPage]     = useState(1)

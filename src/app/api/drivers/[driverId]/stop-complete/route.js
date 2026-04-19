@@ -4,20 +4,22 @@ import { findActiveRoute, updateRoute } from '@/lib/db/drivers'
 import { updateBookingStatus, findBookingById } from '@/lib/db/bookings'
 import { pushBookingStatusChange, pushRouteUpdate } from '@/lib/pusher'
 import { sendStatusUpdate } from '@/lib/mailer'
+import { hydrateRouteItems } from '@/lib/routing/hydrate'
 import redis from '@/lib/redis'
+
+/**
+ * Decide the next booking status when a stop is completed.
+ * Pickup stops → picked_up; dropoff stops → delivered; endpoint → no change.
+ */
+function nextBookingStatus(stop) {
+  if (stop.stopType === 'pickup')  return 'picked_up'
+  if (stop.stopType === 'dropoff') return 'delivered'
+  return null
+}
 
 /**
  * POST /api/drivers/[driverId]/stop-complete
  * Body: { stopIndex: number }
- *
- * Marks a stop as completed and updates the corresponding booking status.
- *
- * pickup stop  → booking: picked_up
- * dropoff stop → booking: delivered
- *
- * When ALL stops in the route are done, deactivates the route.
- * Phase transitions (pickup → delivery) are controlled by the admin
- * via POST /api/bookings/bulk-assign, not by this endpoint.
  */
 export async function POST(request, { params }) {
   try {
@@ -46,24 +48,37 @@ export async function POST(request, { params }) {
     const stop = stops[stopIndex]
     const now  = new Date()
 
-    // Mark stop completed
+    // Idempotency guard — if this stop was already marked complete on a prior
+    // attempt (e.g. offline-queue retry, double-tap, Pusher echo), return the
+    // current route state without touching MongoDB or pushing events again.
+    // Serve from Redis cache (already hydrated) to avoid a DB round-trip.
+    if (stop.completedAt) {
+      const cacheKey = `driver:${driverId}:route`
+      let cached = null
+      try { cached = await redis.get(cacheKey) } catch { /* swallow */ }
+      const finalRoute = cached ?? await hydrateRouteItems(JSON.parse(JSON.stringify(route)))
+      return NextResponse.json({
+        success: true,
+        idempotent: true,
+        route: finalRoute,
+        newBookingStatus: null,
+      })
+    }
+
     const updatedStops = stops.map((s, i) =>
       i === stopIndex ? { ...s, completedAt: now } : s
     )
-
     const allDone = updatedStops.every((s) => s.completedAt)
 
     const routeUpdateData = {
       optimizedStops: updatedStops,
       ...(allDone ? { isActive: false } : {}),
     }
-
     await updateRoute(String(route._id), routeUpdateData)
 
-    // Booking status: pickup done → picked_up, dropoff done → delivered
-    const newBookingStatus = stop.stopType === 'pickup' ? 'picked_up' : 'delivered'
+    const newBookingStatus = nextBookingStatus(stop)
 
-    if (stop.bookingId) {
+    if (stop.bookingId && newBookingStatus) {
       await updateBookingStatus(String(stop.bookingId), newBookingStatus, {
         note: `Stop ${stopIndex + 1} (${stop.stopType}) completed by driver`,
         driverId,
@@ -76,7 +91,6 @@ export async function POST(request, { params }) {
         })
       } catch { /* non-fatal */ }
 
-      // Send status update email on picked_up and delivered
       if (newBookingStatus === 'picked_up' || newBookingStatus === 'delivered') {
         try {
           const booking = await findBookingById(String(stop.bookingId))
@@ -90,24 +104,27 @@ export async function POST(request, { params }) {
       }
     }
 
-    // Redis cache
     const finalRoute = { ...JSON.parse(JSON.stringify(route)), ...routeUpdateData }
+    const hydrated = await hydrateRouteItems(finalRoute)
+
     try {
       if (allDone) {
         await redis.del(`driver:${driverId}:route`)
       } else {
-        await redis.set(`driver:${driverId}:route`, finalRoute, { ex: 300 })
+        // Store hydrated so the next route-data cache hit needs no DB query.
+        await redis.set(`driver:${driverId}:route`, hydrated, { ex: 300 })
       }
-    } catch { /* non-fatal */ }
-
-    // Push updated route to driver's open map
-    if (!allDone) {
-      try {
-        await pushRouteUpdate(driverId, finalRoute)
-      } catch { /* non-fatal */ }
+    } catch {
+      // On cache write failure, invalidate the key so the next reader falls
+      // through to MongoDB instead of serving a stale pre-completion payload.
+      try { await redis.del(`driver:${driverId}:route`) } catch { /* swallow */ }
     }
 
-    return NextResponse.json({ success: true, route: finalRoute, newBookingStatus })
+    if (!allDone) {
+      try { await pushRouteUpdate(driverId, hydrated) } catch { /* non-fatal */ }
+    }
+
+    return NextResponse.json({ success: true, route: hydrated, newBookingStatus })
   } catch (err) {
     return handleApiError(err, '[POST /api/drivers/[driverId]/stop-complete]')
   }

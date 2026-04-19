@@ -4,6 +4,8 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
 import Button from '@/components/ui/Button'
+import Select from '@/components/ui/Select'
+import { useToast } from '@/components/ui/Toast'
 
 const BookingMap = dynamic(() => import('@/components/map/BookingMap'), {
   ssr: false,
@@ -59,6 +61,7 @@ const inputCls =
 
 export default function BookingForm() {
   const router = useRouter()
+  const toast  = useToast()
   const mapRef = useRef(null)
 
   // Map stops
@@ -66,33 +69,52 @@ export default function BookingForm() {
 
   // Pickup details (for the pickup stop card)
   const [pickup, setPickup] = useState({
-    contactName: '',
-    companyName: '',
-    postalCode: '',
-    buzzCode: '',
-    pickupTime: '',
-    contactPhone: '',
-    notes: '',
+    contactName: 'Fahad Jawad',
+    companyName: 'TechFlow Solutions',
+    buzzCode: '#4B, buzz 1234',
+    pickupTime: '2026-04-14T10:00',
+    contactPhone: '+1 403-555-1234',
+    notes: 'Gate code 5678, please ring doorbell',
   })
 
   // Drop-off details (for the dropoff stop card)
   const [dropoff, setDropoff] = useState({
-    contactName: '',
-    buzzCode: '',
-    contactPhone: '',
+    contactName: 'Sarah Mitchell',
+    buzzCode: '#2A, buzz 5678',
+    contactPhone: '+1 403-555-5678',
   })
 
   // Package details
   const [pkg, setPkg] = useState({
-    kind: '',
-    description: '',
+    kind: 'Electronics',
+    description: 'Laptop charger and USB cables, 3 items',
     weightSlab: 'up_to_10',
-    specialInstructions: '',
+    specialInstructions: 'Fragile - handle with care, keep upright',
   })
 
+  // Items list — what's physically inside the package.
+  // Each row: { localId, name, type, quantity }. localId is form-only;
+  // the server assigns a durable itemId on save.
+  const [items, setItems] = useState([
+    { localId: 'a', name: 'Laptop charger', type: 'Electronics', quantity: 1 },
+  ])
+
+  function addItem() {
+    setItems((prev) => [
+      ...prev,
+      { localId: Math.random().toString(36).slice(2, 8), name: '', type: '', quantity: 1 },
+    ])
+  }
+  function removeItem(localId) {
+    setItems((prev) => prev.length <= 1 ? prev : prev.filter((it) => it.localId !== localId))
+  }
+  function updateItem(localId, patch) {
+    setItems((prev) => prev.map((it) => it.localId === localId ? { ...it, ...patch } : it))
+  }
+
   // Sender + receiver notification emails
-  const [senderEmail,   setSenderEmail]   = useState('')
-  const [receiverEmail, setReceiverEmail] = useState('')
+  const [senderEmail,   setSenderEmail]   = useState('fahadjawad596@gmail.com')
+  const [receiverEmail, setReceiverEmail] = useState('sarah.mitchell@example.com')
 
   // Pricing rules fetched once on mount — keyed as Map for O(1) lookup
   // rule key: `${fromCity}|${toCity}|${weightSlab}` (all lowercased)
@@ -183,6 +205,36 @@ export default function BookingForm() {
       return
     }
 
+    const validItems = items.filter((it) => it.name.trim().length > 0)
+    if (validItems.length === 0) {
+      setError('Add at least one package item.')
+      return
+    }
+
+    // Same-location guard: block only when pickup and dropoff coordinates are
+    // within ~25 m of each other (essentially the same pin). Address text is
+    // unreliable for this — reverse-geocoded labels can be identical in rural
+    // areas even for points that are hundreds of metres apart.
+    const p = stops.find((s) => s.type === 'pickup')
+    const d = stops.find((s) => s.type === 'dropoff')
+    if (p && d) {
+      const R = 6_371_000 // metres
+      const toRad = (x) => (x * Math.PI) / 180
+      const dLat = toRad(d.lat - p.lat)
+      const dLng = toRad(d.lng - p.lng)
+      const a =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos(toRad(p.lat)) * Math.cos(toRad(d.lat)) * Math.sin(dLng / 2) ** 2
+      const distanceMeters = 2 * R * Math.asin(Math.sqrt(a))
+      if (distanceMeters < 25) {
+        toast.warning(
+          'Pickup and drop-off are at the same location',
+          'Please choose two different points on the map.'
+        )
+        return
+      }
+    }
+
     setSubmitting(true)
     try {
       const pickupStop  = stops.find((s) => s.type === 'pickup')
@@ -198,7 +250,6 @@ export default function BookingForm() {
             address: pickupStop.address,
             contactName: pickup.contactName,
             companyName: pickup.companyName,
-            postalCode: pickup.postalCode,
             buzzCode: pickup.buzzCode,
             pickupTime: pickup.pickupTime,
             contactPhone: pickup.contactPhone,
@@ -220,6 +271,13 @@ export default function BookingForm() {
           description: pkg.description,
           weightSlab: pkg.weightSlab,
           specialInstructions: pkg.specialInstructions,
+          items: items
+            .filter((it) => it.name.trim().length > 0)
+            .map((it) => ({
+              name:     it.name.trim(),
+              type:     it.type.trim(),
+              quantity: Math.max(1, Number.parseInt(it.quantity, 10) || 1),
+            })),
         },
         senderEmail:   senderEmail   || null,
         receiverEmail: receiverEmail || null,
@@ -234,21 +292,39 @@ export default function BookingForm() {
 
       const data = await res.json()
       if (!res.ok) {
-        setError(data.error || 'Failed to create booking. Please try again.')
+        const msg = data.error || 'Failed to create booking. Please try again.'
+        setError(msg)
+        toast.error('Could not create booking', msg)
         return
+      }
+
+      // Store the new booking ID in sessionStorage so MyBookingsClient can fetch fresh data
+      if (data._id) {
+        sessionStorage.setItem('newBookingId', data._id)
       }
 
       // Reset all state
       mapRef.current?.clearAll()
       setStops([])
-      setPickup({ contactName: '', companyName: '', postalCode: '', buzzCode: '', pickupTime: '', contactPhone: '', notes: '' })
+      setPickup({ contactName: '', companyName: '', buzzCode: '', pickupTime: '', contactPhone: '', notes: '' })
       setDropoff({ contactName: '', buzzCode: '', contactPhone: '' })
       setPkg({ kind: '', description: '', weightSlab: 'up_to_10', specialInstructions: '' })
+      setItems([{ localId: 'a', name: '', type: '', quantity: 1 }])
       setSenderEmail('')
       setReceiverEmail('')
       setPricingPreview(null)
 
+      const trackShort = data.trackingToken ? `Tracking #${String(data.trackingToken).slice(-6).toUpperCase()}` : ''
+      toast.success(
+        'Booking created',
+        trackShort
+          ? `${trackShort} — we'll notify you at every status change.`
+          : `We'll notify you at every status change.`
+      )
+
+      // Navigate and refresh to ensure new booking appears immediately
       router.push('/my-bookings')
+      router.refresh()
     } catch {
       setError('Network error. Please try again.')
     } finally {
@@ -301,9 +377,6 @@ export default function BookingForm() {
           <Field label="Company Name">
             <input type="text" value={pickup.companyName} onChange={(e) => setPickup((p) => ({ ...p, companyName: e.target.value }))} className={inputCls} placeholder="ABC Corp (optional)" />
           </Field>
-          <Field label="Postal / ZIP Code">
-            <input type="text" value={pickup.postalCode} onChange={(e) => setPickup((p) => ({ ...p, postalCode: e.target.value }))} className={inputCls} placeholder="T2P 1J9" />
-          </Field>
           <Field label="Buzz / Unit Code">
             <input type="text" value={pickup.buzzCode} onChange={(e) => setPickup((p) => ({ ...p, buzzCode: e.target.value }))} className={inputCls} placeholder="#4B, buzz 1234" />
           </Field>
@@ -345,21 +418,19 @@ export default function BookingForm() {
       <div className="rounded-xl border border-border bg-surface p-4 space-y-4">
         <SectionHeading>📋 Package Details</SectionHeading>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Kind of Package">
-            <select value={pkg.kind} onChange={(e) => setPkg((p) => ({ ...p, kind: e.target.value }))} className={inputCls}>
-              <option value="">Select type…</option>
-              {PACKAGE_KINDS.map((k) => (
-                <option key={k} value={k}>{k}</option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Weight">
-            <select value={pkg.weightSlab} onChange={(e) => setPkg((p) => ({ ...p, weightSlab: e.target.value }))} className={inputCls}>
-              {WEIGHT_SLABS.map((w) => (
-                <option key={w.value} value={w.value}>{w.label}</option>
-              ))}
-            </select>
-          </Field>
+          <Select
+            label="Kind of Package"
+            placeholder="Select type…"
+            value={pkg.kind}
+            onChange={(v) => setPkg((p) => ({ ...p, kind: v }))}
+            options={PACKAGE_KINDS.map((k) => ({ value: k, label: k }))}
+          />
+          <Select
+            label="Weight"
+            value={pkg.weightSlab}
+            onChange={(v) => setPkg((p) => ({ ...p, weightSlab: v }))}
+            options={WEIGHT_SLABS}
+          />
         </div>
         <Field label="Description of Contents">
           <input type="text" value={pkg.description} onChange={(e) => setPkg((p) => ({ ...p, description: e.target.value }))} className={inputCls} placeholder="e.g. prescription medicine, 3 bottles" />
@@ -373,6 +444,59 @@ export default function BookingForm() {
             placeholder="Fragile, keep upright, do not stack, etc."
           />
         </Field>
+
+        {/* Items list — what's inside the package. Driver checks each off at pickup/dropoff. */}
+        <div className="pt-1">
+          <div className="flex items-center justify-between mb-2">
+            <label className="block text-xs font-medium text-muted">
+              Items Inside <span className="text-danger">*</span>
+            </label>
+            <button
+              type="button"
+              onClick={addItem}
+              className="text-xs font-semibold text-primary hover:underline"
+            >
+              + Add item
+            </button>
+          </div>
+          <div className="space-y-2">
+            {items.map((it) => (
+              <div key={it.localId} className="grid grid-cols-[1fr_1fr_80px_32px] gap-2 items-start">
+                <input
+                  type="text"
+                  value={it.name}
+                  onChange={(e) => updateItem(it.localId, { name: e.target.value })}
+                  className={inputCls}
+                  placeholder="Item name (e.g. Laptop charger)"
+                />
+                <Select
+                  placeholder="Type…"
+                  value={it.type}
+                  onChange={(v) => updateItem(it.localId, { type: v })}
+                  options={PACKAGE_KINDS.map((k) => ({ value: k, label: k }))}
+                />
+                <input
+                  type="number"
+                  min={1}
+                  max={999}
+                  value={it.quantity}
+                  onChange={(e) => updateItem(it.localId, { quantity: e.target.value })}
+                  className={inputCls}
+                  placeholder="Qty"
+                />
+                <button
+                  type="button"
+                  onClick={() => removeItem(it.localId)}
+                  disabled={items.length <= 1}
+                  className="h-10 rounded-lg border border-border text-muted hover:text-danger disabled:opacity-30 disabled:cursor-not-allowed"
+                  title={items.length <= 1 ? 'At least one item is required' : 'Remove item'}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
 
       {/* ── Pricing Preview — shown once both cities are known ───────────── */}

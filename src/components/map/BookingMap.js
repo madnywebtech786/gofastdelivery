@@ -1,33 +1,11 @@
 'use client'
 
 import { useEffect, useRef, useState, useImperativeHandle, forwardRef } from 'react'
+import { reverseGeocode, forwardGeocode } from '@/lib/mapbox-geocode'
+import { MapPin } from 'lucide-react'
 
 const PICKUP_COLOR  = '#16a34a' // green
 const DROPOFF_COLOR = '#dc2626' // red
-
-// Returns { address, city } — city extracted from Mapbox context (no extra API call)
-function reverseGeocode(lng, lat, token) {
-  const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${token}&limit=1&types=address,place`
-  return fetch(url)
-    .then((r) => r.json())
-    .then((d) => {
-      const feature = d.features?.[0]
-      if (!feature) return { address: `${lat.toFixed(5)}, ${lng.toFixed(5)}`, city: '' }
-      const address = feature.place_name ?? `${lat.toFixed(5)}, ${lng.toFixed(5)}`
-      const placeCtx = feature.context?.find((c) => c.id?.startsWith('place.'))
-      const city = placeCtx?.text ?? (feature.place_type?.[0] === 'place' ? feature.text : '') ?? ''
-      return { address, city }
-    })
-    .catch(() => ({ address: `${lat.toFixed(5)}, ${lng.toFixed(5)}`, city: '' }))
-}
-
-function forwardGeocode(query, token) {
-  const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${token}&limit=5`
-  return fetch(url)
-    .then((r) => r.json())
-    .then((d) => d.features ?? [])
-    .catch(() => [])
-}
 
 function makeMarkerEl(color, label) {
   const el = document.createElement('div')
@@ -64,6 +42,10 @@ const BookingMap = forwardRef(function BookingMap({ onStopsChange }, ref) {
   const [searchQuery,  setSearchQuery]  = useState('')
   const [suggestions,  setSuggestions]  = useState([])
   const [searching,    setSearching]    = useState(false)
+  const [locating,     setLocating]     = useState(false)
+
+  const searchDebounceRef = useRef(null)
+  const searchAbortRef    = useRef(null)
 
   // Notify parent whenever stops change
   useEffect(() => {
@@ -162,15 +144,36 @@ const BookingMap = forwardRef(function BookingMap({ onStopsChange }, ref) {
 
   // ── Address search ────────────────────────────────────────────────────────
 
-  async function handleSearch() {
-    const token = tokenRef.current
-    if (!searchQuery.trim() || !token) return
-    setSearching(true)
-    try {
-      setSuggestions(await forwardGeocode(searchQuery, token))
-    } finally {
+  function handleSearchChange(value) {
+    setSearchQuery(value)
+
+    clearTimeout(searchDebounceRef.current)
+    searchAbortRef.current?.abort()
+    searchAbortRef.current = null
+
+    if (!value.trim()) {
+      setSuggestions([])
       setSearching(false)
+      return
     }
+
+    setSearching(true)
+    searchDebounceRef.current = setTimeout(async () => {
+      const token = tokenRef.current
+      if (!token) { setSearching(false); return }
+      const controller = new AbortController()
+      searchAbortRef.current = controller
+      try {
+        setSuggestions(await forwardGeocode(value, token, controller.signal))
+      } catch (err) {
+        if (err?.name !== 'AbortError') setSuggestions([])
+      } finally {
+        if (searchAbortRef.current === controller) {
+          setSearching(false)
+          searchAbortRef.current = null
+        }
+      }
+    }, 350)
   }
 
   function pickSuggestion(feature) {
@@ -178,6 +181,51 @@ const BookingMap = forwardRef(function BookingMap({ onStopsChange }, ref) {
     setSuggestions([])
     setSearchQuery('')
     mapRef.current?.flyTo({ center: [lng, lat], zoom: 15, duration: 700 })
+  }
+
+  function handleUseCurrentLocation() {
+    if (!navigator.geolocation) return
+    setLocating(true)
+
+    // Keep trying to refine the fix for up to ~15s. On desktop browsers, the
+    // first callback is often a low-accuracy IP/Wi-Fi fix (can be off by
+    // kilometres); GPS/sensor-fusion arrives a few seconds later with a much
+    // tighter accuracy radius. We zoom the map based on accuracy.
+    let settled = false
+    let bestPos = null
+    const watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        const { longitude: lng, latitude: lat, accuracy } = pos.coords
+        // Keep the most accurate fix seen so far
+        if (!bestPos || accuracy < bestPos.accuracy) {
+          bestPos = { lng, lat, accuracy }
+          // Zoom tighter when the fix is more accurate
+          const zoom = accuracy < 50 ? 17 : accuracy < 200 ? 15 : accuracy < 2000 ? 13 : 11
+          mapRef.current?.flyTo({ center: [lng, lat], zoom, duration: 600 })
+        }
+        // Settle once we've got a reasonable fix (<100 m)
+        if (accuracy <= 100 && !settled) {
+          settled = true
+          navigator.geolocation.clearWatch(watchId)
+          setLocating(false)
+        }
+      },
+      (err) => {
+        console.warn('[BookingMap] geolocation error:', err)
+        navigator.geolocation.clearWatch(watchId)
+        setLocating(false)
+      },
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }
+    )
+
+    // Hard timeout fallback — stop spinning even if no accurate fix arrived
+    setTimeout(() => {
+      if (!settled) {
+        settled = true
+        navigator.geolocation.clearWatch(watchId)
+        setLocating(false)
+      }
+    }, 15000)
   }
 
   // ── Hint text ─────────────────────────────────────────────────────────────
@@ -201,14 +249,33 @@ const BookingMap = forwardRef(function BookingMap({ onStopsChange }, ref) {
           <input
             type="text"
             value={searchQuery}
-            onChange={(e) => { setSearchQuery(e.target.value); setSuggestions([]) }}
-            onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+            onChange={(e) => handleSearchChange(e.target.value)}
+            onKeyDown={(e) => e.key === 'Escape' && handleSearchChange('')}
             placeholder="Search address to pan map…"
-            className="w-full rounded-lg border border-border bg-white dark:bg-surface px-3.5 py-2 text-sm text-foreground placeholder-muted focus:outline-none focus:ring-2 focus:ring-primary"
+            className="w-full rounded-lg border border-border bg-white dark:bg-surface px-3.5 py-2 pr-8 text-sm text-foreground placeholder-muted focus:outline-none focus:ring-2 focus:ring-primary"
           />
-          {suggestions.length > 0 && (
+          {/* Right-side spinner or clear button */}
+          <div className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center">
+            {searching ? (
+              <svg width="14" height="14" viewBox="0 0 16 16" style={{ animation: 'spin 0.8s linear infinite', color: 'var(--fg-3)' }}>
+                <circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="25 10" />
+              </svg>
+            ) : searchQuery ? (
+              <button type="button" onClick={() => handleSearchChange('')} style={{ color: 'var(--fg-3)', lineHeight: 1 }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            ) : null}
+          </div>
+          {(suggestions.length > 0 || (searching && searchQuery)) && (
             <ul className="absolute z-50 top-full left-0 right-0 mt-1 bg-white dark:bg-surface border border-border rounded-lg shadow-lg overflow-hidden">
-              {suggestions.map((f) => (
+              {searching && suggestions.length === 0 ? (
+                <li className="px-3.5 py-2.5 text-sm flex items-center gap-2" style={{ color: 'var(--fg-3)' }}>
+                  <svg width="13" height="13" viewBox="0 0 16 16" style={{ animation: 'spin 0.8s linear infinite', flexShrink: 0 }}>
+                    <circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="25 10" />
+                  </svg>
+                  Searching…
+                </li>
+              ) : suggestions.map((f) => (
                 <li key={f.id}>
                   <button
                     type="button"
@@ -224,11 +291,16 @@ const BookingMap = forwardRef(function BookingMap({ onStopsChange }, ref) {
         </div>
         <button
           type="button"
-          onClick={handleSearch}
-          disabled={searching || !searchQuery.trim()}
-          className="px-4 py-2 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary-hover disabled:opacity-50 disabled:cursor-not-allowed transition shrink-0"
+          onClick={handleUseCurrentLocation}
+          disabled={locating}
+          className="p-2 rounded-lg bg-blue-500 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition shrink-0 flex items-center justify-center text-white shadow-sm"
+          title="Jump to your current location"
         >
-          {searching ? '…' : 'Search'}
+          {locating ? (
+            <span className="text-xs">…</span>
+          ) : (
+            <MapPin size={18} />
+          )}
         </button>
       </div>
 

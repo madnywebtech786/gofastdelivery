@@ -23,19 +23,23 @@ function formatDate(dateStr) {
 const STATUS_LABELS = {
   pending:           'Order Placed',
   assigned_pickup:   'Pickup Scheduled',
-  picked_up:         'Picked Up',
+  picked_up:         'Ready to Deliver',
   assigned_delivery: 'On the Way',
   delivered:         'Delivered',
   cancelled:         'Cancelled',
+  failed_pickup:     'Pickup Failed',
+  failed_dropoff:    'Delivery Failed',
 }
 
 const STATUS_COLORS = {
   pending:           '#64748b',
   assigned_pickup:   '#2563eb',
-  picked_up:         '#7c3aed',
+  picked_up:         '#0284c7',
   assigned_delivery: '#d97706',
   delivered:         '#16a34a',
   cancelled:         '#dc2626',
+  failed_pickup:     '#dc2626',
+  failed_dropoff:    '#dc2626',
 }
 
 // ── Base HTML wrapper ─────────────────────────────────────────────────────────

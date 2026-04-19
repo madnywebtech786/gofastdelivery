@@ -65,6 +65,21 @@ export async function findActiveRoute(driverId) {
 }
 
 /**
+ * Bulk variant: one query for many drivers. Returns Map<driverIdString, routeDoc>.
+ * Used by the admin drivers list to avoid N+1.
+ */
+export async function findActiveRoutesByDriverIds(driverIds) {
+  if (!driverIds?.length) return new Map()
+  const db = await getDb()
+  const objIds = driverIds.map((id) => new ObjectId(id))
+  const routes = await db
+    .collection('routes')
+    .find({ driverId: { $in: objIds }, isActive: true })
+    .toArray()
+  return new Map(routes.map((r) => [String(r.driverId), r]))
+}
+
+/**
  * Update an existing route document (called by worker notify endpoint).
  */
 export async function updateRoute(routeId, updateData) {

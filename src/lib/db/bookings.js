@@ -1,5 +1,25 @@
 import { ObjectId } from 'mongodb'
+import { randomUUID } from 'node:crypto'
 import { getDb } from './client.js'
+
+/**
+ * Normalize packageDetails.items — each item gets a stable server-side ID
+ * and per-stage timestamp slots so the driver can check items off.
+ */
+function normalizePackageDetails(pkg) {
+  if (!pkg) return null
+  const items = Array.isArray(pkg.items)
+    ? pkg.items.map((it) => ({
+        itemId:      it?.itemId ?? randomUUID(),
+        name:        String(it?.name ?? '').trim().slice(0, 120),
+        type:        String(it?.type ?? '').trim().slice(0, 60),
+        quantity:    Math.max(1, Math.min(999, Number.parseInt(it?.quantity, 10) || 1)),
+        pickedUpAt:  null,
+        deliveredAt: null,
+      })).filter((it) => it.name.length > 0)
+    : []
+  return { ...pkg, items }
+}
 
 export const BOOKING_STATUSES = [
   'pending',           // created by customer, waiting for pickup assignment
@@ -8,6 +28,8 @@ export const BOOKING_STATUSES = [
   'assigned_delivery', // admin assigned a driver to deliver it
   'delivered',         // driver confirmed delivery
   'cancelled',
+  'failed_pickup',     // driver marked pickup as failed — re-assignable
+  'failed_dropoff',    // driver marked drop-off as failed — re-assignable
 ]
 
 /**
@@ -21,7 +43,7 @@ export async function createBooking({ customerId, stops, trackingToken, senderEm
     customerId: new ObjectId(customerId),
     status: 'pending',
     stops,
-    packageDetails:  packageDetails  || null,
+    packageDetails:  normalizePackageDetails(packageDetails),
     estimatedPrice:  estimatedPrice  ?? null,
     senderEmail:     senderEmail     || null,
     receiverEmail:   receiverEmail   || null,
@@ -85,17 +107,31 @@ export async function findBookingsByCustomer(customerId, { limit = 20, skip = 0 
 
 /**
  * List all bookings (admin), optionally filtered by status.
+ * `status` may be a single status string or an array of statuses.
  */
 export async function findAllBookings({ status, limit = 50, skip = 0 } = {}) {
   const db = await getDb()
-  const filter = status ? { status } : {}
+  const filter = Array.isArray(status)
+    ? (status.length > 0 ? { status: { $in: status } } : {})
+    : (status ? { status } : {})
   return db
     .collection('bookings')
     .find(filter)
-    .sort({ createdAt: -1 })
+    .sort({ updatedAt: -1 })
     .skip(skip)
     .limit(limit)
     .toArray()
+}
+
+/**
+ * Count bookings (admin), optionally filtered by status.
+ */
+export async function countAllBookings({ status } = {}) {
+  const db = await getDb()
+  const filter = Array.isArray(status)
+    ? (status.length > 0 ? { status: { $in: status } } : {})
+    : (status ? { status } : {})
+  return db.collection('bookings').countDocuments(filter)
 }
 
 /**
@@ -175,7 +211,8 @@ export async function getBookingCounters() {
   today.setHours(0, 0, 0, 0)
 
   const [pending, active, todayDelivered] = await Promise.all([
-    db.collection('bookings').countDocuments({ status: 'pending' }),
+    // Pending includes failed_pickup (retry) so admin sees the true to-do count
+    db.collection('bookings').countDocuments({ status: { $in: ['pending', 'failed_pickup'] } }),
     db
       .collection('bookings')
       .countDocuments({ status: { $in: ['assigned_pickup', 'picked_up', 'assigned_delivery'] } }),
@@ -231,6 +268,61 @@ export async function getDriverStats(driverId) {
   ])
 
   return { assigned, inProgress, completedToday, completedTotal }
+}
+
+/**
+ * Mark package items as picked up or delivered.
+ *   stage: 'pickup' | 'dropoff'
+ *   itemIds: array of itemId strings (must belong to booking.packageDetails.items)
+ *
+ * Uses a positional array filter so we only stamp the requested items.
+ * Idempotent: re-stamping the same itemId is a no-op (we only set when null).
+ */
+export async function markBookingItems(bookingId, { stage, itemIds, driverId } = {}) {
+  if (!itemIds?.length) return { matchedCount: 0, modifiedCount: 0 }
+  const db = await getDb()
+  const field = stage === 'dropoff' ? 'packageDetails.items.$[elem].deliveredAt' : 'packageDetails.items.$[elem].pickedUpAt'
+  const now = new Date()
+  const filter = { _id: new ObjectId(bookingId) }
+  if (driverId) filter.assignedDriverId = new ObjectId(driverId)
+  return db.collection('bookings').updateOne(
+    filter,
+    { $set: { [field]: now, updatedAt: now } },
+    {
+      arrayFilters: [{
+        'elem.itemId': { $in: itemIds },
+        ...(stage === 'dropoff' ? { 'elem.deliveredAt': null } : { 'elem.pickedUpAt': null }),
+      }],
+    }
+  )
+}
+
+/**
+ * Mark a booking as failed at the pickup or dropoff stage.
+ *   stage: 'pickup' | 'dropoff'
+ *   reason: free-form string entered by the driver
+ *
+ * Sets status to `failed_pickup` / `failed_dropoff`, stores the reason on
+ * the booking, and appends a history entry. The driver assignment is
+ * cleared so admin re-assign works the same as a fresh booking.
+ */
+export async function markBookingFailed(bookingId, { stage, reason, driverId } = {}) {
+  const db = await getDb()
+  const now = new Date()
+  const newStatus = stage === 'dropoff' ? 'failed_dropoff' : 'failed_pickup'
+  const note = `Marked ${stage} failed${reason ? `: ${reason}` : ''}`
+  const filter = { _id: new ObjectId(bookingId) }
+  if (driverId) filter.assignedDriverId = new ObjectId(driverId)
+  return db.collection('bookings').updateOne(filter, {
+    $set: {
+      status: newStatus,
+      assignedDriverId: null,
+      assignedAt: null,
+      lastFailure: { stage, reason: String(reason ?? '').slice(0, 500), at: now, driverId: driverId ? new ObjectId(driverId) : null },
+      updatedAt: now,
+    },
+    $push: { statusHistory: { status: newStatus, timestamp: now, note, driverId } },
+  })
 }
 
 /**

@@ -40,6 +40,7 @@ export default function Select({
 }) {
   const [open, setOpen]           = useState(false)
   const [highlighted, setHighlighted] = useState(-1)
+  const [showAbove, setShowAbove] = useState(false)
   const wrapRef  = useRef(null)
   const menuRef  = useRef(null)
   const triggerId = useId()
@@ -92,6 +93,15 @@ export default function Select({
     item?.scrollIntoView({ block: 'nearest' })
   }, [highlighted, open])
 
+  // Check if there's enough space below, if not show above
+  useEffect(() => {
+    if (!open || !wrapRef.current) return
+    const rect = wrapRef.current.getBoundingClientRect()
+    const spaceBelow = window.innerHeight - rect.bottom
+    const menuHeight = 240 + 20 // max-height + padding
+    setShowAbove(spaceBelow < menuHeight)
+  }, [open])
+
   return (
     <div className={`flex flex-col gap-1.5 ${className}`} ref={wrapRef}>
       {label && (
@@ -117,7 +127,7 @@ export default function Select({
         {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
 
-      <div className="relative">
+      <div className="relative" style={{ zIndex: open ? 200 : 'auto' }}>
         {/* Trigger button */}
         <button
           id={triggerId}
@@ -157,7 +167,18 @@ export default function Select({
             ref={menuRef}
             role="listbox"
             className="dropdown-menu"
-            style={{ maxHeight: '240px', overflowY: 'auto' }}
+            style={{
+              maxHeight: '240px',
+              overflowY: 'auto',
+              position: 'absolute',
+              zIndex: 200,
+              bottom: showAbove ? '100%' : 'auto',
+              top: showAbove ? 'auto' : '100%',
+              left: 0,
+              right: 0,
+              marginTop: showAbove ? '0' : '0.5rem',
+              marginBottom: showAbove ? '0.5rem' : '0',
+            }}
           >
             {options.length === 0 ? (
               <div className="px-3 py-3 text-sm" style={{ color: 'var(--fg-3)' }}>No options</div>
