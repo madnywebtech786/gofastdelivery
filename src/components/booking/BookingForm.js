@@ -69,7 +69,7 @@ export default function BookingForm() {
 
   // Pickup details (for the pickup stop card)
   const [pickup, setPickup] = useState({
-    contactName: 'Fahad Jawad',
+    contactName: 'Test Name',
     companyName: 'TechFlow Solutions',
     buzzCode: '#4B, buzz 1234',
     pickupTime: '2026-04-14T10:00',
@@ -113,8 +113,8 @@ export default function BookingForm() {
   }
 
   // Sender + receiver notification emails
-  const [senderEmail,   setSenderEmail]   = useState('fahadjawad596@gmail.com')
-  const [receiverEmail, setReceiverEmail] = useState('sarah.mitchell@example.com')
+  const [senderEmail,   setSenderEmail]   = useState('')
+  const [receiverEmail, setReceiverEmail] = useState('')
 
   // Pricing rules fetched once on mount — keyed as Map for O(1) lookup
   // rule key: `${fromCity}|${toCity}|${weightSlab}` (all lowercased)
