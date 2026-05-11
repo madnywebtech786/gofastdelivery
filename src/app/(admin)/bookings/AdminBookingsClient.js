@@ -32,8 +32,11 @@ const ASSIGN_KIND_BY_STATUS = {
   failed_dropoff: 'delivery_only',
 }
 
-function isAssignable(status) {
-  return Object.hasOwn(ASSIGN_KIND_BY_STATUS, status)
+function isAssignable(booking) {
+  if (!Object.hasOwn(ASSIGN_KIND_BY_STATUS, booking.status)) return false
+  // picked_up with an active driver assignment means already assigned for delivery — block it
+  if (booking.status === 'picked_up' && booking.assignedDriverId) return false
+  return true
 }
 
 function Pagination({ page, total, pageSize, onNavigate }) {
@@ -128,6 +131,8 @@ export default function AdminBookingsClient({ initialStatusFilter, initialPage, 
   const [error, setError]               = useState('')
   const [detailBooking, setDetailBooking] = useState(null)
   const [confirmPayload, setConfirmPayload] = useState(null)
+  // Per-row assignment kind overrides — only stored when admin explicitly changes the select
+  const [rowKinds, setRowKinds] = useState({})
   const assignInFlightRef = useRef(false)
   const assignAbortRef    = useRef(null)
 
@@ -179,11 +184,11 @@ export default function AdminBookingsClient({ initialStatusFilter, initialPage, 
   // All selected bookings that can actually be assigned — drawn from the Map
   // so selections survive page navigation.
   const assignableSelected = useMemo(() =>
-    Array.from(selectedMap.values()).filter((b) => isAssignable(b.status)),
+    Array.from(selectedMap.values()).filter((b) => isAssignable(b)),
   [selectedMap])
 
   function toggleSelect(b) {
-    if (!isAssignable(b.status)) return
+    if (!isAssignable(b)) return
     setSelectedMap((prev) => {
       const n = new Map(prev)
       n.has(b._id) ? n.delete(b._id) : n.set(b._id, b)
@@ -192,7 +197,7 @@ export default function AdminBookingsClient({ initialStatusFilter, initialPage, 
   }
 
   function toggleAllVisible() {
-    const assignable = displayed.filter((b) => isAssignable(b.status))
+    const assignable = displayed.filter((b) => isAssignable(b))
     const allChecked = assignable.length > 0 && assignable.every((b) => selectedMap.has(b._id))
     setSelectedMap((prev) => {
       const n = new Map(prev)
@@ -205,7 +210,7 @@ export default function AdminBookingsClient({ initialStatusFilter, initialPage, 
   function buildAssignments() {
     return assignableSelected.map((b) => ({
       bookingId: b._id,
-      kind: ASSIGN_KIND_BY_STATUS[b.status],
+      kind: rowKinds[b._id] ?? ASSIGN_KIND_BY_STATUS[b.status],
     }))
   }
 
@@ -274,8 +279,9 @@ export default function AdminBookingsClient({ initialStatusFilter, initialPage, 
   }))
   function driverName(id) { return drivers.find((x) => x._id === id)?.name ?? '—' }
 
-  const pickupKindCount   = assignableSelected.filter((b) => ASSIGN_KIND_BY_STATUS[b.status] === 'pickup_only').length
-  const deliveryKindCount = assignableSelected.length - pickupKindCount
+  const pickupKindCount        = assignableSelected.filter((b) => (rowKinds[b._id] ?? ASSIGN_KIND_BY_STATUS[b.status]) === 'pickup_only').length
+  const deliveryKindCount      = assignableSelected.filter((b) => (rowKinds[b._id] ?? ASSIGN_KIND_BY_STATUS[b.status]) === 'delivery_only').length
+  const fullTripKindCount      = assignableSelected.filter((b) => (rowKinds[b._id] ?? ASSIGN_KIND_BY_STATUS[b.status]) === 'pickup_and_dropoff').length
 
   return (
     <div className="space-y-6">
@@ -333,10 +339,10 @@ export default function AdminBookingsClient({ initialStatusFilter, initialPage, 
             <label className="flex items-center gap-3 cursor-pointer flex-1">
               <input
                 type="checkbox"
-                checked={displayed.some((b) => isAssignable(b.status)) && displayed.filter((b) => isAssignable(b.status)).every((b) => selectedMap.has(b._id))}
+                checked={displayed.some((b) => isAssignable(b)) && displayed.filter((b) => isAssignable(b)).every((b) => selectedMap.has(b._id))}
                 ref={(el) => {
                   if (!el) return
-                  const assignable = displayed.filter((b) => isAssignable(b.status))
+                  const assignable = displayed.filter((b) => isAssignable(b))
                   const picked = assignable.filter((b) => selectedMap.has(b._id)).length
                   el.indeterminate = picked > 0 && picked < assignable.length
                 }}
@@ -380,11 +386,11 @@ export default function AdminBookingsClient({ initialStatusFilter, initialPage, 
               )}
             </div>
           ) : (
-            <div className="divide-y divide-border">
+            <div className="divide-y divide-border max-h-125 overflow-y-auto">
               {displayed.map((b) => {
                 const pickup    = b.stops?.find((s) => s.type === 'pickup')
                 const dropoff   = b.stops?.find((s) => s.type === 'dropoff')
-                const assignable = isAssignable(b.status)
+                const assignable = isAssignable(b)
                 const kind = ASSIGN_KIND_BY_STATUS[b.status]
                 const isChecked = selectedMap.has(b._id)
                 const driver = b.assignedDriverId && !loadingDrivers ? driverName(b.assignedDriverId) : null
@@ -405,6 +411,26 @@ export default function AdminBookingsClient({ initialStatusFilter, initialPage, 
                       className="mt-1 h-4 w-4 rounded shrink-0 cursor-pointer accent-accent disabled:cursor-not-allowed disabled:opacity-30"
                       title={assignable ? '' : 'Not assignable in this status'}
                     />
+
+                    {assignable && (
+                      <div onClick={(e) => e.stopPropagation()} className="shrink-0 mt-0.5 w-36">
+                        <Select
+                          value={rowKinds[b._id] ?? kind}
+                          onChange={(v) => setRowKinds((prev) => ({ ...prev, [b._id]: v }))}
+                          options={
+                            (b.status === 'pending' || b.status === 'failed_pickup')
+                              ? [
+                                  { value: 'pickup_only',        label: 'Pickup only' },
+                                  { value: 'pickup_and_dropoff', label: 'Pickup + Dropoff' },
+                                ]
+                              : [
+                                  { value: 'delivery_only', label: 'Delivery only' },
+                                ]
+                          }
+                          className="[&_button]:py-1.5 [&_button]:px-2.5 [&_button]:rounded-lg [&_button]:text-xs"
+                        />
+                      </div>
+                    )}
 
                     <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setDetailBooking(b)}>
                       <div className="flex items-center gap-2 flex-wrap mb-1.5">
@@ -516,7 +542,7 @@ export default function AdminBookingsClient({ initialStatusFilter, initialPage, 
             </div>
 
             {assignableSelected.length > 0 && (
-              <div className="flex items-center gap-2 text-xs mb-1">
+              <div className="flex items-center gap-2 text-xs mb-1 flex-wrap">
                 {pickupKindCount > 0 && (
                   <span className="px-2 py-1 rounded-lg font-semibold"
                     style={{ background: 'rgba(217,119,6,0.12)', color: '#92400e' }}>
@@ -527,6 +553,12 @@ export default function AdminBookingsClient({ initialStatusFilter, initialPage, 
                   <span className="px-2 py-1 rounded-lg font-semibold"
                     style={{ background: 'rgba(37,99,235,0.12)', color: '#1e40af' }}>
                     {deliveryKindCount} deliver{deliveryKindCount > 1 ? 'ies' : 'y'}
+                  </span>
+                )}
+                {fullTripKindCount > 0 && (
+                  <span className="px-2 py-1 rounded-lg font-semibold"
+                    style={{ background: 'rgba(124,58,237,0.12)', color: '#5b21b6' }}>
+                    {fullTripKindCount} full trip{fullTripKindCount > 1 ? 's' : ''}
                   </span>
                 )}
               </div>
@@ -778,7 +810,7 @@ export default function AdminBookingsClient({ initialStatusFilter, initialPage, 
                 </p>
                 {confirmPayload.bookings.map((b) => {
                   const a = confirmPayload.assignments.find((x) => x.bookingId === b._id)
-                  const kindLabel = a.kind === 'pickup_only' ? 'Pickup' : 'Delivery'
+                  const kindLabel = a.kind === 'pickup_only' ? 'Pickup' : a.kind === 'pickup_and_dropoff' ? 'Pickup + Dropoff' : 'Delivery'
                   const primary = b.stops?.find((s) => s.type === (a.kind === 'delivery_only' ? 'dropoff' : 'pickup'))
                   return (
                     <div key={b._id} className="flex items-start gap-2">

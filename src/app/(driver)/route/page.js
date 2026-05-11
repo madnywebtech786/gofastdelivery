@@ -30,6 +30,13 @@ function stopActionLabel(stop) {
   return 'Confirm Delivery'
 }
 
+function formatETA(isoString) {
+  if (!isoString) return null
+  const d = new Date(isoString)
+  if (isNaN(d.getTime())) return null
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+}
+
 export default function DriverRoutePage() {
   const router = useRouter()
   const toast = useToast()
@@ -57,6 +64,10 @@ export default function DriverRoutePage() {
   const [failedModal, setFailedModal] = useState(null) // { stopIndex, stop } | null
   const [failureReason, setFailureReason] = useState('')
   const [submittingFailure, setSubmittingFailure] = useState(false)
+
+  // ETA timeline: which stop is currently expanded in the sheet
+  // null = show timeline list, number = show that stop's detail view
+  const [expandedStopIndex, setExpandedStopIndex] = useState(null)
 
   const [endPointStep, setEndPointStep] = useState('idle')  // 'idle'|'modal'|'ready'|'loaded'
   const [endPoint, setEndPoint] = useState(null)
@@ -143,6 +154,7 @@ export default function DriverRoutePage() {
       setRoute(routeData)
       routeRef.current = routeData
       setActiveStopIndex(resumeIndex)
+      setExpandedStopIndex(resumeIndex)
     } catch (err) {
       setError(err.message || 'Failed to load route')
     } finally {
@@ -155,6 +167,35 @@ export default function DriverRoutePage() {
   // Subscribe to offline-queue depth so the UI can show "Syncing…" when
   // stop-complete retries are pending after a connectivity drop.
   useEffect(() => subscribeQueue(setQueueDepth), [])
+
+  // Wake lock — prevent screen sleep while driver is on the route page.
+  // Re-acquired on tab visibility change (iOS releases it when backgrounded).
+  useEffect(() => {
+    if (!('wakeLock' in navigator)) return
+    let wakeLock = null
+    let released = false
+
+    async function acquire() {
+      if (released) return
+      try {
+        wakeLock = await navigator.wakeLock.request('screen')
+      } catch {
+        // Permission denied or unavailable — non-fatal
+      }
+    }
+
+    function onVisible() {
+      if (!document.hidden) acquire()
+    }
+
+    acquire()
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      released = true
+      document.removeEventListener('visibilitychange', onVisible)
+      wakeLock?.release().catch(() => {})
+    }
+  }, [])
 
   // Re-sync on wake: when the tab becomes visible again or the browser reports
   // 'online', re-fetch /route-data. This covers the common case where the
@@ -315,6 +356,7 @@ export default function DriverRoutePage() {
         setRoute(finalRoute)
         routeRef.current = finalRoute
         setActiveStopIndex(resumeIndex)
+        setExpandedStopIndex(resumeIndex)
         setEndPointStep('loaded')
       } catch (err) {
         console.error('[route] Error processing route:', err)
@@ -589,6 +631,8 @@ export default function DriverRoutePage() {
         const nextIndex = allStops.findIndex((s) => !s.completedAt)
         const resolvedNext = nextIndex === -1 ? allStops.length : nextIndex
         setActiveStopIndex(resolvedNext)
+        // Return to timeline so driver sees all stops with updated ETAs
+        setExpandedStopIndex(null)
 
         const next = allStops[resolvedNext]
         const newPhase = updatedRoute.routePhase ?? 'pickup'
@@ -640,12 +684,21 @@ export default function DriverRoutePage() {
       toast?.success?.(`${label} marked failed`, 'Admin can re-assign this booking.')
       setFailedModal(null)
       setFailureReason('')
+      // Return to timeline view
+      setExpandedStopIndex(null)
     } catch {
       toast?.error?.('Could not mark failed', 'Check your connection and try again.')
     } finally {
       setSubmittingFailure(false)
     }
   }
+
+  // When the active stop advances (after a confirm/fail completes the stop),
+  // briefly show the timeline so the driver sees the full picture with the
+  // checked stop. The detail for the new active stop is available via tap.
+  // We intentionally do NOT auto-open the new stop detail here — the driver
+  // may want to review the timeline before acting on the next stop.
+  // (expandedStopIndex is set to null inside handleStopComplete / handleStopFailed)
 
   function handleGoHome() {
     router.push('/home')
@@ -929,7 +982,7 @@ export default function DriverRoutePage() {
               <>
                 <span
                   className="w-2.5 h-2.5 rounded-full shrink-0"
-                  style={{ backgroundColor: currentStop.stopType === 'pickup' ? '#22c55e' : '#dc2626' }}
+                  style={{ backgroundColor: currentStop.stopType === 'endpoint' ? '#7c3aed' : currentStop.stopType === 'pickup' ? '#22c55e' : '#dc2626' }}
                 />
                 <div className="min-w-0">
                   <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
@@ -948,208 +1001,142 @@ export default function DriverRoutePage() {
             className="shrink-0 w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center transition-transform duration-300"
             style={{ transform: sheetOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}
           >
-            {/* Up arrow SVG */}
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
               <path d="M2 9L7 4L12 9" stroke="#374151" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </div>
         </button>
 
-        {/* ── Expandable content — 45vh so it never covers the full map ── */}
+        {/* ── Expandable content — 55vh so timeline is comfortably scrollable ── */}
         <div
           className="bg-white overflow-y-auto transition-all duration-300 ease-out"
           style={{
-            maxHeight: sheetOpen ? '45vh' : '0px',
+            maxHeight: sheetOpen ? '55vh' : '0px',
             paddingBottom: sheetOpen ? 'env(safe-area-inset-bottom)' : '0px',
           }}
         >
-          <div className="px-4 pb-6 pt-2">
-            {allDone ? (
-              <div className="text-center py-6">
-                <p className="text-base font-bold text-gray-900">All stops completed!</p>
-                <p className="text-sm text-gray-500 mt-1">Great work today.</p>
-                <button
-                  onClick={() => handleGoHome()}
-                  className="mt-4 text-white text-sm font-semibold px-6 py-3 rounded-2xl w-full"
-                  style={{ background: 'var(--accent)' }}
-                >
-                  Back to Dashboard
-                </button>
-              </div>
-            ) : stops.length === 0 && routePhase === 'pickup' ? (
-              // Edge case: route loaded but no stops yet (shouldn't happen normally)
-              null
-            ) : currentStop ? (
-              <>
-                {/* Phase banner */}
-                <div
-                  className="rounded-xl px-3 py-2 mb-3 flex items-center gap-2"
-                  style={{
-                    backgroundColor: routePhase === 'pickup' ? '#f0fdf4' : '#eff6ff',
-                    borderLeft: `3px solid ${routePhase === 'pickup' ? '#16a34a' : '#2563eb'}`,
-                  }}
-                >
-                  <span className="text-sm font-bold" style={{ color: routePhase === 'pickup' ? '#16a34a' : '#2563eb' }}>
-                    {routePhase === 'pickup' ? 'P' : 'D'}
-                  </span>
-                  <div>
-                    <p className="text-xs font-bold" style={{ color: routePhase === 'pickup' ? '#15803d' : '#1d4ed8' }}>
-                      {routePhase === 'pickup' ? 'Pickup Run' : 'Delivery Run'}
-                    </p>
-                    <p className="text-[10px] text-gray-500">
-                      {routePhase === 'pickup'
-                        ? `Collect all packages · ${pendingDropoffCount} drop-off${pendingDropoffCount !== 1 ? 's' : ''} queued after`
-                        : 'Deliver all packages to recipients'}
-                    </p>
-                  </div>
-                </div>
+          {allDone ? (
+            <div className="px-4 pb-6 pt-2 text-center py-6">
+              <p className="text-base font-bold text-gray-900">All stops completed!</p>
+              <p className="text-sm text-gray-500 mt-1">Great work today.</p>
+              <button
+                onClick={() => handleGoHome()}
+                className="mt-4 text-white text-sm font-semibold px-6 py-3 rounded-2xl w-full"
+                style={{ background: 'var(--accent)' }}
+              >
+                Back to Dashboard
+              </button>
+            </div>
+          ) : expandedStopIndex !== null && stops[expandedStopIndex] ? (
+            /* ── Stop detail view ── */
+            (() => {
+              const stop = stops[expandedStopIndex]
+              const stopIndex = expandedStopIndex
+              const isActive = stopIndex === activeStopIndex
+              const isDone = !!stop.completedAt
+              const stage = stop.stopType === 'pickup' ? 'pickup' : stop.stopType === 'dropoff' ? 'dropoff' : null
+              const items = Array.isArray(stop.packageItems) ? stop.packageItems : []
+              const ckKey = (it) => `${stop.bookingId}:${stage}:${it.itemId}`
+              const stampFor = (it) => stage === 'pickup' ? it.pickedUpAt : it.deliveredAt
+              const isChecked = (it) => !!stampFor(it) || !!itemChecks[ckKey(it)]
+              const allChecked = items.every(isChecked)
+              const checkedCount = items.filter(isChecked).length
+              const allItemsAccounted = items.length === 0 || items.every((it) => !!stampFor(it) || !!itemChecks[ckKey(it)])
+              const canConfirm = isActive && !isDone && !completing && (!stage || allItemsAccounted)
 
-                {/* Progress dots */}
-                <div className="flex items-center justify-between mb-4">
-                  <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
-                    Stop {activeStopIndex + 1} of {stops.length}
-                  </span>
-                  <div className="flex gap-1.5">
-                    {stops.map((s, i) => {
-                      let color = '#e5e7eb'
-                      if (i < activeStopIndex) color = '#22c55e'
-                      else if (i === activeStopIndex) {
-                        color =
-                          currentStop?.stopType === 'endpoint'
-                            ? '#7c3aed'
-                            : '#2563eb'
-                      }
-                      return (
-                        <div
-                          key={i}
-                          className="w-2 h-2 rounded-full transition-colors"
-                          style={{ backgroundColor: color }}
-                        />
-                      )
-                    })}
-                  </div>
-                </div>
+              function toggleAll(next) {
+                setItemChecks((prev) => {
+                  const out = { ...prev }
+                  for (const it of items) {
+                    if (stampFor(it)) continue
+                    out[ckKey(it)] = next
+                  }
+                  return out
+                })
+              }
+              function toggleOne(it) {
+                if (stampFor(it)) return
+                setItemChecks((prev) => ({ ...prev, [ckKey(it)]: !prev[ckKey(it)] }))
+              }
 
-                {/* Stop type badge + address */}
-                <div className="flex items-start gap-3 mb-4">
-                  <div
-                    className="shrink-0 w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-sm"
-                    style={{
-                      backgroundColor:
-                        currentStop.stopType === 'endpoint'
-                          ? '#7c3aed'
-                          : currentStop.stopType === 'pickup'
-                            ? '#16a34a'
-                            : '#dc2626',
-                    }}
+              return (
+                <div className="px-4 pb-4 pt-2">
+                  {/* Back to timeline */}
+                  <button
+                    type="button"
+                    onClick={() => setExpandedStopIndex(null)}
+                    className="flex items-center gap-1.5 text-xs font-semibold mb-3"
+                    style={{ color: 'var(--accent)' }}
                   >
-                    {currentStop.stopType === 'endpoint' ? 'E' : activeStopIndex + 1}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <span
-                      className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full"
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                      <path d="M9 2L4 7L9 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                    All stops
+                  </button>
+
+                  {/* Stop header */}
+                  <div className="flex items-start gap-3 mb-3">
+                    <div
+                      className="shrink-0 w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-sm"
                       style={{
-                        color:
-                          currentStop.stopType === 'endpoint'
-                            ? '#7c3aed'
-                            : currentStop.stopType === 'pickup'
-                              ? '#16a34a'
-                              : '#dc2626',
-                        backgroundColor:
-                          currentStop.stopType === 'endpoint'
-                            ? '#ede9fe'
-                            : currentStop.stopType === 'pickup'
-                              ? '#f0fdf4'
-                              : '#fff1f2',
+                        backgroundColor: isDone ? '#9ca3af' : stop.stopType === 'endpoint' ? '#7c3aed' : stop.stopType === 'pickup' ? '#16a34a' : '#dc2626',
                       }}
                     >
-                      {currentStop.stopType === 'endpoint' ? 'End Point' : currentStop.stopType === 'pickup' ? 'Pickup' : 'Drop-off'}
-                    </span>
-                    <p className="text-sm font-semibold text-gray-900 mt-1 leading-snug">{currentStop.address}</p>
-                  </div>
-                </div>
-
-                {/* Contact info */}
-                {(currentStop.contactName || currentStop.contactPhone) && (
-                  <div className="bg-gray-50 rounded-2xl px-4 py-3 mb-3 flex items-center justify-between gap-4">
-                    {currentStop.contactName && (
-                      <span className="text-xs text-gray-600 font-medium">{currentStop.contactName}</span>
-                    )}
-                    {currentStop.contactPhone && (
-                      <a
-                        href={`tel:${currentStop.contactPhone}`}
-                        className="text-xs text-blue-600 font-bold flex items-center gap-1"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {currentStop.contactPhone}
-                      </a>
-                    )}
-                  </div>
-                )}
-
-                {/* Notes */}
-                {currentStop.notes && (
-                  <div className="bg-amber-50 rounded-2xl px-4 py-3 mb-3">
-                    <p className="text-xs text-amber-700">{currentStop.notes}</p>
-                  </div>
-                )}
-
-                {/* Upcoming stops preview */}
-                {stops.length > activeStopIndex + 1 && (
-                  <div className="mb-4 space-y-1.5">
-                    <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Next stops</p>
-                    {stops.slice(activeStopIndex + 1, activeStopIndex + 3).map((s, i) => (
-                      <div key={i} className="flex items-center gap-2">
-                        <div
-                          className="w-1.5 h-1.5 rounded-full shrink-0"
-                          style={{ backgroundColor: s.stopType === 'pickup' ? '#22c55e' : '#dc2626' }}
-                        />
-                        <p className="text-xs text-gray-400 truncate">{s.address}</p>
+                      {isDone ? '✓' : stop.stopType === 'endpoint' ? 'E' : stopIndex + 1}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span
+                          className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full"
+                          style={{
+                            color: stop.stopType === 'endpoint' ? '#7c3aed' : stop.stopType === 'pickup' ? '#16a34a' : '#dc2626',
+                            backgroundColor: stop.stopType === 'endpoint' ? '#ede9fe' : stop.stopType === 'pickup' ? '#f0fdf4' : '#fff1f2',
+                          }}
+                        >
+                          {stop.stopType === 'endpoint' ? 'End Point' : stop.stopType === 'pickup' ? 'Pickup' : 'Drop-off'}
+                        </span>
+                        {isActive && !isDone && (
+                          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">Current</span>
+                        )}
+                        {isDone && (
+                          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">Done</span>
+                        )}
                       </div>
-                    ))}
+                      <p className="text-sm font-semibold text-gray-900 mt-1 leading-snug">{stop.address}</p>
+                      {stop.estimatedArrivalAt && !isDone && (
+                        <p className="text-xs text-blue-600 font-semibold mt-0.5">ETA {formatETA(stop.estimatedArrivalAt)}</p>
+                      )}
+                    </div>
                   </div>
-                )}
 
-                {/* Items checklist — only for pickup/dropoff stops that
-                    have a package. Driver must tick every item before
-                    the CTA becomes active. Items already stamped by the
-                    server are locked on (not toggleable). */}
-                {(() => {
-                  const stage = currentStop.stopType === 'pickup' ? 'pickup' : currentStop.stopType === 'dropoff' ? 'dropoff' : null
-                  const items = Array.isArray(currentStop.packageItems) ? currentStop.packageItems : []
-                  if (!stage || items.length === 0) return null
+                  {/* Contact info */}
+                  {(stop.contactName || stop.contactPhone) && (
+                    <div className="bg-gray-50 rounded-2xl px-4 py-3 mb-3 flex items-center justify-between gap-4">
+                      {stop.contactName && <span className="text-xs text-gray-600 font-medium">{stop.contactName}</span>}
+                      {stop.contactPhone && (
+                        <a href={`tel:${stop.contactPhone}`} className="text-xs text-blue-600 font-bold">
+                          {stop.contactPhone}
+                        </a>
+                      )}
+                    </div>
+                  )}
 
-                  const ckKey = (it) => `${currentStop.bookingId}:${stage}:${it.itemId}`
-                  const stampFor = (it) => stage === 'pickup' ? it.pickedUpAt : it.deliveredAt
-                  const isChecked = (it) => !!stampFor(it) || !!itemChecks[ckKey(it)]
-                  const allChecked = items.every(isChecked)
-                  const checkedCount = items.filter(isChecked).length
+                  {/* Notes */}
+                  {stop.notes && (
+                    <div className="bg-amber-50 rounded-2xl px-4 py-3 mb-3">
+                      <p className="text-xs text-amber-700">{stop.notes}</p>
+                    </div>
+                  )}
 
-                  function toggleAll(next) {
-                    setItemChecks((prev) => {
-                      const out = { ...prev }
-                      for (const it of items) {
-                        if (stampFor(it)) continue  // locked — already done
-                        out[ckKey(it)] = next
-                      }
-                      return out
-                    })
-                  }
-                  function toggleOne(it) {
-                    if (stampFor(it)) return
-                    setItemChecks((prev) => ({
-                      ...prev,
-                      [ckKey(it)]: !prev[ckKey(it)],
-                    }))
-                  }
-
-                  return (
+                  {/* Items checklist */}
+                  {stage && items.length > 0 && (
                     <div className="mb-4 rounded-2xl border border-gray-200 bg-white">
                       <label className="flex items-center gap-3 px-3 py-2.5 border-b border-gray-100 cursor-pointer select-none">
                         <input
                           type="checkbox"
                           checked={allChecked}
                           onChange={(e) => toggleAll(e.target.checked)}
+                          disabled={isDone || !isActive}
                           className="w-4 h-4 accent-green-600"
                         />
                         <span className="text-xs font-bold text-gray-700 uppercase tracking-wide">
@@ -1157,17 +1144,17 @@ export default function DriverRoutePage() {
                         </span>
                         <span className="ml-auto text-[10px] text-gray-400">Check all</span>
                       </label>
-                      <ul className="divide-y divide-gray-100 max-h-48 overflow-y-auto">
+                      <ul className="divide-y divide-gray-100 max-h-44 overflow-y-auto">
                         {items.map((it) => {
                           const stamped = !!stampFor(it)
                           const checked = isChecked(it)
                           return (
                             <li key={it.itemId}>
-                              <label className={`flex items-center gap-3 px-3 py-2 text-xs ${stamped ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}>
+                              <label className={`flex items-center gap-3 px-3 py-2 text-xs ${stamped || isDone || !isActive ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}>
                                 <input
                                   type="checkbox"
                                   checked={checked}
-                                  disabled={stamped}
+                                  disabled={stamped || isDone || !isActive}
                                   onChange={() => toggleOne(it)}
                                   className="w-4 h-4 accent-green-600"
                                 />
@@ -1180,61 +1167,150 @@ export default function DriverRoutePage() {
                         })}
                       </ul>
                     </div>
-                  )
-                })()}
+                  )}
 
-                {/* CTA — label and color changes by stop type */}
-                {(() => {
-                  const stage = currentStop.stopType === 'pickup' ? 'pickup' : currentStop.stopType === 'dropoff' ? 'dropoff' : null
-                  const items = Array.isArray(currentStop.packageItems) ? currentStop.packageItems : []
-                  const ckKey = (it) => `${currentStop.bookingId}:${stage}:${it.itemId}`
-                  const stampFor = (it) => stage === 'pickup' ? it.pickedUpAt : it.deliveredAt
-                  const allItemsAccounted = items.length === 0
-                    || items.every((it) => !!stampFor(it) || !!itemChecks[ckKey(it)])
-                  const canConfirm = !completing && (!stage || allItemsAccounted)
+                  {/* CTA — only for the active, non-completed stop */}
+                  {isActive && !isDone && (
+                    <>
+                      <button
+                        onClick={() => handleStopComplete(stop, stopIndex)}
+                        disabled={!canConfirm}
+                        className="w-full rounded-2xl py-3.5 text-sm font-bold shadow-md active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+                        style={{
+                          backgroundColor: stop.stopType === 'endpoint' ? '#7c3aed' : stop.stopType === 'pickup' ? '#16a34a' : '#2563eb',
+                          color: '#fff',
+                        }}
+                      >
+                        {completing ? <Spinner size="sm" /> : stopActionLabel(stop)}
+                      </button>
+
+                      {(stop.stopType === 'pickup' || stop.stopType === 'dropoff') && (
+                        <button
+                          onClick={() => {
+                            setFailureReason('')
+                            setFailedModal({ stopIndex, stop })
+                          }}
+                          disabled={completing || submittingFailure}
+                          className="w-full mt-2 rounded-2xl py-2.5 text-sm font-semibold border border-red-200 bg-white text-red-600 active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          {stop.stopType === 'pickup' ? 'Failed Pickup' : 'Failed Dropoff'}
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
+              )
+            })()
+          ) : (
+            /* ── ETA Timeline list ── */
+            <div className="px-3 pt-2 pb-4">
+              {/* Progress summary */}
+              <div className="flex items-center justify-between mb-2 px-1">
+                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                  {activeStopIndex} of {stops.length} done
+                </span>
+                <div className="flex gap-1">
+                  {stops.map((s, i) => (
+                    <div
+                      key={i}
+                      className="w-1.5 h-1.5 rounded-full"
+                      style={{
+                        backgroundColor: i < activeStopIndex ? '#22c55e' : i === activeStopIndex ? '#2563eb' : '#e5e7eb',
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              {/* Timeline rows */}
+              <div className="relative">
+                {stops.map((stop, i) => {
+                  const isDone = !!stop.completedAt
+                  const isActive = i === activeStopIndex
+                  const isNext = !isDone && i > activeStopIndex
+                  const eta = formatETA(stop.estimatedArrivalAt)
+                  const isNew = newStopIds?.has(String(stop.bookingId))
+
+                  const dotColor = isDone
+                    ? '#22c55e'
+                    : isActive
+                      ? stop.stopType === 'endpoint' ? '#7c3aed' : '#2563eb'
+                      : stop.stopType === 'endpoint' ? '#7c3aed' : stop.stopType === 'pickup' ? '#16a34a' : '#dc2626'
 
                   return (
-                    <button
-                      onClick={() => handleStopComplete(currentStop, activeStopIndex)}
-                      disabled={!canConfirm}
-                      className="w-full rounded-2xl py-3.5 text-sm font-bold shadow-md active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
-                      style={{
-                        backgroundColor:
-                          currentStop.stopType === 'endpoint'
-                            ? '#7c3aed'
-                            : currentStop.stopType === 'pickup'
-                              ? '#16a34a'
-                              : '#2563eb',
-                        color: '#fff',
-                      }}
-                    >
-                      {completing ? (
-                        <Spinner size="sm" />
-                      ) : (
-                        <>
-                          {stopActionLabel(currentStop)}
-                        </>
+                    <div key={i} className="relative flex gap-3 pb-1">
+                      {/* Vertical line connecting stops */}
+                      {i < stops.length - 1 && (
+                        <div
+                          className="absolute left-4 top-8 w-0.5 bottom-0"
+                          style={{ backgroundColor: i < activeStopIndex ? '#22c55e' : '#e5e7eb', transform: 'translateX(-50%)' }}
+                        />
                       )}
-                    </button>
-                  )
-                })()}
 
-                {/* Failed button — only for pickup/dropoff stops (not endpoint) */}
-                {(currentStop.stopType === 'pickup' || currentStop.stopType === 'dropoff') && (
-                  <button
-                    onClick={() => {
-                      setFailureReason('')
-                      setFailedModal({ stopIndex: activeStopIndex, stop: currentStop })
-                    }}
-                    disabled={completing || submittingFailure}
-                    className="w-full mt-2 rounded-2xl py-2.5 text-sm font-semibold border border-red-200 bg-white text-red-600 active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    {currentStop.stopType === 'pickup' ? 'Failed Pickup' : 'Failed Dropoff'}
-                  </button>
-                )}
-              </>
-            ) : null}
-          </div>
+                      {/* Dot */}
+                      <div className="shrink-0 flex flex-col items-center pt-1" style={{ width: '32px' }}>
+                        <div
+                          className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold shadow-sm border-2"
+                          style={{
+                            backgroundColor: dotColor,
+                            borderColor: isActive ? dotColor : 'transparent',
+                            boxShadow: isActive ? `0 0 0 3px ${dotColor}33` : undefined,
+                            fontSize: isDone ? '16px' : '12px',
+                          }}
+                        >
+                          {isDone ? '✓' : stop.stopType === 'endpoint' ? 'E' : i + 1}
+                        </div>
+                      </div>
+
+                      {/* Row content — tappable */}
+                      <button
+                        type="button"
+                        onClick={() => setExpandedStopIndex(i)}
+                        className="flex-1 flex items-start justify-between gap-2 py-1.5 min-w-0 text-left"
+                        style={{ paddingBottom: i < stops.length - 1 ? '12px' : '4px' }}
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span
+                              className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full"
+                              style={{
+                                color: stop.stopType === 'endpoint' ? '#7c3aed' : stop.stopType === 'pickup' ? '#16a34a' : '#dc2626',
+                                backgroundColor: stop.stopType === 'endpoint' ? '#ede9fe' : stop.stopType === 'pickup' ? '#f0fdf4' : '#fff1f2',
+                              }}
+                            >
+                              {stop.stopType === 'endpoint' ? 'End' : stop.stopType === 'pickup' ? 'Pickup' : 'Drop-off'}
+                            </span>
+                            {isNew && <span className="text-[9px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full">NEW</span>}
+                            {isActive && <span className="text-[9px] font-bold text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded-full">Now</span>}
+                          </div>
+                          <p
+                            className="text-xs font-semibold mt-0.5 truncate"
+                            style={{ color: isDone ? '#9ca3af' : '#111827', textDecoration: isDone ? 'line-through' : 'none' }}
+                          >
+                            {stop.address}
+                          </p>
+                          {stop.contactName && (
+                            <p className="text-[10px] text-gray-400 truncate">{stop.contactName}</p>
+                          )}
+                        </div>
+                        {/* ETA or done time */}
+                        <div className="shrink-0 text-right">
+                          {isDone ? (
+                            <span className="text-[10px] text-green-600 font-semibold">Done</span>
+                          ) : eta ? (
+                            <span className={`text-[11px] font-bold ${isActive ? 'text-blue-600' : 'text-gray-500'}`}>{eta}</span>
+                          ) : null}
+                          <svg width="12" height="12" viewBox="0 0 14 14" fill="none" className="mt-1 ml-auto">
+                            <path d="M5 2l5 5-5 5" stroke="#d1d5db" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        </div>
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

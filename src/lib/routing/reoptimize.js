@@ -25,6 +25,29 @@ function haversine(lat1, lng1, lat2, lng2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 }
 
+/**
+ * Enforce pickup-before-dropoff for pickup_and_dropoff bookings.
+ * If Mapbox returns (or fallback produces) an order where a dropoff appears
+ * before its paired pickup, swap the two positions.
+ * Applied after optimization so we never break the API's overall optimality
+ * except for the mandatory constraint.
+ */
+function enforcePrecedence(stopOrder, stops) {
+  const order = [...stopOrder]
+  for (let i = 0; i < order.length; i++) {
+    const s = stops[order[i]]
+    if (s.stopType !== 'dropoff' || s.assignmentKind !== 'pickup_and_dropoff') continue
+    const pickupPos = order.findIndex(
+      (idx) => stops[idx].stopType === 'pickup' && stops[idx].bookingId === s.bookingId && stops[idx].assignmentKind === 'pickup_and_dropoff'
+    )
+    if (pickupPos !== -1 && pickupPos > i) {
+      // Dropoff is before its pickup — swap them
+      ;[order[i], order[pickupPos]] = [order[pickupPos], order[i]]
+    }
+  }
+  return order
+}
+
 function nearestNeighbourOrder(driverLat, driverLng, stops) {
   const remaining = stops.map((_, i) => i)
   const order = []
@@ -68,6 +91,26 @@ async function mapboxOptimizeOrder(driverLat, driverLng, stops, endPoint = null)
     url.searchParams.set('roundtrip', 'true')
   }
 
+  // Build distributions for pickup_and_dropoff bookings so Mapbox guarantees
+  // pickup is visited before its corresponding dropoff.
+  // stops[] indices are 0-based; allCoords adds 1 for the driver at index 0.
+  const distributionPairs = []
+  for (let i = 0; i < stops.length; i++) {
+    const s = stops[i]
+    if (s.stopType === 'pickup' && s.assignmentKind === 'pickup_and_dropoff') {
+      const dropoffIdx = stops.findIndex(
+        (t, j) => j !== i && t.stopType === 'dropoff' && t.bookingId === s.bookingId && t.assignmentKind === 'pickup_and_dropoff'
+      )
+      if (dropoffIdx !== -1) {
+        // +1 because allCoords[0] is the driver position
+        distributionPairs.push(`${i + 1},${dropoffIdx + 1}`)
+      }
+    }
+  }
+  if (distributionPairs.length > 0) {
+    url.searchParams.set('distributions', distributionPairs.join(';'))
+  }
+
   const res = await fetch(url.toString(), { cache: 'no-store' })
   if (!res.ok) throw new Error(`Mapbox Optimization error ${res.status}`)
   const data = await res.json()
@@ -107,10 +150,15 @@ async function getDirectionsPolyline(coords) {
   const data = await res.json()
   if (!data.routes?.length) throw new Error('No route found')
   const route = data.routes[0]
+  // legs[i].duration = seconds to travel from coord[i] to coord[i+1]
+  // coords[0] is driver position, coords[1..n] are stops in order
+  // So legs[0] = driver→stop[0], legs[1] = stop[0]→stop[1], etc.
+  const legDurations = (route.legs ?? []).map((leg) => Math.round(leg.duration))
   return {
     encodedPolyline:  route.geometry,
     distanceMeters:   Math.round(route.distance),
     durationSeconds:  Math.round(route.duration),
+    legDurations,
   }
 }
 
@@ -146,14 +194,17 @@ export async function reoptimizeRoute({ driverId, currentLng, currentLat, endPoi
   } else if (pendingStops.length <= MAPBOX_MAX_STOPS) {
     try {
       stopOrder = await mapboxOptimizeOrder(currentLat, currentLng, pendingStops, endPoint)
+      // Mapbox enforces pickup-before-dropoff natively via distributions — no post-processing needed
     } catch (err) {
       if (err instanceof MapboxBudgetError) {
         console.warn(`[reoptimize] budget tripped (${err.scope}) — falling back to nearest-neighbour`)
       }
-      stopOrder = nearestNeighbourOrder(currentLat, currentLng, pendingStops)
+      // Fallback: nearest-neighbour has no constraint support, enforce manually
+      stopOrder = enforcePrecedence(nearestNeighbourOrder(currentLat, currentLng, pendingStops), pendingStops)
     }
   } else {
-    stopOrder = nearestNeighbourOrder(currentLat, currentLng, pendingStops)
+    // Over Mapbox limit: nearest-neighbour fallback, enforce manually
+    stopOrder = enforcePrecedence(nearestNeighbourOrder(currentLat, currentLng, pendingStops), pendingStops)
   }
 
   const reorderedPending = stopOrder.map((origIdx, visitOrder) => ({
@@ -178,21 +229,62 @@ export async function reoptimizeRoute({ driverId, currentLng, currentLat, endPoi
   let encodedPolyline  = route.encodedPolyline ?? null
   let distanceMeters   = route.totalDistanceMeters ?? null
   let durationSeconds  = route.totalDurationSeconds ?? null
+
+  // Will be populated from Directions leg durations below
+  // legDurations[0] = driver→stop[0], legDurations[k] = stop[k-1]→stop[k]
+  // Only pending+endpoint stops are in the Directions call, so we annotate
+  // only those stops; completed stops keep their existing estimatedArrivalAt.
+  let legDurations = []
+
+  const dirCoords = [
+    { lng: currentLng, lat: currentLat },
+    ...reorderedPending.map((s) => ({ lng: s.coordinates.lng, lat: s.coordinates.lat })),
+    ...(endPoint ? [{ lng: endPoint.lng, lat: endPoint.lat }] : []),
+  ]
+
   try {
-    const dirCoords = [
-      { lng: currentLng, lat: currentLat },
-      ...reorderedPending.map((s) => ({ lng: s.coordinates.lng, lat: s.coordinates.lat })),
-      ...(endPoint ? [{ lng: endPoint.lng, lat: endPoint.lat }] : []),
-    ]
     const dir = await getDirectionsPolyline(dirCoords)
     encodedPolyline  = dir.encodedPolyline
     distanceMeters   = dir.distanceMeters
     durationSeconds  = dir.durationSeconds
+    legDurations     = dir.legDurations ?? []
   } catch (err) {
     if (err instanceof MapboxBudgetError) {
       console.warn(`[reoptimize] directions budget tripped (${err.scope}) — keeping existing polyline`)
     }
     // Keep existing polyline on failure
+  }
+
+  // If Directions API failed or returned no leg durations, estimate from
+  // haversine distances at 40 km/h average urban driving speed.
+  if (legDurations.length === 0 && dirCoords.length >= 2) {
+    const AVG_SPEED_KMH = 40
+    legDurations = []
+    for (let k = 0; k < dirCoords.length - 1; k++) {
+      const a = dirCoords[k]
+      const b = dirCoords[k + 1]
+      const km = haversine(a.lat, a.lng, b.lat, b.lng)
+      legDurations.push(Math.round((km / AVG_SPEED_KMH) * 3600))
+    }
+  }
+
+  // Annotate each non-completed stop with an estimated arrival time.
+  // dirCoords = [driver, pendingStop[0], pendingStop[1], ..., endPoint?]
+  // legDurations[k] = seconds from dirCoords[k] to dirCoords[k+1]
+  // newOptimizedStops = [...completedStops, ...reorderedPending, endpointStop?]
+  // So for newOptimizedStops[j] (j >= completedStops.length), leg index = j - completedStops.length
+  if (legDurations.length > 0) {
+    const now = Date.now()
+    let cumulativeMs = 0
+    const offset = completedStops.length
+    for (let j = offset; j < newOptimizedStops.length; j++) {
+      const legIdx = j - offset  // 0 = driver→first pending, 1 = first→second, etc.
+      cumulativeMs += (legDurations[legIdx] ?? 0) * 1000
+      newOptimizedStops[j] = {
+        ...newOptimizedStops[j],
+        estimatedArrivalAt: new Date(now + cumulativeMs).toISOString(),
+      }
+    }
   }
 
   await updateRoute(String(route._id), {

@@ -13,8 +13,11 @@ const MAX_STOPS_PER_ROUTE = 11 // Mapbox Optimization v1 limit (12 waypoints inc
 // `failed_pickup` is re-assignable the same as `pending`; `failed_dropoff`
 // the same as `picked_up` — the admin just picks the kind again.
 const KIND_CONFIG = {
-  pickup_only:   { allowedFromStatuses: ['pending',   'failed_pickup'],  newBookingStatus: 'assigned_pickup',   stopTypes: ['pickup'] },
-  delivery_only: { allowedFromStatuses: ['picked_up', 'failed_dropoff'], newBookingStatus: 'assigned_delivery', stopTypes: ['dropoff'] },
+  pickup_only:        { allowedFromStatuses: ['pending',   'failed_pickup'],  newBookingStatus: 'assigned_pickup',   stopTypes: ['pickup'] },
+  delivery_only:      { allowedFromStatuses: ['picked_up', 'failed_dropoff'], newBookingStatus: 'assigned_delivery', stopTypes: ['dropoff'] },
+  // Both stops added to route at once. Booking goes: assigned_pickup → picked_up → delivered
+  // (skips assigned_delivery — dropoff stop already in route when pickup is confirmed)
+  pickup_and_dropoff: { allowedFromStatuses: ['pending',   'failed_pickup'],  newBookingStatus: 'assigned_pickup',   stopTypes: ['pickup', 'dropoff'] },
 }
 
 // Legacy aliases so existing single-booking /assign calls still work

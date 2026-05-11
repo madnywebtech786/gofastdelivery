@@ -15,7 +15,7 @@ const VALID_STATUSES = [
   'cancelled',
 ]
 
-const PAGE_SIZE = 5
+const PAGE_SIZE = 20
 
 export default async function AdminBookingsPage({ searchParams }) {
   await requireAdmin()

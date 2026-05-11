@@ -415,9 +415,11 @@ export default function DriverMap({
       return
     }
 
-    // Outer div: sized to marker, no transform (Mapbox owns this)
+    // Outer div: sized to marker. Mapbox sets 'translate' on this element to
+    // position the marker on screen. Adding a CSS transition here smooths the
+    // jump between GPS ticks without any extra API calls.
     const el = document.createElement('div')
-    el.style.cssText = 'width:36px;height:44px;cursor:pointer;'
+    el.style.cssText = 'width:36px;height:44px;cursor:pointer;transition:translate 0.4s linear;'
 
     // Inner div: this is what we rotate
     const inner = document.createElement('div')
