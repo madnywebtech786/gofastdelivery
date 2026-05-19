@@ -7,7 +7,7 @@ import { revalidateTag } from 'next/cache'
 import redis from '@/lib/redis'
 import { ObjectId } from 'mongodb'
 
-const MAX_STOPS_PER_ROUTE = 11 // Mapbox Optimization v1 limit (12 waypoints incl. driver)
+const MAX_STOPS_PER_ROUTE = 23 // Mapbox Optimization v1 limit (24 waypoints incl. driver)
 
 // kind → { allowedFromStatuses[], newBookingStatus, stopTypes[] }
 // `failed_pickup` is re-assignable the same as `pending`; `failed_dropoff`
