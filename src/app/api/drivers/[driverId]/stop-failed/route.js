@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { requireDriver, handleApiError } from '@/lib/dal'
-import { findActiveRoute, updateRoute } from '@/lib/db/drivers'
+import { findActiveRoute, updateRoute, findDriverById } from '@/lib/db/drivers'
 import { markBookingFailed } from '@/lib/db/bookings'
 import { pushBookingStatusChange, pushRouteUpdate } from '@/lib/pusher'
 import { hydrateRouteItems } from '@/lib/routing/hydrate'
@@ -82,12 +82,25 @@ export async function POST(request, { params }) {
       } catch { /* non-fatal */ }
     }
 
-    // Mark route stop as failed (completedAt + failedAt so it's skipped in the queue)
-    const updatedStops = stops.map((s, i) =>
-      i === stopIndex
-        ? { ...s, completedAt: now, failedAt: now, failureReason: trimmedReason }
-        : s
-    )
+    // Mark route stop as failed (completedAt + failedAt so it's skipped in the queue).
+    // For pickup_and_dropoff bookings: also cancel the paired dropoff stop — the pickup
+    // never happened, so the dropoff is unreachable until admin re-assigns.
+    const pairedDropoffCancelled = stop.stopType === 'pickup' && stop.assignmentKind === 'pickup_and_dropoff'
+    const updatedStops = stops.map((s, i) => {
+      if (i === stopIndex) {
+        return { ...s, completedAt: now, failedAt: now, failureReason: trimmedReason }
+      }
+      if (
+        pairedDropoffCancelled &&
+        !s.completedAt &&
+        s.stopType === 'dropoff' &&
+        s.assignmentKind === 'pickup_and_dropoff' &&
+        s.bookingId === stop.bookingId
+      ) {
+        return { ...s, completedAt: now, failedAt: now, failureReason: 'Pickup failed — dropoff skipped' }
+      }
+      return s
+    })
     const allDone = updatedStops.every((s) => s.completedAt)
 
     const routeUpdateData = {
@@ -95,6 +108,26 @@ export async function POST(request, { params }) {
       ...(allDone ? { isActive: false } : {}),
     }
     await updateRoute(String(route._id), routeUpdateData)
+
+    // When a pickup_and_dropoff pickup fails we removed two stops at once.
+    // Re-optimize the remaining pending stops so the driver gets the shortest
+    // updated path. reoptimizeRoute reads the freshly-written route from DB,
+    // handles Redis caching, and pushes the updated route to the driver.
+    // Fall back to the normal hydrate+cache+push path if GPS is unavailable
+    // or the optimizer fails (budget exceeded, Mapbox error, etc.).
+    if (pairedDropoffCancelled && !allDone) {
+      try {
+        const driver = await findDriverById(driverId)
+        const gps = driver?.driverProfile?.currentLocation
+        if (gps && typeof gps.lat === 'number' && typeof gps.lng === 'number') {
+          const { reoptimizeRoute } = await import('@/lib/routing/reoptimize')
+          const reoptimized = await reoptimizeRoute({ driverId, currentLng: gps.lng, currentLat: gps.lat })
+          if (reoptimized) {
+            return NextResponse.json({ success: true, route: reoptimized })
+          }
+        }
+      } catch { /* non-fatal — fall through to standard path below */ }
+    }
 
     const finalRoute = { ...JSON.parse(JSON.stringify(route)), ...routeUpdateData }
     const hydrated = await hydrateRouteItems(finalRoute)

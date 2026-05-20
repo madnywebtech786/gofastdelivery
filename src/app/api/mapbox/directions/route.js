@@ -51,7 +51,7 @@ export async function POST(request) {
     }
 
     const coordStr = `${from.lng},${from.lat};${to.lng},${to.lat}`
-    const url = new URL(`${MAPBOX_API}/directions/v5/mapbox/driving/${encodeURIComponent(coordStr)}`)
+    const url = new URL(`${MAPBOX_API}/directions/v5/mapbox/driving/${coordStr}`)
     url.searchParams.set('access_token', token)
     url.searchParams.set('geometries', 'polyline6')
     url.searchParams.set('overview',   'full')

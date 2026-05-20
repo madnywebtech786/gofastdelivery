@@ -32,7 +32,7 @@ function stopActionLabel(stop) {
 
 function formatETA(isoString) {
   if (!isoString) return null
-  const d = new Date(isoString)
+  const d = new Date(new Date(isoString).getTime() + 3 * 60 * 1000)
   if (isNaN(d.getTime())) return null
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
@@ -953,6 +953,11 @@ export default function DriverRoutePage() {
           driverId={driverId}
           onStepUpdate={(step) => voiceRef.current?.speakStep(step)}
           onReroute={handleRouteUpdate}
+          onArrival={(stopIdx) => {
+            voiceRef.current?.speak('Arrived at destination')
+            setSheetOpen(true)
+            setExpandedStopIndex(stopIdx)
+          }}
           newStopIds={newStopIds}
         />
       </div>

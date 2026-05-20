@@ -78,7 +78,7 @@ async function mapboxOptimizeOrder(driverLat, driverLng, stops, endPoint = null)
     ...(endPoint ? [{ lng: endPoint.lng, lat: endPoint.lat }] : []),
   ]
   const coordStr = allCoords.map((c) => `${c.lng},${c.lat}`).join(';')
-  const url = new URL(`${MAPBOX_API}/optimized-trips/v1/mapbox/driving/${encodeURIComponent(coordStr)}`)
+  const url = new URL(`${MAPBOX_API}/optimized-trips/v1/mapbox/driving/${coordStr}`)
   url.searchParams.set('access_token', token)
   url.searchParams.set('geometries', 'polyline6')
   url.searchParams.set('overview', 'full')
@@ -141,7 +141,7 @@ async function getDirectionsPolyline(coords) {
   await checkBudget('directions')
   const token = getToken()
   const coordStr = coords.map((c) => `${c.lng},${c.lat}`).join(';')
-  const url = new URL(`${MAPBOX_API}/directions/v5/mapbox/driving/${encodeURIComponent(coordStr)}`)
+  const url = new URL(`${MAPBOX_API}/directions/v5/mapbox/driving/${coordStr}`)
   url.searchParams.set('access_token', token)
   url.searchParams.set('geometries', 'polyline6')
   url.searchParams.set('overview', 'full')

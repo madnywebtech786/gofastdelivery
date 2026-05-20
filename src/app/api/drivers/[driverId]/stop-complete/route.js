@@ -79,9 +79,14 @@ export async function POST(request, { params }) {
     const newBookingStatus = nextBookingStatus(stop)
 
     if (stop.bookingId && newBookingStatus) {
+      // Clear assignedDriverId when pickup_only completes so admin can re-assign
+      // for delivery. For pickup_and_dropoff, the dropoff stop is already in the
+      // route — leave assignedDriverId set so admin cannot create a duplicate.
+      const clearDriver = stop.stopType === 'pickup' && stop.assignmentKind === 'pickup_only'
       await updateBookingStatus(String(stop.bookingId), newBookingStatus, {
         note: `Stop ${stopIndex + 1} (${stop.stopType}) completed by driver`,
         driverId,
+        clearDriver,
       })
       try {
         await pushBookingStatusChange(String(stop.bookingId), {

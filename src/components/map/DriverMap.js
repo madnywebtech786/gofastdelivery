@@ -9,6 +9,8 @@ const OFF_ROUTE_THRESHOLD_M  = 300
 const OFF_ROUTE_DURATION_MS  = 30000
 // Speak when this close to the next turn (metres)
 const SPEAK_AT_M             = 150
+// Trigger arrival when driver is within this radius of the stop (metres)
+const ARRIVAL_RADIUS_M       = 30
 
 // Turn type → arrow emoji
 const MANEUVER_ICON = {
@@ -117,6 +119,7 @@ export default function DriverMap({
   driverId = null,
   onStepUpdate,
   onReroute,
+  onArrival,
   newStopIds = null,
 }) {
   const containerRef       = useRef(null)
@@ -161,12 +164,23 @@ export default function DriverMap({
   const offRouteSinceRef   = useRef(null)  // timestamp when we first went off-route; null = on-route
   const reroutingRef       = useRef(false) // prevent concurrent reroute calls
 
+  // Arrival tracking — fires onArrival once per stop index, resets when active stop changes
+  const onArrivalRef       = useRef(onArrival)
+  const arrivedStopRef     = useRef(-1)    // stopIndex for which arrival was already announced
+
   // ── Sync refs ─────────────────────────────────────────────────────────────
-  useEffect(() => { activeStopIndexRef.current = activeStopIndex }, [activeStopIndex])
+  useEffect(() => {
+    activeStopIndexRef.current = activeStopIndex
+    // New destination — allow arrival to fire again for the new stop
+    if (arrivedStopRef.current !== -1 && arrivedStopRef.current !== activeStopIndex) {
+      arrivedStopRef.current = -1
+    }
+  }, [activeStopIndex])
   useEffect(() => { routeRef.current = route }, [route])
   useEffect(() => { if (driverPos) driverPosRef.current = driverPos }, [driverPos])
   useEffect(() => { onStepUpdateRef.current = onStepUpdate }, [onStepUpdate])
   useEffect(() => { onRerouteRef.current = onReroute }, [onReroute])
+  useEffect(() => { onArrivalRef.current = onArrival }, [onArrival])
   useEffect(() => { driverIdRef.current = driverId }, [driverId])
   useEffect(() => { newStopIdsRef.current = newStopIds }, [newStopIds])
 
@@ -182,6 +196,12 @@ export default function DriverMap({
     const stops = routeRef.current?.optimizedStops ?? []
     renderStopMarkersRef.current(map, stops, mapboxgl, activeStopIndexRef.current, newStopIds)
   }, [newStopIds])
+
+  // ── Camera follow state ───────────────────────────────────────────────────
+  // true = map auto-pans to keep driver centered (default, like Google Maps)
+  // false = driver manually panned away; tap the re-center button to re-lock
+  const [followDriver, setFollowDriver] = useState(true)
+  const followDriverRef = useRef(true)
 
   // ── Banner state ──────────────────────────────────────────────────────────
   const [banner, setBanner] = useState(null) // { icon, instruction, distance }
@@ -324,14 +344,24 @@ export default function DriverMap({
     }
   }, [])
 
-  // ── Jump to current location ──────────────────────────────────────────────
+  // ── Re-centre + re-lock follow mode ──────────────────────────────────────
   const handleUseCurrentLocation = useCallback(() => {
+    const pos = driverPosRef.current
+    if (pos && mapRef.current) {
+      mapRef.current.easeTo({ center: [pos.lng, pos.lat], zoom: 15, duration: 600 })
+      followDriverRef.current = true
+      setFollowDriver(true)
+      return
+    }
+    // Fallback: no cached GPS yet — ask the browser directly
     if (!navigator.geolocation || !mapRef.current) return
     setLocating(true)
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const { longitude: lng, latitude: lat } = pos.coords
-        mapRef.current?.flyTo({ center: [lng, lat], zoom: 15, duration: 700 })
+        mapRef.current?.easeTo({ center: [lng, lat], zoom: 15, duration: 600 })
+        followDriverRef.current = true
+        setFollowDriver(true)
         setLocating(false)
       },
       () => {
@@ -549,6 +579,14 @@ export default function DriverMap({
         geolocate.trigger()
       })
 
+      // Unlock follow mode when the driver manually drags the map
+      map.on('dragstart', () => {
+        if (followDriverRef.current) {
+          followDriverRef.current = false
+          setFollowDriver(false)
+        }
+      })
+
       // GPS tick handler: purely LOCAL updates (car marker + turn banner + off-route timer).
       // No Mapbox Directions refetch here — the step list cached on the first render
       // is authoritative; updateTurnBanner advances through it using Haversine.
@@ -561,6 +599,27 @@ export default function DriverMap({
         updateDriverMarker(map, mapboxgl, lng, lat, heading)
         updateTurnBanner(lng, lat)
         checkOffRoute(lng, lat)
+
+        // Arrival detection — announce once when driver enters ARRIVAL_RADIUS_M of the active stop
+        const idx         = activeStopIndexRef.current
+        const activeStop  = routeRef.current?.optimizedStops?.[idx]
+        if (
+          activeStop &&
+          activeStop.stopType !== 'endpoint' &&
+          !activeStop.completedAt &&
+          arrivedStopRef.current !== idx
+        ) {
+          const dist = haversineM({ lat, lng }, { lat: activeStop.coordinates.lat, lng: activeStop.coordinates.lng })
+          if (dist <= ARRIVAL_RADIUS_M) {
+            arrivedStopRef.current = idx
+            onArrivalRef.current?.(idx)
+          }
+        }
+
+        // Auto-pan to keep driver centered when follow is locked
+        if (followDriverRef.current) {
+          map.easeTo({ center: [lng, lat], duration: 300, easing: (t) => t })
+        }
       })
     })
 
@@ -635,20 +694,25 @@ export default function DriverMap({
         </div>
       )}
 
-      {/* ── Re-centre button — below the off-route banner, above safe area ── */}
+      {/* ── Re-centre / follow-lock button ─────────────────────────────────
+           Blue filled  = following (locked)  — tap to snap back to driver
+           White        = unlocked (driver panned away) — tap to re-lock     */}
       <button
         onClick={handleUseCurrentLocation}
         disabled={locating}
-        title="Jump to my location"
-        className="absolute bottom-4 left-3 z-30 w-11 h-11 rounded-full bg-white shadow-lg border border-gray-200 flex items-center justify-center transition hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-        style={{ color: '#2563eb' }}
+        title={followDriver ? 'Following your location' : 'Re-centre on my location'}
+        className="absolute bottom-4 left-3 z-30 w-11 h-11 rounded-full shadow-lg border flex items-center justify-center transition disabled:opacity-50 disabled:cursor-not-allowed"
+        style={{
+          background:   followDriver ? '#2563eb' : '#ffffff',
+          borderColor:  followDriver ? '#1d4ed8' : '#d1d5db',
+          color:        followDriver ? '#ffffff'  : '#2563eb',
+        }}
       >
         {locating ? (
           <svg width="16" height="16" viewBox="0 0 16 16" style={{ animation: 'spin 0.8s linear infinite' }}>
             <circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="25 10" />
           </svg>
         ) : (
-          // Standard GPS crosshair — same icon used in the endpoint modal
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="4" />
             <line x1="12" y1="2"  x2="12" y2="6"  />

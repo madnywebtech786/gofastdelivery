@@ -147,14 +147,21 @@ export async function findBookingsByIds(ids) {
 
 /**
  * Update booking status and append to status history.
+ * Pass clearDriver:true when transitioning to 'picked_up' from a pickup_only
+ * assignment — clears assignedDriverId so admin can re-assign for delivery.
+ * Do NOT pass clearDriver for pickup_and_dropoff bookings: the dropoff stop
+ * is already in the driver's route and must not be re-assigned.
  */
-export async function updateBookingStatus(id, status, { note = '', driverId } = {}) {
+export async function updateBookingStatus(id, status, { note = '', driverId, clearDriver = false } = {}) {
   const db = await getDb()
   const filter = { _id: new ObjectId(id) }
   if (driverId) filter.assignedDriverId = new ObjectId(driverId)
 
+  const setFields = { status, updatedAt: new Date() }
+  if (clearDriver) setFields.assignedDriverId = null
+
   return db.collection('bookings').updateOne(filter, {
-    $set: { status, updatedAt: new Date() },
+    $set: setFields,
     $push: { statusHistory: { status, timestamp: new Date(), note } },
   })
 }

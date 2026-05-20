@@ -206,7 +206,7 @@ export async function POST(request) {
       assignments.map(async (a) => {
         const booking = bookingById.get(String(a.bookingId))
         const cfg = KIND_CONFIG[a.kind]
-        await assignDriverToBooking(String(booking._id), driverId, {
+        const assignResult = await assignDriverToBooking(String(booking._id), driverId, {
           estimatedDistanceMeters:  null,
           estimatedDurationSeconds: null,
           newStatus:         cfg.newBookingStatus,
@@ -214,6 +214,9 @@ export async function POST(request) {
           // configured from-statuses (covers failed_pickup/failed_dropoff retry).
           allowedFromStatus: booking.status,
         })
+        if (assignResult.matchedCount === 0) {
+          throw Object.assign(new Error(`Booking ${booking._id} status changed before assignment completed`), { status: 409 })
+        }
         try {
           await pushBookingStatusChange(String(booking._id), {
             status: cfg.newBookingStatus,
@@ -271,6 +274,9 @@ export async function POST(request) {
       routeId: finalRouteId,
     })
   } catch (err) {
+    if (err?.status === 409) {
+      return NextResponse.json({ error: err.message }, { status: 409 })
+    }
     return handleApiError(err, '[POST /api/bookings/bulk-assign]')
   }
 }

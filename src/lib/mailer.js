@@ -20,6 +20,10 @@ function formatDate(dateStr) {
     hour: '2-digit', minute: '2-digit',
   })
 }
+
+function esc(str) {
+  return String(str ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
 const STATUS_LABELS = {
   pending:           'Order Placed',
   assigned_pickup:   'Pickup Scheduled',
@@ -127,8 +131,8 @@ function stopsHtml(stops = []) {
       <div class="stop-row">
         <div class="stop-content">
           <div class="stop-type">${label}</div>
-          <div class="stop-address">${s.address ?? ''}</div>
-          ${s.contactName ? `<div class="stop-meta">${s.contactName}${s.contactPhone ? ' · ' + s.contactPhone : ''}</div>` : ''}
+          <div class="stop-address">${esc(s.address)}</div>
+          ${s.contactName ? `<div class="stop-meta">${esc(s.contactName)}${s.contactPhone ? ' · ' + esc(s.contactPhone) : ''}</div>` : ''}
         </div>
       </div>`
   }).join('')
@@ -151,9 +155,9 @@ function timelineHtml(statusHistory = [], currentStatus) {
               ${!isLast ? '<div class="timeline-line"></div>' : ''}
             </div>
             <div class="timeline-content">
-              <div class="timeline-status">${STATUS_LABELS[h.status] ?? h.status}</div>
+              <div class="timeline-status">${esc(STATUS_LABELS[h.status] ?? h.status)}</div>
               <div class="timeline-time">${formatDate(h.timestamp)}</div>
-              ${h.note ? `<div class="timeline-note">${h.note}</div>` : ''}
+              ${h.note ? `<div class="timeline-note">${esc(h.note)}</div>` : ''}
             </div>
           </div>`
       }).join('')}
@@ -197,9 +201,9 @@ export function buildBookingConfirmedEmail({ booking, trackingUrl, recipientType
     <div class="divider"></div>
     <div class="section-title">Package</div>
     <div style="font-size:14px;color:#475569;line-height:1.6;">
-      <strong>Type:</strong> ${booking.packageDetails.kind}<br/>
-      ${booking.packageDetails.description ? `<strong>Contents:</strong> ${booking.packageDetails.description}<br/>` : ''}
-      ${booking.packageDetails.weightSlab ? `<strong>Weight:</strong> ${booking.packageDetails.weightSlab.replace(/_/g,' ')}<br/>` : ''}
+      <strong>Type:</strong> ${esc(booking.packageDetails.kind)}<br/>
+      ${booking.packageDetails.description ? `<strong>Contents:</strong> ${esc(booking.packageDetails.description)}<br/>` : ''}
+      ${booking.packageDetails.weightSlab ? `<strong>Weight:</strong> ${esc(booking.packageDetails.weightSlab.replace(/_/g,' '))}<br/>` : ''}
     </div>` : ''}
 
     <a class="cta-btn" href="${trackingUrl}">Track My Package →</a>`
