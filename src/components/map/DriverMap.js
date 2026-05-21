@@ -667,18 +667,20 @@ export default function DriverMap({
 
       {/* ── Turn-by-turn banner ─────────────────────────────────────────── */}
       {banner && (
-        <div
-          className="absolute top-16 left-3 right-3 z-30 flex items-center gap-3 rounded-2xl px-4 py-3 pointer-events-none"
-          style={{ background: 'rgba(15,23,42,0.88)', backdropFilter: 'blur(8px)' }}
-        >
-          <div className="shrink-0 w-12 h-12 rounded-xl bg-blue-600 flex items-center justify-center text-2xl font-bold text-white">
-            {banner.icon}
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-white font-bold text-sm leading-snug">{banner.instruction}</p>
-            {banner.distance && (
-              <p className="text-blue-300 text-xs font-semibold mt-0.5">{banner.distance}</p>
-            )}
+        <div className="absolute top-16 left-0 right-0 z-30 flex justify-center pointer-events-none px-3">
+          <div
+            className="flex items-center gap-2.5 rounded-2xl px-3 py-2.5"
+            style={{ background: 'rgba(15,23,42,0.88)', backdropFilter: 'blur(8px)', width: '62%', minWidth: '200px', maxWidth: '340px' }}
+          >
+            <div className="shrink-0 w-9 h-9 rounded-lg bg-blue-600 flex items-center justify-center text-lg font-bold text-white">
+              {banner.icon}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-white font-bold text-xs leading-snug">{banner.instruction}</p>
+              {banner.distance && (
+                <p className="text-blue-300 text-[11px] font-semibold mt-0.5">{banner.distance}</p>
+              )}
+            </div>
           </div>
         </div>
       )}
