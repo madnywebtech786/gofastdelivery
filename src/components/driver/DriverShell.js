@@ -52,7 +52,7 @@ export default function DriverShell({ children }) {
 
   async function handleSignOut() {
     await fetch('/api/auth/logout', { method: 'POST' })
-    router.replace('/login')
+    router.replace('/driver_login')
   }
 
   const isMapPage = pathname === '/driver/route'

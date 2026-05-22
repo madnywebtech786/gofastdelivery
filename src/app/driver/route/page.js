@@ -706,7 +706,7 @@ export default function DriverRoutePage() {
 
   async function handleSignOut() {
     await fetch('/api/auth/logout', { method: 'POST' })
-    router.replace('/login')
+    router.replace('/driver_login')
   }
 
   // ── Loading state ───────────────────────────────────────────────────────────

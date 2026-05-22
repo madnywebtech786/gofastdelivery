@@ -22,7 +22,7 @@ export default function AdminLayout({ children }) {
 
   async function handleLogout() {
     await fetch('/api/auth/logout', { method: 'POST' })
-    router.replace('/login')
+    router.replace('/admin_login')
   }
 
   const SidebarContent = () => (

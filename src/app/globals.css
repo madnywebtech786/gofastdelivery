@@ -57,7 +57,7 @@
   --color-warning:    var(--warning);
   --color-danger:     var(--danger);
   --color-accent:     var(--accent);
-  --font-sans: var(--font-outfit), system-ui, sans-serif;
+  --font-sans: var(--font-montserrat), system-ui, sans-serif;
   --font-mono: var(--font-jetbrains-mono), monospace;
 }
 
@@ -68,7 +68,7 @@ html { scroll-behavior: smooth; }
 body {
   background: var(--bg);
   color: var(--fg);
-  font-family: var(--font-outfit), system-ui, sans-serif;
+  font-family: var(--font-montserrat), system-ui, sans-serif;
   font-size: 15px;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
@@ -196,4 +196,20 @@ body {
   background: var(--accent-dim);
   color: var(--accent);
   font-weight: 600;
+}
+
+/* ─── Landing Page Tokens ────────────────────────────────────────────────── */
+[data-page="landing"] {
+  --brand-orange:      #ff580d;
+  --brand-green:       #1bb908;
+  --brand-black:       #0d0d0d;
+  --brand-orange-dim:  rgba(255, 88, 13, 0.12);
+  --brand-orange-glow: rgba(255, 88, 13, 0.20);
+  --brand-green-dim:   rgba(27, 185, 8, 0.10);
+  --brand-white:       #ffffff;
+  --landing-bg:        #fafaf9;
+  --landing-surface:   #ffffff;
+  --landing-text:      #0d0d0d;
+  --landing-text-2:    #4a4a4a;
+  --landing-border:    #e8e4df;
 }

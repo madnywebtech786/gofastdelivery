@@ -3,6 +3,19 @@ const nextConfig = {
   // Enables Cache Components — unlocks use cache, cacheLife, cacheTag (stable in Next.js 16)
   cacheComponents: true,
 
+  images: {
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'images.unsplash.com',
+      },
+      {
+        protocol: 'https',
+        hostname: 'images.pexels.com',
+      },
+    ],
+  },
+
   // Security headers applied to all routes
   async headers() {
     return [
