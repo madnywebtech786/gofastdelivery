@@ -132,7 +132,7 @@ export default function CustomerDashboardClient({ recentBookings }) {
           <h1 className="text-2xl font-bold" style={{ color: 'var(--fg)' }}>Dashboard</h1>
           <p className="text-sm mt-0.5" style={{ color: 'var(--fg-3)' }}>Welcome back! Here's your delivery overview.</p>
         </div>
-        <Link href="/book">
+        <Link href="/customer/book">
           <button className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:shadow-lg active:scale-95"
             style={{ background: 'var(--accent)', boxShadow: '0 2px 12px var(--accent-glow)' }}>
             <Plus size={15} />
@@ -243,7 +243,7 @@ export default function CustomerDashboardClient({ recentBookings }) {
             <Clock size={14} style={{ color: 'var(--fg-3)' }} />
             <span className="text-sm font-bold" style={{ color: 'var(--fg)' }}>Recent Bookings</span>
           </div>
-          <Link href="/my-bookings"
+          <Link href="/customer/my-bookings"
             className="flex items-center gap-1 text-xs font-semibold transition-colors hover:underline"
             style={{ color: 'var(--accent)' }}>
             View all <ArrowRight size={12} />
@@ -254,7 +254,7 @@ export default function CustomerDashboardClient({ recentBookings }) {
           <div className="px-5 py-12 text-center">
             <Package size={28} className="mx-auto mb-3" style={{ color: 'var(--fg-3)' }} />
             <p className="text-sm font-medium" style={{ color: 'var(--fg-2)' }}>No bookings yet</p>
-            <Link href="/book" className="text-xs font-semibold mt-1 inline-block" style={{ color: 'var(--accent)' }}>
+            <Link href="/customer/book" className="text-xs font-semibold mt-1 inline-block" style={{ color: 'var(--accent)' }}>
               Create your first booking →
             </Link>
           </div>
@@ -264,7 +264,7 @@ export default function CustomerDashboardClient({ recentBookings }) {
               const pickup  = b.stops?.find((s) => s.type === 'pickup')
               const dropoff = b.stops?.filter((s) => s.type === 'dropoff').at(-1)
               return (
-                <Link key={b._id} href={`/my-bookings/${b._id}`}
+                <Link key={b._id} href={`/customer/my-bookings/${b._id}`}
                   className={`flex items-center gap-4 px-5 py-3.5 hover:bg-(--surface-2) transition-colors group anim-fade-up s${Math.min(i + 1, 6)}`}>
                   {/* Status indicator */}
                   <div className="shrink-0">
@@ -307,7 +307,7 @@ export default function CustomerDashboardClient({ recentBookings }) {
 
       {/* ── Quick Actions ─────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 anim-fade-up s4">
-        <Link href="/book" className="group bg-white rounded-2xl border border-border p-5 hover:shadow-md hover:border-(--border-2) transition-all">
+        <Link href="/customer/book" className="group bg-white rounded-2xl border border-border p-5 hover:shadow-md hover:border-(--border-2) transition-all">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl flex items-center justify-center"
               style={{ background: 'var(--accent-dim)', color: 'var(--accent)' }}>
@@ -321,7 +321,7 @@ export default function CustomerDashboardClient({ recentBookings }) {
           </div>
         </Link>
 
-        <Link href="/my-bookings" className="group bg-white rounded-2xl border border-border p-5 hover:shadow-md hover:border-(--border-2) transition-all">
+        <Link href="/customer/my-bookings" className="group bg-white rounded-2xl border border-border p-5 hover:shadow-md hover:border-(--border-2) transition-all">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl flex items-center justify-center"
               style={{ background: 'rgba(22,163,74,0.08)', color: '#16a34a' }}>

@@ -48,7 +48,7 @@ export default function AssignDriverForm({ bookingId, currentDriverId }) {
   if (drivers.length === 0) return (
     <p className="text-sm" style={{ color: 'var(--fg-3)' }}>
       No active drivers available.{' '}
-      <a href="/drivers/new" style={{ color: 'var(--accent)' }} className="font-semibold hover:underline">Add a driver</a>
+      <a href="/admin/drivers/new" style={{ color: 'var(--accent)' }} className="font-semibold hover:underline">Add a driver</a>
     </p>
   )
 

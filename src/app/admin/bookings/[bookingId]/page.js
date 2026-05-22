@@ -49,7 +49,7 @@ export default async function AdminBookingDetailPage({ params }) {
   return (
     <div className="space-y-5 max-w-4xl">
       <div className="flex items-center gap-3 anim-fade-up">
-        <Link href="/bookings" className="p-1.5 rounded-lg transition-colors hover:bg-(--surface-2)" style={{ color: 'var(--fg-3)' }}>
+        <Link href="/admin/bookings" className="p-1.5 rounded-lg transition-colors hover:bg-(--surface-2)" style={{ color: 'var(--fg-3)' }}>
           <ArrowLeft size={16} />
         </Link>
         <div className="flex items-center gap-3 flex-wrap">

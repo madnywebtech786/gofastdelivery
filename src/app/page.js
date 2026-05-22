@@ -2,9 +2,9 @@ import { redirect } from 'next/navigation'
 import { getSession } from '@/lib/session'
 
 const ROLE_DASHBOARDS = {
-  admin: '/dashboard',
-  driver: '/home',
-  customer: '/overview',
+  admin:    '/admin/dashboard',
+  driver:   '/driver/home',
+  customer: '/customer/overview',
 }
 
 export default async function HomePage() {

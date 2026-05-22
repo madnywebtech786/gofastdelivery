@@ -61,8 +61,8 @@ export const getUser = cache(async () => {
  * rather than throwing a dev-overlay 403 when a page guard fails.
  */
 function landingFor(role) {
-  if (role === 'driver')   return '/route'
-  if (role === 'customer') return '/home'
+  if (role === 'driver')   return '/driver/home'
+  if (role === 'customer') return '/customer/overview'
   return '/login'
 }
 

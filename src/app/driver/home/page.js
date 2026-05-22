@@ -213,7 +213,7 @@ export default function DriverHomePage() {
               </div>
 
               <button
-                onClick={() => { router.refresh(); router.push('/route') }}
+                onClick={() => { router.refresh(); router.push('/driver/route') }}
                 className="shrink-0 flex items-center gap-2 text-xs font-bold px-4 py-2.5 rounded-xl active:scale-95 transition-all text-white"
                 style={{
                   background: isResume ? '#d97706' : 'var(--accent)',
@@ -255,7 +255,7 @@ export default function DriverHomePage() {
             icon={<ListChecks size={20} />}
             label="View Stops"
             sub={hasRoute ? `${totalStops} stops assigned` : 'No stops yet'}
-            href="/pickups"
+            href="/driver/pickups"
             color="rgba(59,130,246,0.1)"
             iconColor="#3b82f6"
           />
@@ -263,7 +263,7 @@ export default function DriverHomePage() {
             icon={<History size={20} />}
             label="History"
             sub={`${stats?.completedTotal ?? 0} delivered`}
-            href="/history"
+            href="/driver/history"
             color="rgba(34,197,94,0.1)"
             iconColor="#22c55e"
           />

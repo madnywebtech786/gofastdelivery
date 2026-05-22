@@ -9,9 +9,9 @@ import {
 import { useState } from 'react'
 
 const NAV = [
-  { href: '/overview',    label: 'Dashboard',   icon: LayoutDashboard },
-  { href: '/my-bookings', label: 'My Bookings',  icon: PackageOpen },
-  { href: '/book',        label: 'New Booking',  icon: Plus },
+  { href: '/customer/overview',    label: 'Dashboard',   icon: LayoutDashboard },
+  { href: '/customer/my-bookings', label: 'My Bookings',  icon: PackageOpen },
+  { href: '/customer/book',        label: 'New Booking',  icon: Plus },
 ]
 
 export default function CustomerLayout({ children }) {
@@ -41,7 +41,7 @@ export default function CustomerLayout({ children }) {
       {/* Nav */}
       <nav className="flex-1 px-3 py-4 space-y-0.5">
         {NAV.map(({ href, label, icon: Icon }) => {
-          const active = pathname === href || (href !== '/overview' && pathname.startsWith(href))
+          const active = pathname === href || (href !== '/customer/overview' && pathname.startsWith(href))
           return (
             <Link
               key={href}

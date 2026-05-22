@@ -54,9 +54,9 @@ function StatCard({ label, value, sub, icon: Icon, href, accent }) {
 }
 
 const QUICK_ACTIONS = [
-  { href: '/bookings',    label: 'Review pending bookings', icon: PackageOpen, desc: 'Assign drivers to new orders' },
-  { href: '/drivers/new', label: 'Add new driver',          icon: UserPlus,    desc: 'Register a driver account'  },
-  { href: '/drivers',     label: 'Manage drivers',          icon: Users,       desc: 'View and manage driver fleet' },
+  { href: '/admin/bookings',    label: 'Review pending bookings', icon: PackageOpen, desc: 'Assign drivers to new orders' },
+  { href: '/admin/drivers/new', label: 'Add new driver',          icon: UserPlus,    desc: 'Register a driver account'  },
+  { href: '/admin/drivers',     label: 'Manage drivers',          icon: Users,       desc: 'View and manage driver fleet' },
 ]
 
 export default async function DashboardPage() {
@@ -73,10 +73,10 @@ export default async function DashboardPage() {
 
       {/* Stat cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <StatCard label="Pending"         value={stats.pending}        icon={Clock}        href="/bookings"              accent={stats.pending > 0 ? '#d97706' : undefined}  sub="awaiting assignment" />
-        <StatCard label="In Transit"      value={stats.active}         icon={Zap}          href="/bookings?tab=assigned" accent={stats.active > 0 ? '#2563eb' : undefined}   sub="active deliveries" />
+        <StatCard label="Pending"         value={stats.pending}        icon={Clock}        href="/admin/bookings"              accent={stats.pending > 0 ? '#d97706' : undefined}  sub="awaiting assignment" />
+        <StatCard label="In Transit"      value={stats.active}         icon={Zap}          href="/admin/bookings?tab=assigned" accent={stats.active > 0 ? '#2563eb' : undefined}   sub="active deliveries" />
         <StatCard label="Delivered Today" value={stats.todayDelivered} icon={CheckCircle2}                               accent="#16a34a"                                    sub="completed today" />
-        <StatCard label="Drivers"         value={drivers.length} icon={Users} href="/drivers" accent="#16a34a" sub="registered drivers" />
+        <StatCard label="Drivers"         value={drivers.length} icon={Users} href="/admin/drivers" accent="#16a34a" sub="registered drivers" />
       </div>
 
       <div className="grid lg:grid-cols-2 gap-5">
@@ -110,7 +110,7 @@ export default async function DashboardPage() {
         <div className="rounded-xl border border-border bg-white overflow-hidden anim-fade-up s3">
           <div className="px-5 py-4 border-b border-border flex items-center justify-between">
             <h2 className="text-sm font-semibold" style={{ color: 'var(--fg)' }}>Driver Fleet</h2>
-            <Link href="/drivers" className="text-xs font-medium" style={{ color: 'var(--accent)' }}>
+            <Link href="/admin/drivers" className="text-xs font-medium" style={{ color: 'var(--accent)' }}>
               View all →
             </Link>
           </div>
@@ -118,13 +118,13 @@ export default async function DashboardPage() {
             <div className="px-5 py-8 text-center">
               <Users size={28} className="mx-auto mb-2 opacity-20" style={{ color: 'var(--fg-3)' }} />
               <p className="text-sm" style={{ color: 'var(--fg-3)' }}>No drivers registered yet.</p>
-              <Link href="/drivers/new" className="mt-2 inline-block text-xs font-medium" style={{ color: 'var(--primary)' }}>Add first driver →</Link>
+              <Link href="/admin/drivers/new" className="mt-2 inline-block text-xs font-medium" style={{ color: 'var(--primary)' }}>Add first driver →</Link>
             </div>
           ) : (
             <ul className="divide-y divide-border">
               {drivers.slice(0, 7).map((d) => (
                 <li key={d._id.toString()}>
-                  <Link href={`/drivers/${d._id}`} className="flex items-center gap-3 px-5 py-3 transition-colors hover:bg-(--surface-2)">
+                  <Link href={`/admin/drivers/${d._id}`} className="flex items-center gap-3 px-5 py-3 transition-colors hover:bg-(--surface-2)">
                     <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
                       style={{ background: 'var(--accent-dim)', color: 'var(--accent)' }}>
                       {d.name.charAt(0).toUpperCase()}

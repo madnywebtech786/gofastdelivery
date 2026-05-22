@@ -42,7 +42,7 @@ export default async function AdminDriverDetailPage({ params }) {
   return (
     <div className="space-y-5 max-w-2xl">
       <div className="flex items-center gap-3 anim-fade-up">
-        <Link href="/drivers" className="p-1.5 rounded-lg transition-colors hover:bg-(--surface-2)" style={{ color: 'var(--fg-3)' }}>
+        <Link href="/admin/drivers" className="p-1.5 rounded-lg transition-colors hover:bg-(--surface-2)" style={{ color: 'var(--fg-3)' }}>
           <ArrowLeft size={16} />
         </Link>
         <h1 className="text-2xl font-bold" style={{ color: 'var(--fg)' }}>{d.name}</h1>

@@ -701,7 +701,7 @@ export default function DriverRoutePage() {
   // (expandedStopIndex is set to null inside handleStopComplete / handleStopFailed)
 
   function handleGoHome() {
-    router.push('/home')
+    router.push('/driver/home')
   }
 
   async function handleSignOut() {

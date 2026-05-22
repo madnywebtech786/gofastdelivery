@@ -9,10 +9,10 @@ import {
 } from 'lucide-react'
 
 const NAV = [
-  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/bookings',  label: 'Bookings',  icon: PackageOpen },
-  { href: '/drivers',   label: 'Drivers',   icon: Users },
-  { href: '/pricing',   label: 'Pricing',   icon: Tag },
+  { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/admin/bookings',  label: 'Bookings',  icon: PackageOpen },
+  { href: '/admin/drivers',   label: 'Drivers',   icon: Users },
+  { href: '/admin/pricing',   label: 'Pricing',   icon: Tag },
 ]
 
 export default function AdminLayout({ children }) {
@@ -44,7 +44,7 @@ export default function AdminLayout({ children }) {
       {/* Nav */}
       <nav className="flex-1 px-3 py-4 space-y-0.5">
         {NAV.map(({ href, label, icon: Icon }) => {
-          const active = pathname === href || (href !== '/dashboard' && pathname.startsWith(href))
+          const active = pathname === href || (href !== '/admin/dashboard' && pathname.startsWith(href))
           return (
             <Link
               key={href}

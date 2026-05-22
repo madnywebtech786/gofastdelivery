@@ -246,7 +246,7 @@ export default function DriverStopsPage() {
       {showNavigate && (
         <div className="mx-4 mt-5">
           <button
-            onClick={() => router.push('/route')}
+            onClick={() => router.push('/driver/route')}
             className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-sm font-bold transition-all active:scale-[0.98] text-white"
             style={{
               background: completed > 0 ? '#d97706' : 'var(--accent)',

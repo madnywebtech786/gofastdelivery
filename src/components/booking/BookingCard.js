@@ -14,7 +14,7 @@ export default function BookingCard({ booking, href }) {
   const extraStops  = Math.max(0, (booking.stops?.length ?? 0) - 2)
 
   return (
-    <Link href={href ?? `/my-bookings/${booking._id}`} className="group block">
+    <Link href={href ?? `/customer/my-bookings/${booking._id}`} className="group block">
       <div
         className="rounded-2xl border border-border bg-white p-4 transition-all duration-200 hover:shadow-md hover:border-(--border-2)"
         style={{ position: 'relative', overflow: 'hidden' }}

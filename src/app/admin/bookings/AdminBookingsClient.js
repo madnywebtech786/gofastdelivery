@@ -497,7 +497,7 @@ export default function AdminBookingsClient({ initialStatusFilter, initialPage, 
                     </div>
 
                     <Link
-                      href={`/bookings/${b._id}`}
+                      href={`/admin/bookings/${b._id}`}
                       onClick={(e) => e.stopPropagation()}
                       className="shrink-0 mt-1 p-1.5 rounded-lg transition-colors hover:bg-(--surface-2)"
                       style={{ color: 'var(--fg-3)' }}

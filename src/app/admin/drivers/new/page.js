@@ -71,7 +71,7 @@ export default function AddDriverPage() {
               <Button variant="primary" onClick={copyCredentials} icon={<Copy size={13} />}>
                 {copied ? 'Copied!' : 'Copy Credentials'}
               </Button>
-              <Button variant="secondary" onClick={() => router.push('/drivers')}>Back to Drivers</Button>
+              <Button variant="secondary" onClick={() => router.push('/admin/drivers')}>Back to Drivers</Button>
             </div>
           </div>
         </div>
@@ -82,7 +82,7 @@ export default function AddDriverPage() {
   return (
     <div className="max-w-lg">
       <div className="flex items-center gap-3 mb-6 anim-fade-up">
-        <button onClick={() => router.push('/drivers')}
+        <button onClick={() => router.push('/admin/drivers')}
           className="p-1.5 rounded-lg transition-colors hover:bg-(--surface-2)"
           style={{ color: 'var(--fg-3)' }}>
           <ArrowLeft size={16} />
@@ -122,7 +122,7 @@ export default function AddDriverPage() {
 
           <div className="flex gap-3 pt-1">
             <Button type="submit" loading={loading} variant="primary">Create Driver</Button>
-            <Button type="button" variant="secondary" onClick={() => router.push('/drivers')}>Cancel</Button>
+            <Button type="button" variant="secondary" onClick={() => router.push('/admin/drivers')}>Cancel</Button>
           </div>
         </form>
       </div>

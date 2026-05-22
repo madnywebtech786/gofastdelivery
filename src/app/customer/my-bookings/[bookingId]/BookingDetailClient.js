@@ -86,7 +86,7 @@ export default function BookingDetailClient({ booking: initial, origin }) {
 
       {/* ── Back + Header ─────────────────────────────────────────── */}
       <div className="flex items-center gap-3 anim-fade-up">
-        <Link href="/my-bookings"
+        <Link href="/customer/my-bookings"
           className="p-2 rounded-xl border border-border bg-white transition-all hover:bg-(--surface-2) shrink-0"
           style={{ color: 'var(--fg-3)' }}>
           <ArrowLeft size={15} />

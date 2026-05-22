@@ -323,7 +323,7 @@ export default function BookingForm() {
       )
 
       // Navigate and refresh to ensure new booking appears immediately
-      router.push('/my-bookings')
+      router.push('/customer/my-bookings')
       router.refresh()
     } catch {
       setError('Network error. Please try again.')

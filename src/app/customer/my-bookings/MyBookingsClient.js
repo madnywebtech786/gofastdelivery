@@ -122,7 +122,7 @@ export default function MyBookingsClient({ bookings: initial }) {
             {counts.total} total · {counts.active} active · {counts.delivered} delivered
           </p>
         </div>
-        <Link href="/book">
+        <Link href="/customer/book">
           <button className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white shrink-0 transition-all hover:shadow-lg active:scale-95"
             style={{ background: 'var(--accent)', boxShadow: '0 2px 12px var(--accent-glow)' }}>
             <Plus size={14} />
@@ -256,7 +256,7 @@ export default function MyBookingsClient({ bookings: initial }) {
                               Cancel
                             </button>
                           )}
-                          <Link href={`/my-bookings/${b._id}`}
+                          <Link href={`/customer/my-bookings/${b._id}`}
                             className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all"
                             style={{ color: 'var(--accent)', background: 'var(--accent-dim)' }}>
                             View <ArrowRight size={11} />
@@ -312,7 +312,7 @@ export default function MyBookingsClient({ bookings: initial }) {
                           <Trash2 size={11} /> Cancel
                         </button>
                       )}
-                      <Link href={`/my-bookings/${b._id}`}
+                      <Link href={`/customer/my-bookings/${b._id}`}
                         className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold"
                         style={{ color: 'var(--accent)', background: 'var(--accent-dim)' }}>
                         View <ArrowRight size={11} />

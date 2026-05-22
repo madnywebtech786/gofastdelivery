@@ -8,9 +8,9 @@ import Select from '@/components/ui/Select'
 import Button from '@/components/ui/Button'
 
 const ROLE_DASHBOARDS = {
-  admin: '/dashboard',
-  driver: '/home',
-  customer: '/overview',
+  admin:    '/admin/dashboard',
+  driver:   '/driver/home',
+  customer: '/customer/overview',
 }
 
 const DEV_ACCOUNTS = [

@@ -20,7 +20,7 @@ export default async function AdminDriversPage() {
             {drivers.length} driver{drivers.length !== 1 ? 's' : ''} total
           </p>
         </div>
-        <Link href="/drivers/new">
+        <Link href="/admin/drivers/new">
           <Button variant="primary" size="sm" icon={<UserPlus size={14} />}>Add Driver</Button>
         </Link>
       </div>
@@ -31,7 +31,7 @@ export default async function AdminDriversPage() {
             <Truck size={22} style={{ color: 'var(--fg-3)' }} />
           </div>
           <p className="text-sm font-medium" style={{ color: 'var(--fg-2)' }}>No drivers registered yet.</p>
-          <Link href="/drivers/new" className="mt-3 inline-block text-sm font-semibold" style={{ color: 'var(--accent)' }}>
+          <Link href="/admin/drivers/new" className="mt-3 inline-block text-sm font-semibold" style={{ color: 'var(--accent)' }}>
             Add your first driver →
           </Link>
         </div>
@@ -78,7 +78,7 @@ export default async function AdminDriversPage() {
                         </span>
                       </td>
                       <td className="text-right">
-                        <Link href={`/drivers/${d._id}`}
+                        <Link href={`/admin/drivers/${d._id}`}
                           className="inline-flex items-center gap-1 text-xs font-semibold transition-colors hover:text-accent"
                           style={{ color: 'var(--fg-3)' }}
                         >
@@ -97,7 +97,7 @@ export default async function AdminDriversPage() {
             {drivers.map((d) => {
               const VIcon = VEHICLE_ICONS[d.driverProfile?.vehicleType] ?? Truck
               return (
-                <Link key={d._id.toString()} href={`/drivers/${d._id}`}
+                <Link key={d._id.toString()} href={`/admin/drivers/${d._id}`}
                   className="flex items-center gap-3 px-4 py-3.5 hover:bg-(--surface-2) transition-colors">
                   <div className="w-9 h-9 rounded-full flex items-center justify-center font-bold shrink-0"
                     style={{ background: 'var(--accent-dim)', color: 'var(--accent)' }}>

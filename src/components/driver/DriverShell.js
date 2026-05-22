@@ -5,7 +5,7 @@ import Link from 'next/link'
 
 const TABS = [
   {
-    href: '/home',
+    href: '/driver/home',
     label: 'Home',
     icon: (active) => (
       <svg width="22" height="22" viewBox="0 0 24 24" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -15,7 +15,7 @@ const TABS = [
     ),
   },
   {
-    href: '/pickups',
+    href: '/driver/pickups',
     label: 'Stops',
     icon: (active) => (
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -25,7 +25,7 @@ const TABS = [
     ),
   },
   {
-    href: '/route',
+    href: '/driver/route',
     label: 'Navigate',
     icon: (active) => (
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -35,7 +35,7 @@ const TABS = [
     ),
   },
   {
-    href: '/history',
+    href: '/driver/history',
     label: 'History',
     icon: (active) => (
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -55,7 +55,7 @@ export default function DriverShell({ children }) {
     router.replace('/login')
   }
 
-  const isMapPage = pathname === '/route'
+  const isMapPage = pathname === '/driver/route'
 
   return (
     <div className="min-h-screen bg-[#f5f5f7] flex flex-col">
@@ -91,8 +91,8 @@ export default function DriverShell({ children }) {
           style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
         >
           {TABS.map((tab) => {
-            const active = pathname === tab.href || (tab.href === '/home' && pathname === '/')
-            const isNavigate = tab.href === '/route'
+            const active = pathname === tab.href || (tab.href === '/driver/home' && pathname === '/driver')
+            const isNavigate = tab.href === '/driver/route'
             return (
               <Link
                 key={tab.href}
