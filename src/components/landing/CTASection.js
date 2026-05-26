@@ -22,7 +22,7 @@ export default function CTASection() {
     <section
       ref={ref}
       className="relative overflow-hidden"
-      style={{ background: '#0d0d0d' }}
+      style={{ background: '#faf8f4' }}
     >
       {/* Animated speed streaks */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
@@ -86,8 +86,8 @@ export default function CTASection() {
           }}
         >
           <h2
-            className="font-black text-white leading-[0.95] tracking-tight"
-            style={{ fontSize: 'clamp(3rem, 8vw, 7rem)' }}
+            className="font-black leading-[0.95] tracking-tight"
+            style={{ fontSize: 'clamp(3rem, 8vw, 7rem)', color: '#0d0d0d' }}
           >
             Ship It.
           </h2>
@@ -107,7 +107,7 @@ export default function CTASection() {
         <p
           className="text-base md:text-lg text-center max-w-xl leading-relaxed mb-10"
           style={{
-            color: 'rgba(255,255,255,0.45)',
+            color: 'rgba(0,0,0,0.5)',
             opacity: isVisible ? 1 : 0,
             transform: isVisible ? 'translateY(0)' : 'translateY(20px)',
             transition: 'opacity 0.6s ease 0.22s, transform 0.6s ease 0.22s',
@@ -138,8 +138,8 @@ export default function CTASection() {
             href="#contact"
             className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 py-4 rounded-2xl font-black text-sm transition-all hover:border-white/30"
             style={{
-              border: '1.5px solid rgba(255,255,255,0.12)',
-              color: 'rgba(255,255,255,0.6)',
+              border: '1.5px solid rgba(0,0,0,0.15)',
+              color: 'rgba(0,0,0,0.65)',
               fontSize: '0.95rem',
             }}
           >
@@ -156,7 +156,7 @@ export default function CTASection() {
           }}
         >
           {TRUST_ITEMS.map((item, i) => (
-            <span key={item} className="flex items-center gap-2 text-xs font-semibold" style={{ color: 'rgba(255,255,255,0.3)' }}>
+            <span key={item} className="flex items-center gap-2 text-xs font-semibold" style={{ color: 'rgba(0,0,0,0.45)' }}>
               <span className="w-1 h-1 rounded-full" style={{ background: i % 2 === 0 ? '#ff580d' : '#1bb908', opacity: 0.7 }} />
               {item}
             </span>

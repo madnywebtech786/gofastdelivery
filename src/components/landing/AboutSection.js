@@ -16,7 +16,7 @@ function StatRow({ stat, active, index }) {
   const count = useCountUp(stat.target, 2000, active)
   return (
     <div
-      className="flex items-baseline gap-4 py-5 border-b last:border-b-0"
+      className="flex items-center gap-4 py-5 border-b last:border-b-0"
       style={{
         borderColor: 'rgba(0,0,0,0.07)',
         opacity: active ? 1 : 0,
@@ -26,7 +26,7 @@ function StatRow({ stat, active, index }) {
     >
       <span
         className="font-black leading-none tabular-nums"
-        style={{ fontSize: 'clamp(2.2rem, 4vw, 3rem)', color: 'var(--brand-orange)' }}
+        style={{ fontSize: 'clamp(1.6rem, 3vw, 2.2rem)', color: '#e51c1c' }}
       >
         {count.toLocaleString()}{stat.suffix}
       </span>
@@ -46,7 +46,7 @@ export default function AboutSection() {
       id="about"
       ref={ref}
       className="relative overflow-hidden"
-      style={{ background: '#ffffff' }}
+      style={{ background: '#faf8f4' }}
     >
       <div className="grid grid-cols-1 lg:grid-cols-2 min-h-170">
 
@@ -92,7 +92,7 @@ export default function AboutSection() {
             </div>
             <p className="text-2xl font-black text-white leading-tight drop-shadow-lg">
               Calgary&apos;s #1<br />
-              <span style={{ color: '#ff580d' }}>Courier Service</span>
+              <span style={{ color: '#1bb908' }}>Courier Service</span>
             </p>
           </div>
 
@@ -104,22 +104,23 @@ export default function AboutSection() {
               transition: 'opacity 0.8s ease 0.4s',
             }}
           >
-            <span className="text-[9px] font-black text-white tracking-[0.3em] uppercase">Est.</span>
-            <span className="text-3xl font-black text-white leading-none">2022</span>
+            <span className="text-[9px] font-black text-white tracking-[0.3em] uppercase">Experience</span>
+            <span className="text-3xl font-black text-white leading-none">10+</span>
+            <span className="text-[9px] font-black text-white tracking-[0.2em] uppercase">Years</span>
           </div>
         </div>
 
         {/* ── RIGHT: Content pane ── */}
         <div
           className="relative order-1 lg:order-2 flex flex-col justify-center px-8 sm:px-12 lg:px-16 py-20 lg:py-24 overflow-hidden"
-          style={{ background: '#ffffff' }}
+          style={{ background: '#faf8f4' }}
         >
           {/* Giant watermark word */}
           <span
             className="absolute right-0 top-1/2 -translate-y-1/2 font-black select-none pointer-events-none leading-none"
             style={{
               fontSize: 'clamp(6rem, 14vw, 11rem)',
-              color: 'rgba(255,88,13,0.05)',
+              color: 'rgba(0,0,0,0.04)',
               letterSpacing: '-0.05em',
               right: '-0.1em',
               whiteSpace: 'nowrap',
@@ -159,10 +160,10 @@ export default function AboutSection() {
               <GradientHeading
                 parts={[
                   { text: "Calgary's ", color: 'black' },
-                  { text: 'Most Trusted', color: 'orange', highlight: true },
+                  { text: 'Most Trusted', color: 'black', highlight: true },
                   { text: '\nCourier', color: 'green' },
                 ]}
-                className="text-3xl sm:text-4xl lg:text-5xl"
+                className="text-2xl sm:text-3xl lg:text-4xl"
               />
             </div>
 
@@ -175,7 +176,7 @@ export default function AboutSection() {
               }}
             >
               <p className="text-base leading-relaxed" style={{ color: 'var(--landing-text-2)' }}>
-                GoFastDelivery is Calgary&apos;s premier same-day courier — built on speed, reliability, and care that big logistics companies can&apos;t match. Every delivery is handled by a verified local driver and tracked live.
+                GoFastDelivery is Calgary&apos;s premier same-day courier, backed by a team with <strong>10+ years of logistics experience</strong> and built on speed, reliability, and care that big logistics companies can&apos;t match. Every delivery is handled by a verified local driver and tracked live.
               </p>
             </div>
 
@@ -193,8 +194,8 @@ export default function AboutSection() {
                   key={pill}
                   className="px-3 py-1.5 rounded-full text-[11px] font-black uppercase tracking-wider"
                   style={{
-                    background: i % 2 === 0 ? 'var(--brand-orange-dim)' : 'var(--brand-green-dim)',
-                    color: i % 2 === 0 ? 'var(--brand-orange)' : 'var(--brand-green)',
+                    background: 'var(--brand-green-dim)',
+                    color: 'var(--brand-green)',
                   }}
                 >
                   {pill}
@@ -206,7 +207,7 @@ export default function AboutSection() {
             <div
               className="h-px w-full"
               style={{
-                background: 'linear-gradient(90deg, var(--brand-orange), var(--brand-green), transparent)',
+                background: 'linear-gradient(90deg, var(--brand-black), var(--brand-green), transparent)',
                 opacity: 0.2,
               }}
             />
@@ -229,7 +230,7 @@ export default function AboutSection() {
               <a
                 href="/login"
                 className="inline-flex items-center gap-2 px-7 py-3.5 rounded-2xl text-white font-black text-sm transition-all hover:opacity-90 shadow-lg"
-                style={{ background: 'var(--brand-orange)' }}
+                style={{ background: 'var(--brand-green)' }}
               >
                 Start a Delivery
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">

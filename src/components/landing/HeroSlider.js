@@ -19,7 +19,7 @@ const SLIDES = [
       { text: '\nDelivery', color: 'green' },
       { text: ' Service',   color: 'black' },
     ],
-    sub: 'Same-day pickup. Same-day delivered. Serving Calgary and surrounding areas with speed you can count on.',
+    sub: '10+ years of logistics expertise behind every delivery. Serving Calgary and surrounding areas with same-day speed you can count on.',
     cta1: { label: 'Get Started',  href: '/login' },
     cta2: { label: 'Our Services', href: '#services' },
     badge: { icon: Clock, text: 'Avg delivery under 3 hrs' },
@@ -63,7 +63,7 @@ function animateIn(el) {
   if (!el) return
   el.classList.remove('animate')
   el.style.opacity = '0'
-  el.style.transform = 'translateY(28px)'
+  el.style.transform = 'translateX(40px)'
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
       el.style.opacity = ''
@@ -77,7 +77,7 @@ function resetContent(el) {
   if (!el) return
   el.classList.remove('animate')
   el.style.opacity = '0'
-  el.style.transform = 'translateY(28px)'
+  el.style.transform = 'translateX(40px)'
 }
 
 export default function HeroSlider() {
@@ -143,11 +143,11 @@ export default function HeroSlider() {
                     <div className="flex items-center gap-3">
                       <span
                         className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-black tracking-widest uppercase"
-                        style={{ background: 'var(--brand-orange-dim)', color: 'var(--brand-orange)' }}
+                        style={{ background: 'var(--brand-green-dim)', color: 'var(--brand-green)' }}
                       >
                         <span
                           className="w-1.5 h-1.5 rounded-full inline-block"
-                          style={{ background: 'var(--brand-orange)', boxShadow: '0 0 6px var(--brand-orange)' }}
+                          style={{ background: 'var(--brand-green)', boxShadow: '0 0 6px var(--brand-green)' }}
                         />
                         Calgary&apos;s #1 Courier
                       </span>
@@ -157,7 +157,7 @@ export default function HeroSlider() {
                     <GradientHeading
                       parts={slide.parts}
                       as="h1"
-                      className="text-4xl sm:text-5xl lg:text-6xl leading-[1.08]"
+                      className="text-3xl sm:text-4xl lg:text-5xl leading-[1.08]"
                     />
 
                     {/* Sub */}
@@ -179,9 +179,9 @@ export default function HeroSlider() {
                     >
                       <div
                         className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
-                        style={{ background: 'var(--brand-orange-dim)' }}
+                        style={{ background: 'var(--brand-green-dim)' }}
                       >
-                        <BadgeIcon size={16} style={{ color: 'var(--brand-orange)' }} strokeWidth={2.5} />
+                        <BadgeIcon size={16} style={{ color: 'var(--brand-green)' }} strokeWidth={2.5} />
                       </div>
                       <span className="text-sm font-bold" style={{ color: 'var(--landing-text)' }}>
                         {slide.badge.text}
@@ -193,7 +193,7 @@ export default function HeroSlider() {
                       <Link
                         href={slide.cta1.href}
                         className="inline-flex items-center gap-2 px-7 py-4 rounded-2xl text-white font-black text-sm transition-all shadow-lg cta-pulse group"
-                        style={{ background: 'var(--brand-orange)', fontSize: '0.9rem' }}
+                        style={{ background: 'var(--brand-green)', fontSize: '0.9rem' }}
                       >
                         {slide.cta1.label}
                         <ArrowRight size={16} className="group-hover:translate-x-0.5 transition-transform" />
@@ -227,7 +227,7 @@ export default function HeroSlider() {
                         ))}
                       </div>
                       <p className="text-xs font-semibold" style={{ color: 'var(--landing-text-2)' }}>
-                        <span className="font-black" style={{ color: 'var(--landing-text)' }}>2,500+</span> deliveries completed this month
+                        <span className="font-black" style={{ color: 'var(--stat-color)' }}>2,500+</span> deliveries completed this month
                       </p>
                     </div>
                   </div>
@@ -287,7 +287,7 @@ export default function HeroSlider() {
                       >
                         <div
                           className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
-                          style={{ background: 'var(--brand-orange)' }}
+                          style={{ background: 'var(--brand-green)' }}
                         >
                           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M5 12h14M12 5l7 7-7 7" />
@@ -295,7 +295,7 @@ export default function HeroSlider() {
                         </div>
                         <div>
                           <p className="text-xs font-semibold" style={{ color: 'var(--landing-text-2)' }}>Avg Delivery</p>
-                          <p className="text-sm font-black" style={{ color: 'var(--brand-orange)' }}>Under 3 Hours</p>
+                          <p className="text-sm font-black" style={{ color: 'var(--stat-color)' }}>Under 3 Hours</p>
                         </div>
                       </div>
 

@@ -317,7 +317,7 @@ export default function ServiceAreasSection() {
       id="areas"
       ref={ref}
       className="relative py-24 overflow-hidden"
-      style={{ background: '#faf8f4' }}
+      style={{ background: '#ffffff' }}
     >
       {/* Topographic contour background — large faint rings */}
       <div
@@ -356,14 +356,14 @@ export default function ServiceAreasSection() {
           <GradientHeading
             parts={[
               { text: 'We Deliver ', color: 'black' },
-              { text: 'Across',      color: 'orange', highlight: true },
+              { text: 'Across',      color: 'black', highlight: true },
               { text: ' Calgary',    color: 'green' },
               { text: ' & Beyond',  color: 'black' },
             ]}
-            className="text-3xl sm:text-4xl lg:text-5xl"
+            className="text-2xl sm:text-3xl lg:text-4xl"
           />
           <p className="mt-4 text-base max-w-lg mx-auto" style={{ color: 'var(--landing-text-2)' }}>
-            Same-day delivery across the greater Calgary metro area — 12+ communities, one seamless service.
+            Same-day delivery across the greater Calgary metro area. 12+ communities, one seamless service.
           </p>
         </div>
 
@@ -422,7 +422,7 @@ export default function ServiceAreasSection() {
                   className="flex flex-col items-center py-4 text-center"
                   style={{ borderRight: i < 2 ? '1px solid rgba(0,0,0,0.06)' : 'none' }}
                 >
-                  <span className="text-lg font-black" style={{ color: 'var(--brand-orange)' }}>{val}</span>
+                  <span className="text-lg font-black" style={{ color: 'var(--stat-color)' }}>{val}</span>
                   <span className="text-[10px] font-semibold mt-0.5" style={{ color: 'var(--landing-text-2)' }}>{label}</span>
                 </div>
               ))}
@@ -471,7 +471,7 @@ export default function ServiceAreasSection() {
               <div className="relative">
                 <p className="text-sm font-black text-white">Not sure we cover you?</p>
                 <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.75)' }}>
-                  Message us — we&apos;ll confirm within minutes.
+                  Message us and we&apos;ll confirm within minutes.
                 </p>
               </div>
               <a

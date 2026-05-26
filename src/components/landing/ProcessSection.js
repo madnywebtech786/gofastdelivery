@@ -9,7 +9,7 @@ const STEPS = [
     icon: UserPlus,
     title: 'Create Account',
     detail: 'Free in 2 min',
-    desc: 'Sign up for free in under 2 minutes. No credit card, no commitment — just your name and email.',
+    desc: 'Sign up for free in under 2 minutes. No credit card, no commitment. Just your name and email.',
     accent: '#ff580d',
     dim: 'rgba(255,88,13,0.08)',
     tilt: '-rotate-1',
@@ -156,7 +156,7 @@ export default function ProcessSection() {
       id="process"
       ref={ref}
       className="relative py-24 overflow-hidden"
-      style={{ background: '#faf8f4' }}
+      style={{ background: '#ffffff' }}
     >
       {/* Paper grain on section bg */}
       <div
@@ -207,13 +207,13 @@ export default function ProcessSection() {
           <GradientHeading
             parts={[
               { text: 'Four Steps ', color: 'black' },
-              { text: 'to Fast',     color: 'orange', highlight: true },
+              { text: 'to Fast',     color: 'black', highlight: true },
               { text: ' Delivery',   color: 'green' },
             ]}
-            className="text-3xl sm:text-4xl lg:text-5xl"
+            className="text-2xl sm:text-3xl lg:text-4xl"
           />
           <p className="mt-4 text-base max-w-md mx-auto" style={{ color: 'var(--landing-text-2)' }}>
-            From sign-up to doorstep — the whole process takes minutes, not hours.
+            From sign-up to doorstep, the whole process takes minutes, not hours.
           </p>
         </div>
 

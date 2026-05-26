@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
 import Image from 'next/image'
-import { Zap, MapPin, Building2, Clock, ArrowUpRight } from 'lucide-react'
+import { Zap, MapPin, Building2, Clock, Flame, ArrowUpRight } from 'lucide-react'
 import GradientHeading from './GradientHeading'
 import { useIntersectionObserver } from './hooks/useIntersectionObserver'
 
@@ -24,7 +24,7 @@ const SERVICES = [
     icon: MapPin,
     title: 'Express Pickup',
     tagline: 'Booked in minutes. At your door fast.',
-    desc: 'Schedule a pickup in seconds from your phone. Our nearest driver heads to you immediately — no waiting, no stress.',
+    desc: 'Schedule a pickup in seconds from your phone. Our nearest driver heads to you immediately, with no waiting and no stress.',
     stat: '15 min',
     statLabel: 'avg pickup time',
     accent: '#1bb908',
@@ -58,6 +58,19 @@ const SERVICES = [
     imgAlt: 'Delivery driver checking schedule on phone',
     tags: ['Recurring', 'Automated', 'Zero effort'],
   },
+  {
+    num: '05',
+    icon: Flame,
+    title: 'Hotshot Delivery',
+    tagline: 'When it absolutely cannot wait.',
+    desc: 'Dedicated single-load rush delivery for time-critical freight. One driver, one pickup, one destination with no stops and no delays. Ideal for urgent parts, medical supplies, legal documents, and last-minute business shipments across Calgary and beyond.',
+    stat: '1 hr',
+    statLabel: 'priority dispatch',
+    accent: '#ff580d',
+    img: 'https://images.pexels.com/photos/4391470/pexels-photo-4391470.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&fit=crop',
+    imgAlt: 'Driver rushing an urgent hotshot delivery',
+    tags: ['Rush freight', 'Dedicated driver', 'No stops'],
+  },
 ]
 
 function ServiceRow({ service, index, isOpen, onToggle, sectionVisible }) {
@@ -68,7 +81,7 @@ function ServiceRow({ service, index, isOpen, onToggle, sectionVisible }) {
     <div
       className="relative border-b overflow-hidden"
       style={{
-        borderColor: 'rgba(255,255,255,0.07)',
+        borderColor: 'rgba(0,0,0,0.07)',
         opacity: sectionVisible ? 1 : 0,
         transform: sectionVisible ? 'translateY(0)' : 'translateY(40px)',
         transition: `opacity 0.55s cubic-bezier(0.22,1,0.36,1) ${index * 0.09}s, transform 0.55s cubic-bezier(0.22,1,0.36,1) ${index * 0.09}s`,
@@ -89,7 +102,7 @@ function ServiceRow({ service, index, isOpen, onToggle, sectionVisible }) {
             className="shrink-0 font-black leading-none select-none transition-colors duration-300"
             style={{
               fontSize: 'clamp(2.5rem, 5vw, 4rem)',
-              color: isOpen ? service.accent : 'rgba(255,255,255,0.08)',
+              color: isOpen ? service.accent : 'rgba(0,0,0,0.1)',
               fontVariantNumeric: 'tabular-nums',
             }}
           >
@@ -102,14 +115,14 @@ function ServiceRow({ service, index, isOpen, onToggle, sectionVisible }) {
             style={{
               background: isOpen
                 ? (isOrange ? 'rgba(255,88,13,0.2)' : 'rgba(27,185,8,0.2)')
-                : 'rgba(255,255,255,0.05)',
-              border: `1px solid ${isOpen ? service.accent + '50' : 'rgba(255,255,255,0.08)'}`,
+                : 'rgba(0,0,0,0.05)',
+              border: `1px solid ${isOpen ? service.accent + '50' : 'rgba(0,0,0,0.1)'}`,
             }}
           >
             <Icon
               size={18}
               strokeWidth={2.2}
-              style={{ color: isOpen ? service.accent : 'rgba(255,255,255,0.4)', transition: 'color 0.3s' }}
+              style={{ color: isOpen ? service.accent : 'rgba(0,0,0,0.3)', transition: 'color 0.3s' }}
             />
           </div>
 
@@ -119,7 +132,7 @@ function ServiceRow({ service, index, isOpen, onToggle, sectionVisible }) {
               className="font-black leading-tight transition-colors duration-300"
               style={{
                 fontSize: 'clamp(1.1rem, 2.5vw, 1.5rem)',
-                color: isOpen ? '#ffffff' : 'rgba(255,255,255,0.65)',
+                color: isOpen ? '#0d0d0d' : 'rgba(0,0,0,0.55)',
               }}
             >
               {service.title}
@@ -127,7 +140,7 @@ function ServiceRow({ service, index, isOpen, onToggle, sectionVisible }) {
             <p
               className="text-xs md:text-sm font-medium mt-0.5 transition-all duration-300"
               style={{
-                color: isOpen ? service.accent : 'rgba(255,255,255,0.25)',
+                color: isOpen ? service.accent : 'rgba(0,0,0,0.25)',
                 maxHeight: isOpen ? '2em' : '0',
                 overflow: 'hidden',
               }}
@@ -147,7 +160,7 @@ function ServiceRow({ service, index, isOpen, onToggle, sectionVisible }) {
             >
               {service.stat}
             </span>
-            <span className="text-[10px] font-semibold mt-0.5 uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.35)' }}>
+            <span className="text-[10px] font-semibold mt-0.5 uppercase tracking-widest" style={{ color: 'rgba(0,0,0,0.4)' }}>
               {service.statLabel}
             </span>
           </div>
@@ -156,14 +169,14 @@ function ServiceRow({ service, index, isOpen, onToggle, sectionVisible }) {
           <div
             className="shrink-0 w-8 h-8 rounded-full flex items-center justify-center transition-all duration-300"
             style={{
-              background: isOpen ? service.accent : 'rgba(255,255,255,0.06)',
+              background: isOpen ? service.accent : 'rgba(0,0,0,0.07)',
               transform: isOpen ? 'rotate(45deg)' : 'rotate(0deg)',
             }}
           >
             <ArrowUpRight
               size={14}
               strokeWidth={2.5}
-              style={{ color: isOpen ? '#fff' : 'rgba(255,255,255,0.4)' }}
+              style={{ color: isOpen ? '#fff' : 'rgba(0,0,0,0.35)' }}
             />
           </div>
         </div>
@@ -182,7 +195,7 @@ function ServiceRow({ service, index, isOpen, onToggle, sectionVisible }) {
 
           {/* Left: desc + tags + stat (mobile) */}
           <div className="flex-1 flex flex-col gap-5 md:pr-10">
-            <p className="text-sm md:text-base leading-relaxed" style={{ color: 'rgba(255,255,255,0.55)' }}>
+            <p className="text-sm md:text-base leading-relaxed" style={{ color: 'rgba(0,0,0,0.55)' }}>
               {service.desc}
             </p>
 
@@ -206,7 +219,7 @@ function ServiceRow({ service, index, isOpen, onToggle, sectionVisible }) {
             {/* Stat mobile */}
             <div className="flex md:hidden items-center gap-3">
               <span className="text-3xl font-black" style={{ color: service.accent }}>{service.stat}</span>
-              <span className="text-xs uppercase tracking-widest font-semibold" style={{ color: 'rgba(255,255,255,0.35)' }}>{service.statLabel}</span>
+              <span className="text-xs uppercase tracking-widest font-semibold" style={{ color: 'rgba(0,0,0,0.4)' }}>{service.statLabel}</span>
             </div>
           </div>
 
@@ -278,7 +291,7 @@ export default function ServicesSection() {
       id="services"
       ref={ref}
       className="relative overflow-hidden"
-      style={{ background: '#0d0d0d' }}
+      style={{ background: '#ffffff' }}
     >
       {/* Ambient glow */}
       <div
@@ -292,7 +305,7 @@ export default function ServicesSection() {
       {/* Scrolling marquee strip */}
       <div
         className="relative border-b overflow-hidden"
-        style={{ borderColor: 'rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.02)' }}
+        style={{ borderColor: 'rgba(0,0,0,0.06)', background: 'rgba(0,0,0,0.03)' }}
       >
         <div className="flex whitespace-nowrap" style={{ animation: 'marquee-scroll 18s linear infinite' }}>
           {[...Array(3)].map((_, rep) => (
@@ -301,7 +314,7 @@ export default function ServicesSection() {
                 <span key={i} className="inline-flex items-center gap-4 px-6 py-3">
                   <span
                     className="text-[10px] font-black tracking-[0.25em] uppercase"
-                    style={{ color: i % 2 === 0 ? 'rgba(255,88,13,0.5)' : 'rgba(255,255,255,0.15)' }}
+                    style={{ color: i % 2 === 0 ? 'rgba(255,88,13,0.6)' : 'rgba(0,0,0,0.25)' }}
                   >
                     {word}
                   </span>
@@ -326,25 +339,25 @@ export default function ServicesSection() {
             </span>
             <GradientHeading
               parts={[
-                { text: 'Our ',      color: 'white' },
-                { text: 'Delivery',  color: 'orange', highlight: true },
+                { text: 'Our ',      color: 'black' },
+                { text: 'Delivery',  color: 'green', highlight: true },
                 { text: '\nServices', color: 'green' },
               ]}
-              className="text-3xl sm:text-4xl lg:text-5xl"
+              className="text-2xl sm:text-3xl lg:text-4xl"
             />
           </div>
           <p
             className="text-sm leading-relaxed max-w-xs"
-            style={{ color: 'rgba(255,255,255,0.35)' }}
+            style={{ color: 'rgba(0,0,0,0.45)' }}
           >
-            Four ways we move Calgary forward — pick the one that fits your need.
+            Five ways we move Calgary forward. Pick the one that fits your need.
           </p>
         </div>
 
         {/* Accordion list */}
         <div
           className="border-t"
-          style={{ borderColor: 'rgba(255,255,255,0.07)' }}
+          style={{ borderColor: 'rgba(0,0,0,0.07)' }}
         >
           {SERVICES.map((service, i) => (
             <ServiceRow
@@ -363,7 +376,7 @@ export default function ServicesSection() {
       {/* Bottom marquee strip */}
       <div
         className="relative border-t overflow-hidden"
-        style={{ borderColor: 'rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.02)' }}
+        style={{ borderColor: 'rgba(0,0,0,0.06)', background: 'rgba(0,0,0,0.03)' }}
       >
         <div className="flex whitespace-nowrap" style={{ animation: 'marquee-scroll 22s linear infinite reverse' }}>
           {[...Array(3)].map((_, rep) => (
@@ -372,7 +385,7 @@ export default function ServicesSection() {
                 <span key={i} className="inline-flex items-center gap-4 px-6 py-3">
                   <span
                     className="text-[10px] font-black tracking-[0.25em] uppercase"
-                    style={{ color: i % 2 === 0 ? 'rgba(27,185,8,0.45)' : 'rgba(255,255,255,0.12)' }}
+                    style={{ color: i % 2 === 0 ? 'rgba(27,185,8,0.6)' : 'rgba(0,0,0,0.22)' }}
                   >
                     {word}
                   </span>

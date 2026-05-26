@@ -10,8 +10,8 @@ const REVIEWS = [
     city: 'Calgary',
     role: 'Small Business Owner',
     initial: 'S',
-    color: '#ff580d',
-    quote: 'Absolutely incredible service. My package arrived two hours after pickup — faster than I expected. Will use GoFastDelivery for all my business deliveries from now on.',
+    color: '#e51c1c',
+    quote: 'Absolutely incredible service. My package arrived two hours after pickup, faster than I expected. Will use GoFastDelivery for all my business deliveries from now on.',
     highlight: 'two hours after pickup',
   },
   {
@@ -28,8 +28,8 @@ const REVIEWS = [
     city: 'Cochrane',
     role: 'Regular Customer',
     initial: 'L',
-    color: '#ff580d',
-    quote: 'Skeptical about same-day delivery to Cochrane — they absolutely nailed it. Friendly driver, careful handling, and perfectly on time every single visit.',
+    color: '#e51c1c',
+    quote: 'Skeptical about same-day delivery to Cochrane, but they absolutely nailed it. Friendly driver, careful handling, and perfectly on time every single visit.',
     highlight: 'perfectly on time',
   },
   {
@@ -46,7 +46,7 @@ const REVIEWS = [
     city: 'Chestermere',
     role: 'Online Retailer',
     initial: 'R',
-    color: '#ff580d',
+    color: '#e51c1c',
     quote: 'Booked at 9am, delivered by noon. My customers are happier than ever and I never have to worry about last-mile delivery again. Genuinely the best in Calgary.',
     highlight: 'best in Calgary',
   },
@@ -62,7 +62,7 @@ function highlightQuote(quote, highlight) {
       <mark
         style={{
           background: 'none',
-          color: 'var(--brand-orange)',
+          color: 'var(--brand-green)',
           fontStyle: 'normal',
           fontWeight: 900,
         }}
@@ -139,17 +139,17 @@ export default function ReviewsSection() {
         }}>
           <span
             className="inline-flex px-4 py-1.5 rounded-full text-xs font-bold tracking-widest uppercase mb-4"
-            style={{ background: 'var(--brand-orange-dim)', color: 'var(--brand-orange)' }}
+            style={{ background: 'var(--brand-green-dim)', color: 'var(--brand-green)' }}
           >
             Customer Reviews
           </span>
           <GradientHeading
             parts={[
               { text: 'Real Words from ', color: 'black' },
-              { text: 'Real',   color: 'orange', highlight: true },
+              { text: 'Real',   color: 'black', highlight: true },
               { text: ' Customers', color: 'green' },
             ]}
-            className="text-3xl sm:text-4xl lg:text-5xl"
+            className="text-2xl sm:text-3xl lg:text-4xl"
           />
         </div>
 
@@ -188,7 +188,7 @@ export default function ReviewsSection() {
               {/* Stars */}
               <div className="flex gap-1 mb-6 relative">
                 {[...Array(5)].map((_, i) => (
-                  <Star key={i} size={16} fill="var(--brand-orange)" color="var(--brand-orange)" />
+                  <Star key={i} size={16} fill="var(--stat-color)" color="var(--stat-color)" />
                 ))}
               </div>
 
@@ -250,7 +250,7 @@ export default function ReviewsSection() {
                 }}
               >
                 <div className="flex flex-col items-center shrink-0">
-                  <span className="text-5xl font-black leading-none" style={{ color: '#ff580d' }}>4.9</span>
+                  <span className="text-5xl font-black leading-none" style={{ color: 'var(--stat-color)' }}>4.9</span>
                   <div className="flex gap-0.5 mt-1.5">
                     {[...Array(5)].map((_, i) => (
                       <Star key={i} size={11} fill="#ff580d" color="#ff580d" />

@@ -151,20 +151,12 @@ export default function ContactSection() {
       id="contact"
       ref={ref}
       className="relative overflow-hidden"
-      style={{ background: '#111111' }}
+      style={{ background: '#faf8f4' }}
     >
-      {/* Subtle scanlines */}
-      <div
-        className="absolute inset-0 pointer-events-none"
-        style={{
-          backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255,255,255,0.012) 2px, rgba(255,255,255,0.012) 4px)',
-          backgroundSize: '100% 4px',
-        }}
-      />
       {/* Orange glow top-left */}
       <div
         className="absolute top-0 left-0 w-96 h-96 pointer-events-none"
-        style={{ background: 'radial-gradient(circle at top left, rgba(255,88,13,0.08) 0%, transparent 65%)', filter: 'blur(20px)' }}
+        style={{ background: 'radial-gradient(circle at top left, rgba(255,88,13,0.12) 0%, transparent 65%)', filter: 'blur(20px)' }}
       />
       {/* Green glow bottom-right */}
       <div
@@ -194,12 +186,12 @@ export default function ContactSection() {
               </span>
               <GradientHeading
                 parts={[
-                  { text: 'Let\'s Talk', color: 'white' },
-                  { text: '\nDelivery.', color: 'orange', highlight: true },
+                  { text: 'Let\'s Talk', color: 'black' },
+                  { text: '\nDelivery.', color: 'green', highlight: true },
                 ]}
-                className="text-3xl sm:text-4xl lg:text-5xl"
+                className="text-2xl sm:text-3xl lg:text-4xl"
               />
-              <p className="text-sm leading-relaxed max-w-sm" style={{ color: 'rgba(255,255,255,0.4)' }}>
+              <p className="text-sm leading-relaxed max-w-sm" style={{ color: 'rgba(0,0,0,0.5)' }}>
                 Have a question, need a quote, or want to set up recurring deliveries? Our team responds fast.
               </p>
             </div>
@@ -211,7 +203,7 @@ export default function ContactSection() {
                   key={label}
                   className="flex items-start gap-4 py-5 border-b"
                   style={{
-                    borderColor: 'rgba(255,255,255,0.06)',
+                    borderColor: 'rgba(0,0,0,0.08)',
                     opacity: isVisible ? 1 : 0,
                     transform: isVisible ? 'translateX(0)' : 'translateX(-16px)',
                     transition: `opacity 0.5s ease ${0.25 + i * 0.1}s, transform 0.5s ease ${0.25 + i * 0.1}s`,
@@ -226,14 +218,14 @@ export default function ContactSection() {
                   <div>
                     <p
                       className="text-[9px] font-black tracking-[0.25em] mb-1"
-                      style={{ color: 'rgba(255,255,255,0.25)', fontFamily: 'monospace' }}
+                      style={{ color: 'rgba(0,0,0,0.35)', fontFamily: 'monospace' }}
                     >
                       {label}
                     </p>
-                    <p className="text-sm font-black leading-none" style={{ color: 'rgba(255,255,255,0.85)' }}>
+                    <p className="text-sm font-black leading-none" style={{ color: 'rgba(0,0,0,0.85)' }}>
                       {value}
                     </p>
-                    <p className="text-[11px] mt-1 font-medium" style={{ color: 'rgba(255,255,255,0.3)' }}>
+                    <p className="text-[11px] mt-1 font-medium" style={{ color: 'rgba(0,0,0,0.4)' }}>
                       {sub}
                     </p>
                   </div>
@@ -252,7 +244,7 @@ export default function ContactSection() {
               {PROMISES.map((p, i) => (
                 <div key={p} className="flex items-center gap-2.5">
                   <CheckCircle2 size={13} style={{ color: '#1bb908', opacity: 0.8 }} strokeWidth={2.5} />
-                  <span className="text-xs font-semibold" style={{ color: 'rgba(255,255,255,0.35)' }}>{p}</span>
+                  <span className="text-xs font-semibold" style={{ color: 'rgba(0,0,0,0.45)' }}>{p}</span>
                 </div>
               ))}
             </div>
@@ -277,7 +269,7 @@ export default function ContactSection() {
               className="relative rounded-3xl p-8 md:p-10 flex flex-col gap-8"
               style={{
                 background: '#ffffff',
-                boxShadow: '0 32px 80px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.06)',
+                boxShadow: '0 32px 80px rgba(0,0,0,0.1), 0 0 0 1px rgba(0,0,0,0.06)',
               }}
             >
               <div>

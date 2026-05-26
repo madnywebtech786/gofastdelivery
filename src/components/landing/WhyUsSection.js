@@ -72,10 +72,10 @@ function FeatureCard({ feature, delay }) {
         </div>
         {/* Stat bubble */}
         <div className="text-right">
-          <p className="text-2xl font-black leading-none" style={{ color: accentColor }}>
+          <p className="text-2xl font-black leading-none" style={{ color: isOrange ? 'var(--stat-color)' : accentColor }}>
             {feature.stat}
           </p>
-          <p className="text-xs font-semibold mt-0.5" style={{ color: 'rgba(255,255,255,0.4)' }}>
+          <p className="text-xs font-semibold mt-0.5" style={{ color: 'rgba(0,0,0,0.4)' }}>
             {feature.statLabel}
           </p>
         </div>
@@ -89,8 +89,8 @@ function FeatureCard({ feature, delay }) {
 
       {/* Text */}
       <div>
-        <h3 className="text-lg font-black mb-2 text-white">{feature.title}</h3>
-        <p className="text-sm leading-relaxed" style={{ color: 'rgba(255,255,255,0.55)' }}>
+        <h3 className="text-lg font-black mb-2" style={{ color: '#0d0d0d' }}>{feature.title}</h3>
+        <p className="text-sm leading-relaxed" style={{ color: 'rgba(0,0,0,0.55)' }}>
           {feature.desc}
         </p>
       </div>
@@ -102,9 +102,8 @@ export default function WhyUsSection() {
   return (
     <section
       id="why-us"
-      className="relative section-clip-both overflow-hidden grid-lines-bg"
-      style={{ background: '#0d0d0d' }}
-      style={{ background: '#0d0d0d' }}
+      className="relative section-clip-both overflow-hidden"
+      style={{ background: '#faf8f4' }}
     >
       {/* Ambient glow blobs */}
       <div
@@ -125,21 +124,21 @@ export default function WhyUsSection() {
             <div className="flex flex-col gap-4">
               <span
                 className="inline-flex px-4 py-1.5 rounded-full text-xs font-bold tracking-widest uppercase w-fit"
-                style={{ background: 'rgba(255,88,13,0.15)', color: '#ff580d' }}
+                style={{ background: 'rgba(27,185,8,0.12)', color: '#1bb908' }}
               >
                 Why Choose Us
               </span>
               <GradientHeading
                 parts={[
-                  { text: 'Why ',    color: 'orange' },
+                  { text: 'Why ',    color: 'black' },
                   { text: 'GoFast',  color: 'green', highlight: true },
-                  { text: ' Beats',  color: 'white' },
-                  { text: ' Everyone', color: 'orange' },
+                  { text: ' Beats',  color: 'black' },
+                  { text: ' Everyone', color: 'black' },
                 ]}
-                className="text-3xl sm:text-4xl lg:text-5xl"
+                className="text-2xl sm:text-3xl lg:text-4xl"
               />
-              <p className="text-base leading-relaxed max-w-sm" style={{ color: 'rgba(255,255,255,0.5)' }}>
-                Speed and reliability aren&apos;t buzzwords here — they&apos;re our daily standard. See why Calgary businesses trust us above all others.
+              <p className="text-base leading-relaxed max-w-sm" style={{ color: 'rgba(0,0,0,0.5)' }}>
+                Speed and reliability aren&apos;t buzzwords here. They&apos;re our daily standard. See why Calgary businesses trust us above all others.
               </p>
             </div>
 

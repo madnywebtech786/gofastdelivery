@@ -1,5 +1,5 @@
 const COLOR_MAP = {
-  orange: 'var(--brand-orange)',
+  orange: 'var(--brand-black)',
   green:  'var(--brand-green)',
   black:  'var(--brand-black)',
   white:  '#ffffff',
