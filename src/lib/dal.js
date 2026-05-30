@@ -107,7 +107,14 @@ export async function requireDriver() {
  */
 export async function requireCustomer() {
   const { userId, role } = await verifySession()
-  if (role !== 'customer') throw new AuthError('Forbidden: customer only', 403)
+  if (role !== 'customer') {
+    try {
+      redirect(landingFor(role))
+    } catch (e) {
+      if (e?.digest?.startsWith('NEXT_REDIRECT')) throw e
+      throw new AuthError('Forbidden: customer only', 403)
+    }
+  }
   return { userId, role }
 }
 

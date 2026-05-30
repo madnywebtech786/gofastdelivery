@@ -4,41 +4,47 @@
 /* ─── Design Tokens — Light Theme ───────────────────────────────────────── */
 :root {
   /* Backgrounds */
-  --bg:           #f4f6fb;
-  --bg-2:         #eef1f8;
+  --bg:           #faf8f4;
+  --bg-2:         #f3f0ea;
   --surface:      #ffffff;
-  --surface-2:    #f8f9fc;
-  --surface-3:    #f0f2f8;
+  --surface-2:    #faf8f4;
+  --surface-3:    #f3f0ea;
 
   /* Text */
   --fg:           #0f1117;
   --fg-2:         #4a5568;
   --fg-3:         #8492a6;
 
-  /* Accent — electric indigo */
-  --accent:       #4f46e5;
-  --accent-hover: #4338ca;
-  --accent-dim:   rgba(79,70,229,0.10);
-  --accent-glow:  rgba(79,70,229,0.18);
+  /* Accent — GoFast green */
+  --accent:       #1bb908;
+  --accent-hover: #15960a;
+  --accent-dim:   rgba(27,185,8,0.10);
+  --accent-glow:  rgba(27,185,8,0.20);
+
+  /* Secondary — GoFast orange */
+  --secondary:       #ff580d;
+  --secondary-hover: #e04500;
+  --secondary-dim:   rgba(255,88,13,0.10);
+  --secondary-glow:  rgba(255,88,13,0.20);
 
   /* Semantic */
-  --success:      #16a34a;
-  --success-bg:   rgba(22,163,74,0.08);
-  --warning:      #d97706;
-  --warning-bg:   rgba(217,119,6,0.08);
+  --success:      #1bb908;
+  --success-bg:   rgba(27,185,8,0.08);
+  --warning:      #ff580d;
+  --warning-bg:   rgba(255,88,13,0.08);
   --danger:       #dc2626;
   --danger-bg:    rgba(220,38,38,0.08);
-  --info:         #2563eb;
-  --info-bg:      rgba(37,99,235,0.08);
+  --info:         #1bb908;
+  --info-bg:      rgba(27,185,8,0.08);
 
   /* Borders */
-  --border:       #e2e8f0;
-  --border-2:     #cbd5e1;
+  --border:       #e8e4df;
+  --border-2:     #d6d0c9;
 
   /* Primary (alias of accent) */
-  --primary:      #4f46e5;
-  --primary-hover:#4338ca;
-  --primary-bg:   rgba(79,70,229,0.08);
+  --primary:      #1bb908;
+  --primary-hover:#15960a;
+  --primary-bg:   rgba(27,185,8,0.08);
 
   /* Legacy compat */
   --background:   var(--bg);
@@ -49,7 +55,9 @@
 @theme inline {
   --color-background: var(--bg);
   --color-foreground: var(--fg);
+
   --color-primary:    var(--primary);
+  --color-secondary:  var(--secondary);
   --color-surface:    var(--surface);
   --color-border:     var(--border);
   --color-muted:      var(--fg-3);

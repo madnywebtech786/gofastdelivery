@@ -13,7 +13,7 @@ const STREAKS = [
   { y: '88%',  w: '35%', delay: '0.9s',  dur: '3.0s', opacity: 0.04 },
 ]
 
-const TRUST_ITEMS = ['2,500+ deliveries', '99.2% on-time', 'Calgary-based', 'No hidden fees']
+const TRUST_ITEMS = ['8000+ deliveries', '99.2% on-time', 'Calgary-based', 'No hidden fees']
 
 export default function CTASection() {
   const [ref, isVisible] = useIntersectionObserver({ threshold: 0.15 })

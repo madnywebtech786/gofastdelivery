@@ -23,7 +23,7 @@ const CONTACT_INFO = [
     icon: MapPin,
     label: 'SERVICE AREA',
     value: 'Calgary & Surroundings',
-    sub: '12+ communities covered',
+    sub: '8 communities covered',
     color: '#ff580d',
   },
 ]

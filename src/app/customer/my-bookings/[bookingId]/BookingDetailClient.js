@@ -38,6 +38,7 @@ export default function BookingDetailClient({ booking: initial, origin }) {
   const [cancelling, setCancelling] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
   const [copied, setCopied]         = useState(false)
+  const [copiedToken, setCopiedToken] = useState(false)
 
   const trackingUrl = `${origin}/track/${booking.trackingToken}`
   const canCancel   = booking.status === 'pending'
@@ -65,6 +66,17 @@ export default function BookingDetailClient({ booking: initial, origin }) {
       toast.error('Network error', 'Please try again.')
     } finally {
       setCancelling(false)
+    }
+  }
+
+  async function copyToken() {
+    try {
+      await navigator.clipboard.writeText(booking.trackingToken)
+      setCopiedToken(true)
+      toast.success('Copied!', 'Tracking number copied to clipboard.')
+      setTimeout(() => setCopiedToken(false), 2000)
+    } catch {
+      toast.error('Copy failed', 'Please copy the number manually.')
     }
   }
 
@@ -146,6 +158,35 @@ export default function BookingDetailClient({ booking: initial, origin }) {
           )}
         </div>
       )}
+
+      {/* ── Tracking Number ──────────────────────────────────────── */}
+      <div className="bg-white rounded-2xl border border-border overflow-hidden anim-fade-up s1">
+        <div className="px-5 py-3.5 border-b border-border flex items-center gap-2"
+          style={{ background: 'var(--surface-2)' }}>
+          <Link2 size={13} style={{ color: 'var(--fg-3)' }} />
+          <h2 className="text-sm font-bold" style={{ color: 'var(--fg)' }}>Tracking Number</h2>
+        </div>
+        <div className="px-5 py-4 flex items-center justify-between gap-4">
+          <p
+            className="font-mono font-black text-lg tracking-widest break-all select-all"
+            style={{ color: 'var(--fg)', letterSpacing: '0.08em' }}
+          >
+            {b.trackingToken}
+          </p>
+          <button
+            onClick={copyToken}
+            className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+            style={{
+              background: copiedToken ? 'var(--success-bg)' : 'var(--surface-2)',
+              color: copiedToken ? 'var(--success)' : 'var(--fg-2)',
+              border: '1px solid var(--border)',
+            }}
+          >
+            {copiedToken ? <CheckCircle2 size={12} /> : <Copy size={12} />}
+            {copiedToken ? 'Copied' : 'Copy'}
+          </button>
+        </div>
+      </div>
 
       {/* ── Package Details ───────────────────────────────────────── */}
       {b.packageDetails && (

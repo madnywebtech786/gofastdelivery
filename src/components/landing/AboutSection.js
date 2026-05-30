@@ -5,12 +5,12 @@ import { useIntersectionObserver } from './hooks/useIntersectionObserver'
 import { useCountUp } from './hooks/useCountUp'
 
 const STATS = [
-  { target: 2500, suffix: '+', label: 'Deliveries', sub: 'completed this year' },
-  { target: 1200, suffix: '+', label: 'Customers',  sub: 'across Calgary & area' },
-  { target: 15,   suffix: '+', label: 'Cities',     sub: 'in our service zone' },
+  { target: 8000, suffix: '+', label: 'Deliveries', sub: 'completed this year' },
+  { target: 500, suffix: '+', label: 'Customers',  sub: 'across Calgary & area' },
+  { target: 8,    suffix: '',  label: 'Cities',     sub: 'in our service zone' },
 ]
 
-const PILLS = ['Same-Day', 'GPS Tracked', 'Door-to-Door', 'Calgary-Based', 'No Hidden Fees']
+const PILLS = ['Same-Day', 'Status Tracked', 'Door-to-Door', 'Calgary-Based', 'No Hidden Fees']
 
 function StatRow({ stat, active, index }) {
   const count = useCountUp(stat.target, 2000, active)
@@ -167,16 +167,42 @@ export default function AboutSection() {
               />
             </div>
 
-            {/* Body copy */}
+            {/* 10+ years callout */}
             <div
+              className="flex items-center gap-5 px-5 py-4 rounded-2xl"
               style={{
+                background: 'linear-gradient(135deg, var(--brand-green-dim) 0%, rgba(255,88,13,0.07) 100%)',
+                border: '1.5px solid var(--brand-green)',
                 opacity: isVisible ? 1 : 0,
                 transform: isVisible ? 'translateY(0)' : 'translateY(20px)',
                 transition: 'opacity 0.5s ease 0.26s, transform 0.5s ease 0.26s',
               }}
             >
+              <div className="shrink-0 flex flex-col items-center justify-center w-16 h-16 rounded-xl"
+                style={{ background: 'var(--brand-green)', boxShadow: '0 4px 18px rgba(27,185,8,0.35)' }}>
+                <span className="text-2xl font-black text-white leading-none">10+</span>
+                <span className="text-[9px] font-black text-white tracking-widest uppercase mt-0.5">Years</span>
+              </div>
+              <div>
+                <p className="text-sm font-black" style={{ color: 'var(--landing-text)' }}>
+                  10+ Years of Logistics Experience
+                </p>
+                <p className="text-xs mt-0.5 leading-snug" style={{ color: 'var(--landing-text-2)' }}>
+                  A decade of on-the-ground expertise means faster routes, fewer errors, and service big carriers can&apos;t replicate.
+                </p>
+              </div>
+            </div>
+
+            {/* Body copy */}
+            <div
+              style={{
+                opacity: isVisible ? 1 : 0,
+                transform: isVisible ? 'translateY(0)' : 'translateY(20px)',
+                transition: 'opacity 0.5s ease 0.34s, transform 0.5s ease 0.34s',
+              }}
+            >
               <p className="text-base leading-relaxed" style={{ color: 'var(--landing-text-2)' }}>
-                GoFastDelivery is Calgary&apos;s premier same-day courier, backed by a team with <strong>10+ years of logistics experience</strong> and built on speed, reliability, and care that big logistics companies can&apos;t match. Every delivery is handled by a verified local driver and tracked live.
+                GoFastDelivery was built by Calgarians, for Calgarians. We&apos;ve spent over a decade perfecting same-day delivery across the city and surrounding areas. Every order is handled by a verified local driver, tracked live from pickup to drop-off, with zero hidden fees and real human support when you need it.
               </p>
             </div>
 
@@ -186,7 +212,7 @@ export default function AboutSection() {
               style={{
                 opacity: isVisible ? 1 : 0,
                 transform: isVisible ? 'translateY(0)' : 'translateY(16px)',
-                transition: 'opacity 0.5s ease 0.34s, transform 0.5s ease 0.34s',
+                transition: 'opacity 0.5s ease 0.42s, transform 0.5s ease 0.42s',
               }}
             >
               {PILLS.map((pill, i) => (
@@ -224,7 +250,7 @@ export default function AboutSection() {
               style={{
                 opacity: isVisible ? 1 : 0,
                 transform: isVisible ? 'translateY(0)' : 'translateY(16px)',
-                transition: 'opacity 0.5s ease 0.65s, transform 0.5s ease 0.65s',
+                transition: 'opacity 0.5s ease 0.75s, transform 0.5s ease 0.75s',
               }}
             >
               <a

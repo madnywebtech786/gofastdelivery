@@ -1,37 +1,44 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
-import { Menu, X, Phone, Mail, MapPin } from 'lucide-react'
+import { Menu, X, Phone, Mail, MapPin, ChevronDown } from 'lucide-react'
 import { useSpring, animated } from '@react-spring/web'
 
+const SERVICE_ITEMS = [
+  { label: 'Same-Day Delivery', href: '/services/same-day-delivery' },
+  { label: 'Express Pickup',    href: '/services/express-pickup' },
+  { label: 'Business Delivery', href: '/services/business-delivery' },
+  { label: 'Scheduled Runs',    href: '/services/scheduled-runs' },
+  { label: 'Hotshot Delivery',  href: '/services/hotshot-delivery' },
+]
+
 const NAV_LINKS = [
-  { label: 'Home',           href: '#home' },
-  { label: 'About',          href: '#about' },
-  { label: 'Services',       href: '#services' },
-  { label: 'Process',        href: '#process' },
-  { label: 'Areas',          href: '#areas' },
-  { label: 'Reviews',        href: '#reviews' },
-  { label: 'Contact',        href: '#contact' },
-  { label: 'Get a Quote',    href: '#contact', highlight: true },
-  { label: 'Track Delivery', href: '/login',   isLink: true },
+  { label: 'Home',     href: '/',          scroll: false },
+  { label: 'About',   href: '/about',      scroll: false },
+  { label: 'Services', href: null,         scroll: false, dropdown: true },
+  { label: 'Track Package',   href: '/track',      scroll: false },
+  { label: 'Reviews',  href: '/#reviews',  scroll: true },
+  { label: 'Contact',  href: '/contact',   scroll: false },
 ]
 
 const CITIES = [
-  'Calgary', 'Airdrie', 'Cochrane', 'Okotoks', 'Chestermere', 'Strathmore',
-  'High River', 'Crossfield', 'Carstairs', 'Didsbury', 'Innisfail', 'Olds',
-  'Canmore', 'Banff', 'Langdon', 'De Winton', 'Bragg Creek', 'Black Diamond',
-  'Turner Valley', 'Nanton', 'Claresholm', 'Beiseker', 'Irricana',
+  'Calgary', 'Cochrane', 'Airdrie', 'Okotoks', 'High River', 'Chestermere', 'Strathmore', 'Langdon',
 ]
 
-function CityMarquee({ reverse = false, dark = false }) {
-  const items = [...CITIES, ...CITIES, ...CITIES]
+const DELIVERY_ITEMS = [
+  'Small Packages & Boxes', 'Envelopes & Documents', 'Packed Food', 'Medical & Pharmaceutical Supplies',
+  'Totes', 'Gifts & Flowers', 'Industrial Samples',
+]
+
+function Marquee({ items, reverse = false, dark = false }) {
   const dur = reverse ? '28s' : '22s'
   const accent = dark ? 'rgba(255,88,13,0.55)' : 'rgba(255,88,13,0.5)'
   const muted = dark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.22)'
   const dot = dark ? 'rgba(255,88,13,0.25)' : 'rgba(255,88,13,0.18)'
   const bg = dark ? 'rgba(0,0,0,0.85)' : 'rgba(255,255,255,0.95)'
   const border = dark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'
+  const repeated = [...items, ...items, ...items]
 
   return (
     <div
@@ -49,13 +56,13 @@ function CityMarquee({ reverse = false, dark = false }) {
       >
         {[0, 1, 2].map(rep => (
           <div key={rep} className="flex items-center shrink-0">
-            {items.map((city, i) => (
+            {repeated.map((item, i) => (
               <span key={`${rep}-${i}`} className="inline-flex items-center gap-3 px-5 py-2">
                 <span
                   className="text-[9px] font-black tracking-[0.22em] uppercase"
                   style={{ color: i % 2 === 0 ? accent : muted }}
                 >
-                  {city}
+                  {item}
                 </span>
                 <span style={{ color: dot, fontSize: '5px' }}>◆</span>
               </span>
@@ -68,8 +75,10 @@ function CityMarquee({ reverse = false, dark = false }) {
 }
 
 export default function Navbar() {
-  const [scrolled, setScrolled]     = useState(false)
-  const [drawerOpen, setDrawerOpen] = useState(false)
+  const [scrolled, setScrolled]               = useState(false)
+  const [drawerOpen, setDrawerOpen]           = useState(false)
+  const [mobileServicesOpen, setMobileServicesOpen] = useState(false)
+  const dropdownRef = useRef(null)
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 80)
@@ -99,13 +108,19 @@ export default function Navbar() {
     config: { tension: 300, friction: 30 },
   })
 
-  const closeDrawer = useCallback(() => setDrawerOpen(false), [])
+  const closeDrawer = useCallback(() => {
+    setDrawerOpen(false)
+    setMobileServicesOpen(false)
+  }, [])
 
-  const handleNavClick = useCallback((e, href) => {
+  const handleNavClick = useCallback((e, href, isScroll) => {
+    if (!isScroll) return // let Next Link handle navigation
     e.preventDefault()
     const wasOpen = drawerOpen
     closeDrawer()
-    const target = document.querySelector(href)
+    // Extract hash from href like "/#home"
+    const hash = href.split('#')[1]
+    const target = hash ? document.getElementById(hash) : null
     if (target) {
       setTimeout(() => target.scrollIntoView({ behavior: 'smooth' }), wasOpen ? 350 : 0)
     }
@@ -113,17 +128,12 @@ export default function Navbar() {
 
   return (
     <>
-      {/* ── Fixed top wrapper: info bar + nav + marquee ── */}
+      {/* ── Fixed top wrapper: info bar + marquee + nav ── */}
       <div className="fixed top-0 left-0 right-0 z-50">
 
         {/* Info bar */}
-        <div
-          className="block"
-          style={{ background: '#1bb908', borderBottom: '1px solid rgba(0,0,0,0.1)' }}
-        >
-          {/* Mobile: two rows. sm+: single row */}
+        <div className="block" style={{ background: '#1bb908', borderBottom: '1px solid rgba(0,0,0,0.1)' }}>
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-1 sm:py-0 flex flex-col sm:flex-row sm:h-7 sm:items-center sm:justify-between gap-0.5 sm:gap-4">
-            {/* Row 1: phone + email justified between on mobile */}
             <div className="flex items-center justify-between sm:justify-start sm:gap-5">
               <a
                 href="tel:+14035550199"
@@ -146,7 +156,6 @@ export default function Navbar() {
                 hello@gofastdelivery.ca
               </a>
             </div>
-            {/* Row 2 on mobile: address centered. Hidden on sm+ it moves to the right */}
             <div className="flex items-center justify-center sm:justify-end gap-1.5 text-[10px] sm:text-[11px] font-semibold" style={{ color: 'rgba(255,255,255,0.75)' }}>
               <MapPin size={9} strokeWidth={2.2} style={{ color: 'rgba(255,255,255,0.9)' }} />
               Calgary, AB &amp; Surrounding Areas
@@ -155,13 +164,10 @@ export default function Navbar() {
         </div>
 
         {/* Top city marquee */}
-        <CityMarquee reverse={false} dark={false} />
+        <Marquee items={CITIES} reverse={false} dark={false} />
 
         {/* Main nav */}
-        <animated.nav
-          style={navSpring}
-          className="backdrop-blur-md"
-        >
+        <animated.nav style={navSpring} className="backdrop-blur-md">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
             {/* Logo */}
             <Link href="/" className="shrink-0">
@@ -177,53 +183,68 @@ export default function Navbar() {
 
             {/* Desktop nav links */}
             <ul className="hidden lg:flex items-center gap-4">
-              {NAV_LINKS.map(link => {
-                if (link.highlight) {
-                  return (
-                    <li key={link.label}>
-                      <a
-                        href={link.href}
-                        onClick={(e) => handleNavClick(e, link.href)}
-                        className="text-[13px] font-semibold transition-colors duration-200"
+              {NAV_LINKS.map(link => (
+                <li key={link.label} className="relative">
+                  {link.dropdown ? (
+                    /* Services — hover dropdown, no JS state needed */
+                    <div ref={dropdownRef} className="relative group">
+                      <button
+                        className="inline-flex items-center gap-1 text-[13px] font-semibold transition-colors duration-200 group-hover:text-green-600"
                         style={{ color: 'var(--landing-text)' }}
-                        onMouseEnter={e => e.currentTarget.style.color = 'var(--brand-green)'}
-                        onMouseLeave={e => e.currentTarget.style.color = 'var(--landing-text)'}
                       >
                         {link.label}
-                      </a>
-                    </li>
-                  )
-                }
-                if (link.isLink) {
-                  return (
-                    <li key={link.label}>
-                      <Link
-                        href={link.href}
-                        className="text-[13px] font-semibold transition-colors duration-200"
-                        style={{ color: 'var(--landing-text)' }}
-                        onMouseEnter={e => e.currentTarget.style.color = 'var(--brand-orange)'}
-                        onMouseLeave={e => e.currentTarget.style.color = 'var(--landing-text)'}
+                        <ChevronDown
+                          size={13}
+                          strokeWidth={2.5}
+                          className="transition-transform duration-200 group-hover:rotate-180"
+                        />
+                      </button>
+
+                      {/* Dropdown panel — shown on group hover */}
+                      <div
+                        className="absolute top-full left-1/2 -translate-x-1/2 pt-3 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-all duration-200"
+                        style={{ zIndex: 60 }}
                       >
-                        {link.label}
-                      </Link>
-                    </li>
-                  )
-                }
-                return (
-                  <li key={link.href}>
-                    <a
+                        <div
+                          className="rounded-xl overflow-hidden"
+                          style={{
+                            background: '#ffffff',
+                            boxShadow: '0 12px 40px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.07)',
+                            minWidth: '200px',
+                          }}
+                        >
+                          {SERVICE_ITEMS.map((item, idx) => (
+                            <Link
+                              key={item.href}
+                              href={item.href}
+                              className="flex items-center justify-between px-4 py-2.5 text-[13px] font-semibold transition-colors"
+                              style={{
+                                color: 'var(--landing-text)',
+                                borderBottom: idx < SERVICE_ITEMS.length - 1 ? '1px solid rgba(0,0,0,0.05)' : 'none',
+                              }}
+                              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(27,185,8,0.05)'; e.currentTarget.style.color = 'var(--brand-green)' }}
+                              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--landing-text)' }}
+                            >
+                              {item.label}
+                            </Link>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <Link
                       href={link.href}
-                      onClick={(e) => handleNavClick(e, link.href)}
+                      onClick={link.scroll ? (e) => handleNavClick(e, link.href, true) : undefined}
                       className="text-[13px] font-semibold transition-colors duration-200"
                       style={{ color: 'var(--landing-text)' }}
-                      onMouseEnter={e => e.currentTarget.style.color = 'var(--brand-orange)'}
+                      onMouseEnter={e => e.currentTarget.style.color = 'var(--brand-green)'}
                       onMouseLeave={e => e.currentTarget.style.color = 'var(--landing-text)'}
                     >
                       {link.label}
-                    </a>
-                  </li>
-                )
-              })}
+                    </Link>
+                  )}
+                </li>
+              ))}
             </ul>
 
             {/* Desktop CTAs */}
@@ -240,7 +261,7 @@ export default function Navbar() {
                 className="px-4 py-1.5 text-[12px] font-bold rounded-lg text-white transition-opacity hover:opacity-90 shadow-sm"
                 style={{ background: 'var(--brand-green)' }}
               >
-                Ship Now
+                Book Delivery
               </Link>
             </div>
 
@@ -257,7 +278,7 @@ export default function Navbar() {
         </animated.nav>
       </div>
 
-      {/* Spacer for fixed header height: info bar (32px) + marquee (~28px) + nav (56px) = ~116px */}
+      {/* Spacer for fixed header height: info bar + marquee + nav ≈ 116px */}
       <div className="h-29 hidden md:block" />
       <div className="h-22 md:hidden" />
 
@@ -285,13 +306,7 @@ export default function Navbar() {
         {/* Header */}
         <div className="relative flex items-center justify-between px-7 h-14 shrink-0" style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
           <div className="inline-flex rounded-lg overflow-hidden" style={{ background: 'white', padding: '3px 7px' }}>
-            <Image
-              src="/images/logo.png"
-              alt="GoFastDelivery"
-              width={100}
-              height={32}
-              className="h-7 w-auto object-contain"
-            />
+            <Image src="/images/logo.png" alt="GoFastDelivery" width={100} height={32} className="h-7 w-auto object-contain" />
           </div>
           <button
             onClick={closeDrawer}
@@ -305,35 +320,78 @@ export default function Navbar() {
 
         {/* Nav links */}
         <nav className="relative flex-1 flex flex-col justify-center px-7 gap-0 overflow-y-auto">
-          {NAV_LINKS.filter(l => !l.highlight && !l.isLink).map((link, i) => (
-            <a
-              key={link.href}
-              href={link.href}
-              onClick={(e) => handleNavClick(e, link.href)}
-              className="group flex items-center gap-3 py-3 border-b"
-              style={{ borderColor: 'rgba(255,255,255,0.05)' }}
-            >
-              <span
-                className="text-[10px] font-black tabular-nums shrink-0 w-5"
-                style={{ color: 'rgba(255,88,13,0.4)', fontFamily: 'monospace' }}
-              >
-                0{i + 1}
-              </span>
-              <span
-                className="text-base font-black transition-colors duration-200"
-                style={{ color: 'rgba(255,255,255,0.75)' }}
-                onMouseEnter={e => { e.currentTarget.style.color = '#ff580d' }}
-                onMouseLeave={e => { e.currentTarget.style.color = 'rgba(255,255,255,0.75)' }}
-              >
-                {link.label}
-              </span>
-              <span
-                className="ml-auto opacity-0 group-hover:opacity-100 transition-all duration-200 translate-x-0 group-hover:translate-x-1"
-                style={{ color: '#ff580d' }}
-              >
-                →
-              </span>
-            </a>
+          {NAV_LINKS.map((link, i) => (
+            <div key={link.label}>
+              {link.dropdown ? (
+                <>
+                  <button
+                    onClick={() => setMobileServicesOpen(v => !v)}
+                    className="w-full group flex items-center gap-3 py-3 border-b"
+                    style={{ borderColor: 'rgba(255,255,255,0.05)' }}
+                  >
+                    <span className="text-[10px] font-black tabular-nums shrink-0 w-5" style={{ color: 'rgba(255,88,13,0.4)', fontFamily: 'monospace' }}>
+                      0{i + 1}
+                    </span>
+                    <span className="text-base font-black flex-1 text-left" style={{ color: 'rgba(255,255,255,0.75)' }}>
+                      {link.label}
+                    </span>
+                    <ChevronDown
+                      size={14}
+                      strokeWidth={2.5}
+                      style={{
+                        color: 'rgba(255,88,13,0.5)',
+                        transition: 'transform 0.25s ease',
+                        transform: mobileServicesOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                      }}
+                    />
+                  </button>
+                  {/* Mobile services sub-list */}
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateRows: mobileServicesOpen ? '1fr' : '0fr',
+                    transition: 'grid-template-rows 0.3s ease',
+                  }}>
+                    <div style={{ overflow: 'hidden' }}>
+                      <div className="pl-8 flex flex-col pb-2 pt-1">
+                        {SERVICE_ITEMS.map(item => (
+                          <Link
+                            key={item.href}
+                            href={item.href}
+                            onClick={closeDrawer}
+                            className="py-2.5 border-b text-sm font-bold"
+                            style={{ borderColor: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.65)' }}
+                          >
+                            {item.label}
+                          </Link>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <Link
+                  href={link.href}
+                  onClick={link.scroll ? (e) => handleNavClick(e, link.href, true) : closeDrawer}
+                  className="group flex items-center gap-3 py-3 border-b"
+                  style={{ borderColor: 'rgba(255,255,255,0.05)' }}
+                >
+                  <span className="text-[10px] font-black tabular-nums shrink-0 w-5" style={{ color: 'rgba(255,88,13,0.4)', fontFamily: 'monospace' }}>
+                    0{i + 1}
+                  </span>
+                  <span
+                    className="text-base font-black transition-colors duration-200"
+                    style={{ color: 'rgba(255,255,255,0.75)' }}
+                    onMouseEnter={e => { e.currentTarget.style.color = '#ff580d' }}
+                    onMouseLeave={e => { e.currentTarget.style.color = 'rgba(255,255,255,0.75)' }}
+                  >
+                    {link.label}
+                  </span>
+                  <span className="ml-auto opacity-0 group-hover:opacity-100 transition-all duration-200 translate-x-0 group-hover:translate-x-1" style={{ color: '#ff580d' }}>
+                    →
+                  </span>
+                </Link>
+              )}
+            </div>
           ))}
         </nav>
 
@@ -342,7 +400,7 @@ export default function Navbar() {
           <div className="flex items-center gap-2 mb-1">
             <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#1bb908', boxShadow: '0 0 6px #1bb908' }} />
             <span className="text-[10px] font-semibold" style={{ color: 'rgba(255,255,255,0.3)' }}>
-              2,500+ deliveries · 99.2% on-time · Calgary-based
+              8000+ deliveries · 99.2% on-time · Calgary-based
             </span>
           </div>
           <Link
@@ -351,26 +409,8 @@ export default function Navbar() {
             className="w-full py-3 text-center text-sm font-black rounded-2xl text-white"
             style={{ background: 'linear-gradient(135deg, #1bb908, #15960a)', boxShadow: '0 4px 16px rgba(27,185,8,0.3)' }}
           >
-            Ship Now
+            Book Delivery
           </Link>
-          <div className="grid grid-cols-2 gap-2">
-            <Link
-              href="/login"
-              onClick={closeDrawer}
-              className="py-2.5 text-center text-xs font-black rounded-xl transition-all"
-              style={{ border: '1.5px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.5)' }}
-            >
-              Track Delivery
-            </Link>
-            <a
-              href="#contact"
-              onClick={(e) => handleNavClick(e, '#contact')}
-              className="py-2.5 text-center text-xs font-black rounded-xl transition-all"
-              style={{ border: '1.5px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.5)' }}
-            >
-              Get a Quote
-            </a>
-          </div>
           <Link
             href="/login"
             onClick={closeDrawer}
@@ -382,9 +422,9 @@ export default function Navbar() {
         </div>
       </animated.div>
 
-      {/* ── Bottom sticky city marquee ── */}
+      {/* ── Bottom sticky delivery items marquee ── */}
       <div className="fixed bottom-0 left-0 right-0 z-40">
-        <CityMarquee reverse={true} dark={false} />
+        <Marquee items={DELIVERY_ITEMS} reverse={true} dark={false} />
       </div>
     </>
   )

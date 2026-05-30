@@ -1,9 +1,2 @@
-import Spinner from '@/components/ui/Spinner'
-
-export default function Loading() {
-  return (
-    <div className="flex items-center justify-center min-h-[40vh]">
-      <Spinner size="lg" />
-    </div>
-  )
-}
+import PageLoader from '@/components/ui/PageLoader'
+export default function Loading() { return <PageLoader label="Loading bookings…" /> }

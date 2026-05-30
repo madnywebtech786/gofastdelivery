@@ -1,3 +1,4 @@
+'use client'
 import Image from 'next/image'
 import Link from 'next/link'
 import { ArrowRight } from 'lucide-react'
@@ -36,19 +37,19 @@ const SOCIAL_LINKS = [
 ]
 
 const QUICK_LINKS = [
-  { label: 'Home',     href: '#home' },
-  { label: 'About',    href: '#about' },
-  { label: 'Services', href: '#services' },
-  { label: 'Process',  href: '#process' },
-  { label: 'Reviews',  href: '#reviews' },
-  { label: 'Contact',  href: '#contact' },
+  { label: 'Home',     href: '/' },
+  { label: 'About Us', href: '/about' },
+  { label: 'Services', href: '/#services' },
+  { label: 'Reviews',  href: '/#reviews' },
+  { label: 'Contact',  href: '/contact' },
 ]
 
 const SERVICES = [
-  'Same-Day Delivery',
-  'Express Pickup',
-  'Business Delivery',
-  'Scheduled Runs',
+  { label: 'Same-Day Delivery', href: '/services/same-day-delivery' },
+  { label: 'Express Pickup',    href: '/services/express-pickup' },
+  { label: 'Business Delivery', href: '/services/business-delivery' },
+  { label: 'Scheduled Runs',    href: '/services/scheduled-runs' },
+  { label: 'Hotshot Delivery',  href: '/services/hotshot-delivery' },
 ]
 
 export default function Footer() {
@@ -118,8 +119,17 @@ export default function Footer() {
             </h4>
             <ul className="flex flex-col gap-3">
               {SERVICES.map(s => (
-                <li key={s}>
-                  <span className="text-sm" style={{ color: 'rgb(156,163,175)' }}>{s}</span>
+                <li key={s.label}>
+                  <Link
+                    href={s.href}
+                    className="flex items-center gap-2 text-sm transition-colors group"
+                    style={{ color: 'rgb(156,163,175)' }}
+                    onMouseEnter={e => e.currentTarget.style.color = 'var(--brand-green)'}
+                    onMouseLeave={e => e.currentTarget.style.color = 'rgb(156,163,175)'}
+                  >
+                    <ArrowRight size={12} className="opacity-0 group-hover:opacity-100 transition-opacity" />
+                    {s.label}
+                  </Link>
                 </li>
               ))}
             </ul>

@@ -27,8 +27,8 @@ const FEATURES = [
     color: 'orange',
     title: 'Real-Time Tracking',
     stat: 'Live',
-    statLabel: 'GPS updates',
-    desc: 'Know exactly where your package is at every step of the journey.',
+    statLabel: 'status updates',
+    desc: 'Follow your order through every stage: assigned, picked up, en route, and delivered.',
   },
   {
     icon: BadgeDollarSign,

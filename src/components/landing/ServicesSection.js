@@ -310,7 +310,7 @@ export default function ServicesSection() {
         <div className="flex whitespace-nowrap" style={{ animation: 'marquee-scroll 18s linear infinite' }}>
           {[...Array(3)].map((_, rep) => (
             <div key={rep} className="flex items-center gap-0 shrink-0">
-              {['Same-Day', 'Express', 'Business', 'Scheduled', 'Calgary', 'Fast'].map((word, i) => (
+              {['Same-Day', 'Express', 'Business', 'Scheduled', 'Fast'].map((word, i) => (
                 <span key={i} className="inline-flex items-center gap-4 px-6 py-3">
                   <span
                     className="text-[10px] font-black tracking-[0.25em] uppercase"
@@ -381,7 +381,7 @@ export default function ServicesSection() {
         <div className="flex whitespace-nowrap" style={{ animation: 'marquee-scroll 22s linear infinite reverse' }}>
           {[...Array(3)].map((_, rep) => (
             <div key={rep} className="flex items-center gap-0 shrink-0">
-              {['Reliable', '99.2% On-Time', 'Calgary', 'Same-Day', 'Trusted', '2500+ Deliveries'].map((word, i) => (
+              {['Reliable', '99.2% On-Time', 'Same-Day', 'Trusted', '2500+ Deliveries'].map((word, i) => (
                 <span key={i} className="inline-flex items-center gap-4 px-6 py-3">
                   <span
                     className="text-[10px] font-black tracking-[0.25em] uppercase"

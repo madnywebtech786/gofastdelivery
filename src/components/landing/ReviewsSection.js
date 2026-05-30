@@ -259,7 +259,7 @@ export default function ReviewsSection() {
                 </div>
                 <div className="w-px self-stretch" style={{ background: 'rgba(255,255,255,0.07)' }} />
                 <div className="flex flex-col gap-2 text-left">
-                  <p className="text-xs font-black text-white leading-none">2,500+ deliveries</p>
+                  <p className="text-xs font-black text-white leading-none">8000+ deliveries</p>
                   <p className="text-xs font-semibold" style={{ color: 'rgba(255,255,255,0.35)' }}>across Calgary & area</p>
                   <div
                     className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black"

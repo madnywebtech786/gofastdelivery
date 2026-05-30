@@ -31,10 +31,10 @@ const TYPES = [
     accentDim: 'rgba(27,185,8,0.08)',
     accentBorder: 'rgba(27,185,8,0.18)',
     tagline: 'Your brand, at their door.',
-    desc: 'From e-commerce stores to local retailers, we deliver directly to end customers same-day. Real-time tracking links, white-glove handling, and a delivery experience that reflects your brand.',
+    desc: 'From e-commerce stores to local retailers, we deliver directly to end customers same-day. Shareable status tracking links, white-glove handling, and a delivery experience that reflects your brand.',
     features: [
       { icon: Zap,     text: 'Same-day order fulfillment' },
-      { icon: Shield,  text: 'Live tracking link for customers' },
+      { icon: Shield,  text: 'Live status updates for customers' },
       { icon: Package, text: 'Fragile & high-value item care' },
       { icon: Clock,   text: 'Branded delivery experience' },
     ],
@@ -53,7 +53,7 @@ const TYPES = [
     desc: 'Send gifts, sell locally, or pass along documents with ease. We pick up from one person and deliver straight to another. Same day, fully tracked, no business account needed.',
     features: [
       { icon: Zap,     text: 'On-demand same-day pickup' },
-      { icon: Shield,  text: 'End-to-end tracking & updates' },
+      { icon: Shield,  text: 'End-to-end status tracking' },
       { icon: Package, text: 'Gifts, marketplaces & documents' },
       { icon: Clock,   text: 'No business account required' },
     ],

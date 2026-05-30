@@ -10,6 +10,10 @@ import 'swiper/css'
 import 'swiper/css/pagination'
 import 'swiper/css/effect-fade'
 
+// Fixed CTAs shown on every slide
+const FIXED_CTA1 = { label: 'Book Delivery', href: '/login' }
+const FIXED_CTA2 = { label: 'Track Package', href: '/track' }
+
 // Pexels stable CDN — verified delivery/logistics/courier photos
 const SLIDES = [
   {
@@ -20,8 +24,6 @@ const SLIDES = [
       { text: ' Service',   color: 'black' },
     ],
     sub: '10+ years of logistics expertise behind every delivery. Serving Calgary and surrounding areas with same-day speed you can count on.',
-    cta1: { label: 'Get Started',  href: '/login' },
-    cta2: { label: 'Our Services', href: '#services' },
     badge: { icon: Clock, text: 'Avg delivery under 3 hrs' },
     img: 'https://images.pexels.com/photos/4391470/pexels-photo-4391470.jpeg?auto=compress&cs=tinysrgb&w=900&h=1100&fit=crop',
     imgAlt: 'Delivery driver carrying packages to a customer door',
@@ -34,9 +36,7 @@ const SLIDES = [
       { text: '\nZero',     color: 'green' },
       { text: ' Surprises.', color: 'black' },
     ],
-    sub: 'Know exactly where your package is at every step. Live GPS tracking on every single order.',
-    cta1: { label: 'Track a Package', href: '/login' },
-    cta2: { label: 'Learn More',      href: '#about' },
+    sub: 'Know the status of your package at every step, from pickup assigned to delivered. Live updates on every single order.',
     badge: { icon: Shield, text: '99.2% on-time rate' },
     img: 'https://images.pexels.com/photos/5025516/pexels-photo-5025516.jpeg?auto=compress&cs=tinysrgb&w=900&h=1100&fit=crop',
     imgAlt: 'Courier driver scanning a package barcode with a phone',
@@ -50,8 +50,6 @@ const SLIDES = [
       { text: ' Today.',    color: 'black' },
     ],
     sub: 'Create a free account, place your order in minutes, and our driver handles the rest door to door.',
-    cta1: { label: 'Create Free Account', href: '/login' },
-    cta2: { label: 'How It Works',        href: '#process' },
     badge: { icon: Star, text: '4.9★ customer rating' },
     img: 'https://images.pexels.com/photos/7363671/pexels-photo-7363671.jpeg?auto=compress&cs=tinysrgb&w=900&h=1100&fit=crop',
     imgAlt: 'Happy customer receiving a delivery package at the door',
@@ -100,7 +98,7 @@ export default function HeroSlider() {
   return (
     <section
       id="home"
-      className="relative overflow-hidden pt-16"
+      className="relative overflow-hidden pt-16 lg:pt-0"
       style={{ background: 'var(--landing-bg)', minHeight: '100svh' }}
     >
       {/* Atmospheric blobs */}
@@ -128,19 +126,19 @@ export default function HeroSlider() {
           return (
             <SwiperSlide key={i} style={{ minHeight: '100svh' }}>
               <div
-                className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center"
-                style={{ minHeight: '100svh', paddingTop: '5rem', paddingBottom: '5rem' }}
+                className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-start lg:items-center"
+                style={{ minHeight: '100svh', paddingTop: '1rem', paddingBottom: '1rem' }}
               >
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 xl:gap-16 items-center w-full">
 
                   {/* ── LEFT: Content ── */}
                   <div
                     ref={el => { slideRefs.current[i] = el }}
-                    className="slide-content flex flex-col gap-7 order-2 lg:order-1"
+                    className="slide-content flex flex-col gap-4 lg:gap-7 order-2 lg:order-1"
                     style={{ opacity: 0, transform: 'translateY(28px)' }}
                   >
-                    {/* Badge chip */}
-                    <div className="flex items-center gap-3">
+                    {/* Badge chip — hidden on mobile */}
+                    <div className="hidden sm:flex items-center gap-3">
                       <span
                         className="inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-black tracking-widest uppercase"
                         style={{ background: 'var(--brand-green-dim)', color: 'var(--brand-green)' }}
@@ -157,12 +155,12 @@ export default function HeroSlider() {
                     <GradientHeading
                       parts={slide.parts}
                       as="h1"
-                      className="text-3xl sm:text-4xl lg:text-5xl leading-[1.08]"
+                      className="text-3xl sm:text-4xl lg:text-[2.6rem] xl:text-5xl leading-[1.08]"
                     />
 
                     {/* Sub */}
                     <p
-                      className="text-lg leading-relaxed max-w-lg"
+                      className="text-base lg:text-lg leading-snug lg:leading-relaxed max-w-lg"
                       style={{ color: 'var(--landing-text-2)' }}
                     >
                       {slide.sub}
@@ -188,32 +186,32 @@ export default function HeroSlider() {
                       </span>
                     </div>
 
-                    {/* CTAs */}
-                    <div className="flex flex-wrap gap-3 pt-1">
+                    {/* CTAs — 50% width each on mobile, auto on sm+ */}
+                    <div className="flex gap-3">
                       <Link
-                        href={slide.cta1.href}
-                        className="inline-flex items-center gap-2 px-7 py-4 rounded-2xl text-white font-black text-sm transition-all shadow-lg cta-pulse group"
-                        style={{ background: 'var(--brand-green)', fontSize: '0.9rem' }}
+                        href={FIXED_CTA1.href}
+                        className="inline-flex items-center justify-center gap-1.5 py-2.5 px-4 sm:py-4 sm:px-7 rounded-xl sm:rounded-2xl text-white font-black transition-all shadow-lg cta-pulse group w-1/2 sm:w-auto"
+                        style={{ background: 'var(--brand-green)', fontSize: 'clamp(0.72rem, 2.5vw, 0.9rem)' }}
                       >
-                        {slide.cta1.label}
-                        <ArrowRight size={16} className="group-hover:translate-x-0.5 transition-transform" />
+                        {FIXED_CTA1.label}
+                        <ArrowRight size={13} className="group-hover:translate-x-0.5 transition-transform" />
                       </Link>
-                      <a
-                        href={slide.cta2.href}
-                        className="inline-flex items-center gap-2 px-7 py-4 rounded-2xl font-black text-sm border-2 transition-all"
+                      <Link
+                        href={FIXED_CTA2.href}
+                        className="inline-flex items-center justify-center gap-1.5 py-2.5 px-4 sm:py-4 sm:px-7 rounded-xl sm:rounded-2xl font-black border-2 transition-all w-1/2 sm:w-auto"
                         style={{
                           borderColor: 'var(--landing-border)',
                           color: 'var(--landing-text)',
-                          fontSize: '0.9rem',
+                          fontSize: 'clamp(0.72rem, 2.5vw, 0.9rem)',
                         }}
                       >
-                        {slide.cta2.label}
-                      </a>
+                        {FIXED_CTA2.label}
+                      </Link>
                     </div>
 
                     {/* Social proof strip */}
                     <div
-                      className="flex items-center gap-4 pt-2 border-t"
+                      className="flex items-center gap-4 border-t"
                       style={{ borderColor: 'var(--landing-border)' }}
                     >
                       <div className="flex -space-x-2">

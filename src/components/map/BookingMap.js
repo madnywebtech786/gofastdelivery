@@ -43,6 +43,7 @@ const BookingMap = forwardRef(function BookingMap({ onStopsChange }, ref) {
   const [suggestions,  setSuggestions]  = useState([])
   const [searching,    setSearching]    = useState(false)
   const [locating,     setLocating]     = useState(false)
+  const [mapActive,    setMapActive]    = useState(false) // scroll-zoom guard
 
   const searchDebounceRef = useRef(null)
   const searchAbortRef    = useRef(null)
@@ -100,6 +101,7 @@ const BookingMap = forwardRef(function BookingMap({ onStopsChange }, ref) {
         style: 'mapbox://styles/mapbox/streets-v12',
         center: [-114.0719, 51.0447], // Calgary, AB
         zoom: 12,
+        scrollZoom: false, // disabled until user explicitly activates the map
       })
       mapRef.current = map
 
@@ -305,7 +307,15 @@ const BookingMap = forwardRef(function BookingMap({ onStopsChange }, ref) {
       </div>
 
       {/* Map */}
-      <div className="relative flex-1 min-h-0" style={{ minHeight: 340 }}>
+      <div
+        className="relative flex-1 min-h-0"
+        style={{ minHeight: 340 }}
+        onMouseLeave={() => {
+          // Re-disable scroll zoom when mouse leaves the map area
+          if (mapRef.current) mapRef.current.scrollZoom.disable()
+          setMapActive(false)
+        }}
+      >
         <div ref={containerRef} className="map-container rounded-xl overflow-hidden h-full w-full" />
 
         {/* Crosshair */}
@@ -317,19 +327,41 @@ const BookingMap = forwardRef(function BookingMap({ onStopsChange }, ref) {
           </svg>
         </div>
 
+        {/* Scroll-zoom guard overlay — click to activate scroll zoom */}
+        {!mapActive && (
+          <div
+            className="absolute inset-0 rounded-xl z-10 flex items-end justify-center pb-5 cursor-pointer"
+            style={{ background: 'transparent' }}
+            onClick={() => {
+              if (mapRef.current) mapRef.current.scrollZoom.enable()
+              setMapActive(true)
+            }}
+          >
+            <div
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold pointer-events-none select-none"
+              style={{ background: 'rgba(0,0,0,0.55)', color: '#fff', backdropFilter: 'blur(4px)' }}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
+              </svg>
+              Click map to enable scroll zoom
+            </div>
+          </div>
+        )}
+
         {/* Hint pill */}
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 bg-white/90 dark:bg-surface/90 backdrop-blur-sm text-xs text-foreground px-3 py-1.5 rounded-full shadow border border-border pointer-events-none whitespace-nowrap">
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 bg-white/90 dark:bg-surface/90 backdrop-blur-sm text-xs text-foreground px-3 py-1.5 rounded-full shadow border border-border pointer-events-none whitespace-nowrap" style={{ zIndex: 20 }}>
           {hint}
         </div>
 
         {/* Two action buttons — bottom centre */}
-        <div className="absolute bottom-14 left-1/2 -translate-x-1/2 flex gap-2">
+        <div className="absolute bottom-14 left-1/2 -translate-x-1/2 flex gap-2" style={{ zIndex: 20 }}>
           <button
             type="button"
             onClick={() => handlePlace('pickup')}
             disabled={placing !== null}
             className={[
-              'px-4 py-2.5 rounded-full text-white text-sm font-semibold shadow-lg transition',
+              'px-3 sm:px-4 py-2 sm:py-2.5 rounded-full text-white text-xs sm:text-sm font-semibold shadow-lg transition',
               pickup
                 ? 'bg-green-700 hover:bg-green-800'
                 : 'bg-green-600 hover:bg-green-700',
@@ -343,7 +375,7 @@ const BookingMap = forwardRef(function BookingMap({ onStopsChange }, ref) {
             onClick={() => handlePlace('dropoff')}
             disabled={placing !== null}
             className={[
-              'px-4 py-2.5 rounded-full text-white text-sm font-semibold shadow-lg transition',
+              'px-3 sm:px-4 py-2 sm:py-2.5 rounded-full text-white text-xs sm:text-sm font-semibold shadow-lg transition',
               dropoff
                 ? 'bg-red-700 hover:bg-red-800'
                 : 'bg-red-600 hover:bg-red-700',

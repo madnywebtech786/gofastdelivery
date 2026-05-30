@@ -18,14 +18,13 @@ const BookingMap = dynamic(() => import('@/components/map/BookingMap'), {
 
 
 const PACKAGE_KINDS = [
-  'Documents',
-  'Medicine / Medical Supplies',
-  'Electronics',
-  'Clothing / Apparel',
-  'Food / Perishables',
-  'Household Items',
-  'Fragile / Glassware',
-  'Auto Parts',
+  'Small Packages & Boxes',
+  'Envelopes / Documents',
+  'Packed Food',
+  'Medical & Pharmaceutical Supplies',
+  'Totes',
+  'Gifts & Flowers',
+  'Industrial Samples',
   'Other',
 ]
 

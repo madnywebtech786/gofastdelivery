@@ -14,36 +14,25 @@ const CX = 220, CY = 220, R1 = 72, R2 = 140
 // Cities: angle, ring (1=inner ~72px, 2=outer ~140px), accent color, delivery time label
 const CITIES = [
   { id: 'airdrie',     name: 'Airdrie',     angle: 0,   ring: 2, color: '#1bb908', time: '~90 min',  dir: 'N'  },
-  { id: 'crossfield',  name: 'Crossfield',  angle: 340, ring: 2, color: '#ff580d', time: '~2 hrs',   dir: 'NNW'},
   { id: 'cochrane',    name: 'Cochrane',    angle: 295, ring: 2, color: '#1bb908', time: '~80 min',  dir: 'NW' },
   { id: 'chestermere', name: 'Chestermere', angle: 75,  ring: 1, color: '#ff580d', time: '~75 min',  dir: 'E'  },
   { id: 'strathmore',  name: 'Strathmore',  angle: 95,  ring: 2, color: '#1bb908', time: '~2 hrs',   dir: 'ESE'},
   { id: 'langdon',     name: 'Langdon',     angle: 118, ring: 2, color: '#ff580d', time: '~100 min', dir: 'SE' },
   { id: 'okotoks',     name: 'Okotoks',     angle: 175, ring: 2, color: '#1bb908', time: '~90 min',  dir: 'S'  },
-  { id: 'dewinton',    name: 'De Winton',   angle: 155, ring: 1, color: '#ff580d', time: '~80 min',  dir: 'SSE'},
-  { id: 'highriver',   name: 'High River',  angle: 200, ring: 2, color: '#1bb908', time: '~2 hrs',   dir: 'SSW'},
+  { id: 'highriver',   name: 'High River',  angle: 200, ring: 2, color: '#ff580d', time: '~2 hrs',   dir: 'SSW'},
 ]
 
-const OUTER_ONLY = [
-  { id: 'irricana', name: 'Irricana', angle: 55,  ring: 2, color: '#ff580d', time: '~2 hrs',   dir: 'NE' },
-  { id: 'beiseker', name: 'Beiseker', angle: 35,  ring: 2, color: '#1bb908', time: '~2.5 hrs', dir: 'NNE'},
-]
-
-const ALL_CITIES = [...CITIES, ...OUTER_ONLY]
+const ALL_CITIES = CITIES
 
 const AREA_LIST = [
   { name: 'Calgary',     sub: 'All zones',    time: '< 3 hrs',  primary: true },
-  { name: 'Airdrie',     sub: '30 min north', time: '~90 min'  },
   { name: 'Cochrane',    sub: '25 min west',  time: '~80 min'  },
-  { name: 'Chestermere', sub: '20 min east',  time: '~75 min'  },
+  { name: 'Airdrie',     sub: '30 min north', time: '~90 min'  },
   { name: 'Okotoks',     sub: '30 min south', time: '~90 min'  },
-  { name: 'Strathmore',  sub: '40 min east',  time: '~2 hrs'   },
   { name: 'High River',  sub: '45 min south', time: '~2 hrs'   },
-  { name: 'Crossfield',  sub: '40 min north', time: '~2 hrs'   },
+  { name: 'Chestermere', sub: '20 min east',  time: '~75 min'  },
+  { name: 'Strathmore',  sub: '40 min east',  time: '~2 hrs'   },
   { name: 'Langdon',     sub: '35 min SE',    time: '~100 min' },
-  { name: 'De Winton',   sub: '25 min south', time: '~80 min'  },
-  { name: 'Irricana',    sub: '45 min NE',    time: '~2 hrs'   },
-  { name: 'Beiseker',    sub: '55 min NE',    time: '~2.5 hrs' },
 ]
 
 // Signal strength bars (1-4) based on time string
@@ -363,7 +352,7 @@ export default function ServiceAreasSection() {
             className="text-2xl sm:text-3xl lg:text-4xl"
           />
           <p className="mt-4 text-base max-w-lg mx-auto" style={{ color: 'var(--landing-text-2)' }}>
-            Same-day delivery across the greater Calgary metro area. 12+ communities, one seamless service.
+            Same-day delivery across Calgary and 7 surrounding communities, one seamless service.
           </p>
         </div>
 
@@ -413,7 +402,7 @@ export default function ServiceAreasSection() {
               style={{ borderColor: 'rgba(0,0,0,0.06)' }}
             >
               {[
-                { val: '12+',    label: 'Cities' },
+                { val: '8',      label: 'Cities' },
                 { val: '99.2%',  label: 'On-Time' },
                 { val: '< 3 hrs', label: 'Avg Delivery' },
               ].map(({ val, label }, i) => (

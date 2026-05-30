@@ -14,7 +14,7 @@ function formatDate(d) {
 }
 
 /* ── Tiny sparkline bar chart ─────────────────────────────────────── */
-function SparkBar({ data = [], color = '#4f46e5' }) {
+function SparkBar({ data = [], color = '#1bb908' }) {
   const max = Math.max(...data.map((d) => d.count), 1)
   return (
     <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: 48 }}>
@@ -117,9 +117,9 @@ export default function CustomerDashboardClient({ recentBookings }) {
   }, [])
 
   const donutSegments = stats ? [
-    { label: 'Delivered', value: stats.delivered, color: '#16a34a' },
-    { label: 'Active',    value: stats.active,    color: '#4f46e5' },
-    { label: 'Pending',   value: stats.pending,   color: '#d97706' },
+    { label: 'Delivered', value: stats.delivered, color: '#1bb908' },
+    { label: 'Active',    value: stats.active,    color: '#1bb908' },
+    { label: 'Pending',   value: stats.pending,   color: '#ff580d' },
     { label: 'Cancelled', value: stats.cancelled, color: '#dc2626' },
   ] : []
 
@@ -147,28 +147,28 @@ export default function CustomerDashboardClient({ recentBookings }) {
           icon={<Package size={18} />}
           label="Total Bookings"
           value={stats?.total ?? '—'}
-          color="#4f46e5" bg="rgba(79,70,229,0.08)"
+          color="#1bb908" bg="rgba(27,185,8,0.08)"
           loading={loading}
         />
         <StatCard
           icon={<Activity size={18} />}
           label="Active"
           value={stats?.active ?? '—'}
-          color="#2563eb" bg="rgba(37,99,235,0.08)"
+          color="#1bb908" bg="rgba(27,185,8,0.08)"
           loading={loading}
         />
         <StatCard
           icon={<CheckCircle2 size={18} />}
           label="Delivered"
           value={stats?.delivered ?? '—'}
-          color="#16a34a" bg="rgba(22,163,74,0.08)"
+          color="#1bb908" bg="rgba(27,185,8,0.08)"
           loading={loading}
         />
         <StatCard
           icon={<DollarSign size={18} />}
           label="Total Spend"
           value={stats ? `$${stats.totalSpend.toFixed(0)}` : '—'}
-          color="#d97706" bg="rgba(217,119,6,0.08)"
+          color="#ff580d" bg="rgba(255,88,13,0.08)"
           loading={loading}
         />
       </div>
@@ -192,7 +192,7 @@ export default function CustomerDashboardClient({ recentBookings }) {
           {loading ? (
             <div className="h-12 rounded-lg animate-pulse" style={{ background: 'var(--surface-2)' }} />
           ) : (
-            <SparkBar data={stats?.chartData ?? []} color="#4f46e5" />
+            <SparkBar data={stats?.chartData ?? []} color="#1bb908" />
           )}
           {/* Summary line */}
           {!loading && stats && (
