@@ -1,7 +1,13 @@
 import { NextResponse } from 'next/server'
-import { requireAny, handleApiError } from '@/lib/dal'
+import { getSession } from '@/lib/session'
+import { handleApiError } from '@/lib/dal'
 import redis from '@/lib/redis'
 import { checkBudget, MapboxBudgetError } from '@/lib/mapbox-budget'
+import { checkRateLimit } from '@/lib/redis'
+
+// Guest callers (no session) are rate-limited separately to prevent budget abuse
+const GUEST_GEOCODE_LIMIT  = 60  // per IP per hour
+const GUEST_GEOCODE_WINDOW = 3600
 
 const MAPBOX_API = 'https://api.mapbox.com'
 const REVERSE_CACHE_TTL = 7 * 24 * 3600 // 7 days
@@ -35,7 +41,17 @@ function normalizeQuery(q) {
  */
 export async function GET(request) {
   try {
-    await requireAny()
+    const session = await getSession()
+
+    if (!session?.userId) {
+      // Guest — apply a separate rate limit so unauthenticated callers
+      // cannot exhaust the geocoding budget on behalf of logged-in users.
+      const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown'
+      const { allowed } = await checkRateLimit(`rate:geocode-guest:${ip}`, GUEST_GEOCODE_LIMIT, GUEST_GEOCODE_WINDOW)
+      if (!allowed) {
+        return NextResponse.json({ error: 'Rate limit exceeded' }, { status: 429 })
+      }
+    }
 
     const { searchParams } = new URL(request.url)
     const type = searchParams.get('type')

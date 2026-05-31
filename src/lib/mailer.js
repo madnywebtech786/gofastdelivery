@@ -24,10 +24,11 @@ function formatDate(dateStr) {
 function esc(str) {
   return String(str ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
-const STATUS_LABELS = {
+
+export const STATUS_LABELS = {
   pending:           'Order Placed',
   assigned_pickup:   'Pickup Scheduled',
-  picked_up:         'Ready to Deliver',
+  picked_up:         'Package Picked Up',
   assigned_delivery: 'On the Way',
   delivered:         'Delivered',
   cancelled:         'Cancelled',
@@ -35,236 +36,322 @@ const STATUS_LABELS = {
   failed_dropoff:    'Delivery Failed',
 }
 
-const STATUS_COLORS = {
+export const STATUS_COLORS = {
   pending:           '#64748b',
-  assigned_pickup:   '#2563eb',
-  picked_up:         '#0284c7',
+  assigned_pickup:   '#1bb908',
+  picked_up:         '#1bb908',
   assigned_delivery: '#d97706',
-  delivered:         '#16a34a',
+  delivered:         '#15960a',
   cancelled:         '#dc2626',
   failed_pickup:     '#dc2626',
   failed_dropoff:    '#dc2626',
 }
 
-// ── Base HTML wrapper ─────────────────────────────────────────────────────────
+const BRAND_GREEN      = '#1bb908'
+const BRAND_GREEN_DARK = '#15960a'
+const BRAND_NAME       = 'GoFastDelivery'
+const BRAND_TAGLINE    = "Calgary's Same-Day Courier"
+const BRAND_EMAIL      = 'hello@gofastdelivery.ca'
+const BRAND_FROM       = `"GoFastDelivery" <gofastdelivery2024@gmail.com>`
+const BASE_URL         = process.env.APP_BASE_URL ?? 'https://gofastdelivery.ca'
+
+// ── Base template ─────────────────────────────────────────────────────────────
+// Uses table-based layout for maximum email client compatibility.
+// All styles are inlined — no class reliance in the body content.
 
 function baseTemplate({ title, preheader, body }) {
+  const logoUrl = `${BASE_URL}/images/logo.png`
+
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
   <title>${title}</title>
+  <!--[if mso]><noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript><![endif]-->
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #1e293b; }
-    .wrapper { max-width: 600px; margin: 32px auto; padding: 0 16px 40px; }
-    .card { background: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
-    .header { background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); padding: 32px 32px 24px; }
-    .header-logo { font-size: 20px; font-weight: 800; color: #ffffff; letter-spacing: -0.5px; }
-    .header-logo span { color: #3b82f6; }
-    .header-sub { font-size: 13px; color: #94a3b8; margin-top: 4px; }
-    .body { padding: 32px; }
-    .title { font-size: 22px; font-weight: 700; color: #0f172a; margin-bottom: 6px; }
-    .subtitle { font-size: 14px; color: #64748b; margin-bottom: 28px; line-height: 1.5; }
-    .tracking-box { background: #f8fafc; border: 1.5px dashed #cbd5e1; border-radius: 12px; padding: 20px 24px; margin-bottom: 28px; text-align: center; }
-    .tracking-label { font-size: 11px; font-weight: 600; color: #94a3b8; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 8px; }
-    .tracking-id { font-size: 26px; font-weight: 800; color: #0f172a; letter-spacing: 2px; font-family: 'Courier New', monospace; }
-    .tracking-link-label { font-size: 12px; color: #64748b; margin-top: 10px; }
-    .tracking-link { color: #2563eb; word-break: break-all; font-size: 13px; text-decoration: none; }
-    .section-title { font-size: 12px; font-weight: 700; color: #94a3b8; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 12px; margin-top: 24px; }
-    .status-badge { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 99px; font-size: 13px; font-weight: 600; margin-bottom: 20px; }
-    .stop-row { display: flex; gap: 12px; margin-bottom: 16px; align-items: flex-start; }
-    .stop-dot { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: #fff; flex-shrink: 0; margin-top: 2px; }
-    .stop-content { flex: 1; }
-    .stop-type { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: #64748b; margin-bottom: 2px; }
-    .stop-address { font-size: 14px; color: #1e293b; line-height: 1.4; }
-    .stop-meta { font-size: 12px; color: #94a3b8; margin-top: 2px; }
-    .timeline { margin-left: 0; padding-left: 0; }
-    .timeline-item { display: flex; gap: 14px; margin-bottom: 16px; align-items: flex-start; }
-    .timeline-item:last-child { margin-bottom: 0; }
-    .timeline-dot-col { display: flex; flex-direction: column; align-items: center; flex-shrink: 0; padding-top: 3px; }
-    .timeline-dot { width: 10px; height: 10px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 2px #e2e8f0; flex-shrink: 0; }
-    .timeline-dot.active { box-shadow: 0 0 0 2px #3b82f6; }
-    .timeline-line { width: 2px; background: #e2e8f0; flex: 1; min-height: 20px; margin-top: 4px; }
-    .timeline-status { font-size: 13px; font-weight: 600; color: #1e293b; }
-    .timeline-time { font-size: 12px; color: #94a3b8; margin-top: 1px; }
-    .timeline-note { font-size: 12px; color: #64748b; margin-top: 2px; }
-    .cta-btn { display: block; background: #2563eb; color: #ffffff !important; text-decoration: none; text-align: center; padding: 14px 24px; border-radius: 10px; font-size: 15px; font-weight: 700; margin: 28px 0 0; }
-    .cta-btn:hover { background: #1d4ed8; }
-    .divider { height: 1px; background: #f1f5f9; margin: 24px 0; }
-    .footer { text-align: center; padding: 20px 32px; font-size: 12px; color: #94a3b8; line-height: 1.6; }
-    @media (max-width: 480px) {
-      .body { padding: 24px 20px; }
-      .tracking-id { font-size: 20px; letter-spacing: 1px; }
-      .title { font-size: 19px; }
+    body, table, td, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+    table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+    img { -ms-interpolation-mode: bicubic; border: 0; display: block; }
+    body { margin: 0; padding: 0; background-color: #f0f4f0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+    @media only screen and (max-width: 600px) {
+      .email-wrapper { width: 100% !important; }
+      .email-body { padding: 24px 20px !important; }
+      .tracking-id-text { font-size: 22px !important; letter-spacing: 2px !important; }
+      .title-text { font-size: 20px !important; }
+      .stop-table { display: block !important; }
     }
   </style>
 </head>
-<body>
-  <div style="display:none;max-height:0;overflow:hidden;">${preheader}</div>
-  <div class="wrapper">
-    <div class="card">
-      <div class="header">
-        <div class="header-logo">Swift<span>Ship</span></div>
-        <div class="header-sub">Courier &amp; Delivery Service</div>
-      </div>
-      <div class="body">
-        ${body}
-      </div>
-      <div class="footer">
-        SwiftShip Courier · Calgary, AB<br/>
-        <a href="mailto:gofastdelivery2024@gmail.com" style="color:#94a3b8;">gofastdelivery2024@gmail.com</a>
-      </div>
-    </div>
-  </div>
+<body style="margin:0;padding:0;background-color:#f0f4f0;">
+
+  <!-- Preheader (hidden preview text) -->
+  <div style="display:none;max-height:0;overflow:hidden;font-size:1px;color:#f0f4f0;">${preheader}&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;</div>
+
+  <!-- Outer wrapper -->
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f0f4f0;">
+    <tr>
+      <td align="center" style="padding:32px 16px 40px;">
+
+        <!-- Card -->
+        <table role="presentation" class="email-wrapper" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.10);">
+
+          <!-- ── Header ── -->
+          <tr>
+            <td style="background:linear-gradient(135deg,#071407 0%,#0d200c 60%,#0a1a09 100%);padding:0;">
+
+              <!-- Green top accent line -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td style="height:4px;background:linear-gradient(90deg,${BRAND_GREEN},${BRAND_GREEN_DARK});font-size:0;line-height:0;">&nbsp;</td>
+                </tr>
+              </table>
+
+              <!-- Logo + brand row -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td style="padding:24px 32px 20px;">
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                      <tr>
+                        <td style="vertical-align:middle;padding-right:12px;">
+                          <img src="${logoUrl}" alt="${BRAND_NAME}" width="44" height="44"
+                            style="width:44px;height:44px;border-radius:10px;object-fit:contain;display:block;" />
+                        </td>
+                        <td style="vertical-align:middle;">
+                          <div style="font-size:22px;font-weight:800;color:#ffffff;letter-spacing:-0.5px;line-height:1;">
+                            GoFast<span style="color:${BRAND_GREEN};">Delivery</span>
+                          </div>
+                          <div style="font-size:12px;color:rgba(255,255,255,0.4);margin-top:3px;letter-spacing:0.04em;">
+                            ${BRAND_TAGLINE} &middot; Calgary, AB
+                          </div>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+
+            </td>
+          </tr>
+
+          <!-- ── Body ── -->
+          <tr>
+            <td class="email-body" style="padding:36px 32px 28px;">
+              ${body}
+            </td>
+          </tr>
+
+          <!-- ── Footer ── -->
+          <tr>
+            <td style="background:#f8faf8;border-top:1px solid #e4ece4;padding:20px 32px;text-align:center;">
+              <p style="margin:0 0 4px;font-size:13px;font-weight:700;color:#334155;">${BRAND_NAME}</p>
+              <p style="margin:0 0 4px;font-size:12px;color:#94a3b8;">Calgary, AB &middot; Same-day delivery across Calgary and surrounding areas</p>
+              <p style="margin:0;font-size:12px;">
+                <a href="mailto:${BRAND_EMAIL}" style="color:${BRAND_GREEN};text-decoration:none;font-weight:600;">${BRAND_EMAIL}</a>
+              </p>
+            </td>
+          </tr>
+
+        </table>
+        <!-- /Card -->
+
+      </td>
+    </tr>
+  </table>
+
 </body>
 </html>`
 }
 
-// ── Stop rows HTML ────────────────────────────────────────────────────────────
+// ── Stop rows ─────────────────────────────────────────────────────────────────
 
 function stopsHtml(stops = []) {
   return stops.map((s) => {
-    const label = s.type === 'pickup' ? 'Pickup' : 'Drop-off'
+    const isPickup = s.type === 'pickup'
+    const label    = isPickup ? 'Pickup' : 'Drop-off'
+    const dotColor = isPickup ? '#16a34a' : '#dc2626'
+    const letter   = isPickup ? 'P' : 'D'
     return `
-      <div class="stop-row">
-        <div class="stop-content">
-          <div class="stop-type">${label}</div>
-          <div class="stop-address">${esc(s.address)}</div>
-          ${s.contactName ? `<div class="stop-meta">${esc(s.contactName)}${s.contactPhone ? ' · ' + esc(s.contactPhone) : ''}</div>` : ''}
-        </div>
-      </div>`
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:12px;">
+        <tr>
+          <td width="40" style="vertical-align:top;padding-top:2px;">
+            <div style="width:32px;height:32px;border-radius:50%;background:${dotColor};color:#fff;font-size:13px;font-weight:800;text-align:center;line-height:32px;">${letter}</div>
+          </td>
+          <td style="vertical-align:top;padding-left:4px;">
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#94a3b8;margin-bottom:3px;">${label}</div>
+            <div style="font-size:14px;color:#1e293b;font-weight:500;line-height:1.45;">${esc(s.address)}</div>
+            ${s.contactName ? `<div style="font-size:12px;color:#94a3b8;margin-top:3px;">${esc(s.contactName)}${s.contactPhone ? ' &middot; ' + esc(s.contactPhone) : ''}</div>` : ''}
+          </td>
+        </tr>
+      </table>`
   }).join('')
 }
 
-// ── Timeline HTML ─────────────────────────────────────────────────────────────
+// ── Timeline ──────────────────────────────────────────────────────────────────
 
-function timelineHtml(statusHistory = [], currentStatus) {
+function timelineHtml(statusHistory = []) {
   if (!statusHistory.length) return ''
+  const rows = statusHistory.map((h, i) => {
+    const isLast = i === statusHistory.length - 1
+    const color  = STATUS_COLORS[h.status] ?? '#64748b'
+    return `
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:${isLast ? '0' : '12px'};">
+        <tr>
+          <td width="20" style="vertical-align:top;text-align:center;padding-top:2px;">
+            <div style="width:10px;height:10px;border-radius:50%;background:${color};box-shadow:0 0 0 3px ${color}30;display:inline-block;"></div>
+            ${!isLast ? `<div style="width:2px;background:#e2e8f0;margin:4px auto 0;height:20px;"></div>` : ''}
+          </td>
+          <td style="vertical-align:top;padding-left:10px;">
+            <div style="font-size:13px;font-weight:600;color:#1e293b;">${esc(STATUS_LABELS[h.status] ?? h.status)}</div>
+            <div style="font-size:12px;color:#94a3b8;margin-top:1px;">${formatDate(h.timestamp)}</div>
+            ${h.note ? `<div style="font-size:12px;color:#64748b;margin-top:2px;">${esc(h.note)}</div>` : ''}
+          </td>
+        </tr>
+      </table>`
+  }).join('')
+
   return `
-    <div class="section-title">Status History</div>
-    <div class="timeline">
-      ${statusHistory.map((h, i) => {
-        const isLast = i === statusHistory.length - 1
-        const color = STATUS_COLORS[h.status] ?? '#64748b'
-        return `
-          <div class="timeline-item">
-            <div class="timeline-dot-col">
-              <div class="timeline-dot ${isLast ? 'active' : ''}" style="background:${color};box-shadow:0 0 0 2px ${isLast ? color + '40' : '#e2e8f0'};"></div>
-              ${!isLast ? '<div class="timeline-line"></div>' : ''}
-            </div>
-            <div class="timeline-content">
-              <div class="timeline-status">${esc(STATUS_LABELS[h.status] ?? h.status)}</div>
-              <div class="timeline-time">${formatDate(h.timestamp)}</div>
-              ${h.note ? `<div class="timeline-note">${esc(h.note)}</div>` : ''}
-            </div>
-          </div>`
-      }).join('')}
-    </div>`
+    <p style="margin:24px 0 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#94a3b8;">Status History</p>
+    ${rows}`
+}
+
+// ── Tracking box ──────────────────────────────────────────────────────────────
+
+function trackingBoxHtml(token, trackingUrl, linkLabel = 'Track your delivery online:') {
+  return `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+      style="background:#f0fdf0;border:1.5px solid rgba(27,185,8,0.22);border-radius:12px;margin-bottom:28px;">
+      <tr>
+        <td style="padding:22px 24px;text-align:center;">
+          <p style="margin:0 0 8px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.14em;color:#64748b;">Tracking Number</p>
+          <p class="tracking-id-text" style="margin:0 0 12px;font-size:28px;font-weight:800;color:#0f172a;letter-spacing:3px;font-family:'Courier New',Courier,monospace;">${token}</p>
+          <p style="margin:0 0 6px;font-size:12px;color:#64748b;">${linkLabel}</p>
+          <a href="${trackingUrl}" style="color:${BRAND_GREEN};font-size:13px;font-weight:600;word-break:break-all;text-decoration:none;">${trackingUrl}</a>
+        </td>
+      </tr>
+    </table>`
+}
+
+// ── CTA button ────────────────────────────────────────────────────────────────
+
+function ctaBtn(href, text) {
+  return `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:28px;">
+      <tr>
+        <td align="center">
+          <a href="${href}"
+            style="display:inline-block;background:linear-gradient(135deg,${BRAND_GREEN},${BRAND_GREEN_DARK});color:#ffffff;text-decoration:none;font-size:15px;font-weight:800;padding:15px 36px;border-radius:12px;letter-spacing:0.01em;box-shadow:0 4px 16px rgba(27,185,8,0.35);">
+            ${text}
+          </a>
+        </td>
+      </tr>
+    </table>`
+}
+
+// ── Status badge ──────────────────────────────────────────────────────────────
+
+function statusBadgeHtml(status) {
+  const color = STATUS_COLORS[status] ?? '#64748b'
+  const label = STATUS_LABELS[status] ?? status
+  return `
+    <p style="margin:0 0 24px;">
+      <span style="display:inline-flex;align-items:center;gap:7px;background:${color}18;color:${color};font-size:13px;font-weight:700;padding:7px 16px;border-radius:99px;border:1px solid ${color}30;">
+        <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color};"></span>
+        ${label}
+      </span>
+    </p>`
+}
+
+// ── Section heading ───────────────────────────────────────────────────────────
+
+function sectionHeading(text) {
+  return `<p style="margin:24px 0 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#94a3b8;">${text}</p>`
+}
+
+function divider() {
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;"><tr><td style="height:1px;background:#f1f5f9;font-size:0;line-height:0;">&nbsp;</td></tr></table>`
 }
 
 // ── Email: Booking Confirmed ──────────────────────────────────────────────────
 
 export function buildBookingConfirmedEmail({ booking, trackingUrl, recipientType }) {
   const isSender = recipientType === 'sender'
-  const token = booking.trackingToken
-  const status = booking.status ?? 'pending'
-  const color = STATUS_COLORS[status] ?? '#64748b'
+  const token    = booking.trackingToken
+  const status   = booking.status ?? 'pending'
 
   const body = `
-    <div class="title">${isSender ? 'Booking Confirmed!' : 'A Package Is On Its Way'}</div>
-    <div class="subtitle">
+    <h1 class="title-text" style="margin:0 0 8px;font-size:24px;font-weight:800;color:#0f172a;line-height:1.2;">
+      ${isSender ? '🎉 Booking Confirmed!' : '📦 A Package Is On Its Way'}
+    </h1>
+    <p style="margin:0 0 28px;font-size:14px;color:#64748b;line-height:1.65;">
       ${isSender
-        ? 'Your booking has been created successfully. Track your shipment with the ID below.'
-        : 'Someone has sent you a package. Use the tracking ID below to follow its journey.'}
-    </div>
+        ? 'Your booking has been placed successfully. Use the tracking number below to follow your delivery in real time.'
+        : 'Someone has sent you a package via GoFastDelivery. Use the tracking number below to follow its journey.'}
+    </p>
 
-    <div class="tracking-box">
-      <div class="tracking-label">Tracking ID</div>
-      <div class="tracking-id">${token}</div>
-      <div class="tracking-link-label">Track online:</div>
-      <a class="tracking-link" href="${trackingUrl}">${trackingUrl}</a>
-    </div>
+    ${trackingBoxHtml(token, trackingUrl)}
 
-    <div style="margin-bottom:20px;">
-      <span class="status-badge" style="background:${color}18;color:${color};">
-        <span style="width:8px;height:8px;border-radius:50%;background:${color};display:inline-block;"></span>
-        ${STATUS_LABELS[status] ?? status}
-      </span>
-    </div>
+    ${statusBadgeHtml(status)}
 
-    <div class="section-title">Route</div>
+    ${sectionHeading('Route')}
     ${stopsHtml(booking.stops)}
 
     ${booking.packageDetails?.kind ? `
-    <div class="divider"></div>
-    <div class="section-title">Package</div>
-    <div style="font-size:14px;color:#475569;line-height:1.6;">
-      <strong>Type:</strong> ${esc(booking.packageDetails.kind)}<br/>
-      ${booking.packageDetails.description ? `<strong>Contents:</strong> ${esc(booking.packageDetails.description)}<br/>` : ''}
-      ${booking.packageDetails.weightSlab ? `<strong>Weight:</strong> ${esc(booking.packageDetails.weightSlab.replace(/_/g,' '))}<br/>` : ''}
-    </div>` : ''}
+      ${divider()}
+      ${sectionHeading('Package Details')}
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="font-size:14px;color:#475569;line-height:1.8;">
+        <tr><td><strong style="color:#334155;">Type:</strong>&nbsp;${esc(booking.packageDetails.kind)}</td></tr>
+        ${booking.packageDetails.description ? `<tr><td><strong style="color:#334155;">Contents:</strong>&nbsp;${esc(booking.packageDetails.description)}</td></tr>` : ''}
+        ${booking.packageDetails.weightSlab   ? `<tr><td><strong style="color:#334155;">Weight:</strong>&nbsp;${esc(booking.packageDetails.weightSlab.replace(/_/g,' '))}</td></tr>` : ''}
+      </table>` : ''}
 
-    <a class="cta-btn" href="${trackingUrl}">Track My Package →</a>`
+    ${ctaBtn(trackingUrl, 'Track My Delivery &rarr;')}`
 
   return baseTemplate({
-    title: isSender ? 'Booking Confirmed — SwiftShip' : 'Package On Its Way — SwiftShip',
-    preheader: `Tracking ID: ${token}`,
+    title:     isSender ? `Booking Confirmed — ${BRAND_NAME}` : `Package On Its Way — ${BRAND_NAME}`,
+    preheader: `Tracking #${token} — ${isSender ? 'Your booking is confirmed.' : 'Your package is on its way.'}`,
     body,
   })
 }
 
-// ── Email: Status Update (picked_up / delivered) ──────────────────────────────
+// ── Email: Status Update ──────────────────────────────────────────────────────
 
 export function buildStatusUpdateEmail({ booking, trackingUrl, newStatus }) {
-  const token = booking.trackingToken
-  const color = STATUS_COLORS[newStatus] ?? '#64748b'
+  const token       = booking.trackingToken
   const statusLabel = STATUS_LABELS[newStatus] ?? newStatus
 
   const isDelivered = newStatus === 'delivered'
   const isPickedUp  = newStatus === 'picked_up'
 
-  const title = isDelivered
-    ? '📦 Package Delivered!'
-    : isPickedUp
-    ? '🚚 Package Picked Up'
-    : `Update: ${statusLabel}`
+  const title = isDelivered ? '✅ Package Delivered!'
+    : isPickedUp             ? '🚚 Package Picked Up'
+    :                          `Update: ${statusLabel}`
 
   const subtitle = isDelivered
-    ? 'Your package has been successfully delivered.'
+    ? 'Great news — your package has been successfully delivered to its destination.'
     : isPickedUp
-    ? 'Your package has been picked up and is on its way.'
+    ? 'Your package has been picked up by our driver and is heading to its destination.'
     : `Your shipment status has been updated to: ${statusLabel}.`
 
   const body = `
-    <div class="title">${title}</div>
-    <div class="subtitle">${subtitle}</div>
+    <h1 class="title-text" style="margin:0 0 8px;font-size:24px;font-weight:800;color:#0f172a;line-height:1.2;">${title}</h1>
+    <p style="margin:0 0 24px;font-size:14px;color:#64748b;line-height:1.65;">${subtitle}</p>
 
-    <div style="margin-bottom:24px;">
-      <span class="status-badge" style="background:${color}18;color:${color};">
-        <span style="width:8px;height:8px;border-radius:50%;background:${color};display:inline-block;"></span>
-        ${statusLabel}
-      </span>
-    </div>
+    ${statusBadgeHtml(newStatus)}
 
-    <div class="tracking-box">
-      <div class="tracking-label">Tracking ID</div>
-      <div class="tracking-id">${token}</div>
-      <div class="tracking-link-label">View full history:</div>
-      <a class="tracking-link" href="${trackingUrl}">${trackingUrl}</a>
-    </div>
+    ${trackingBoxHtml(token, trackingUrl, 'View full delivery history:')}
 
-    <div class="section-title">Route</div>
+    ${sectionHeading('Route')}
     ${stopsHtml(booking.stops)}
 
-    ${timelineHtml(booking.statusHistory, newStatus)}
+    ${timelineHtml(booking.statusHistory)}
 
-    <a class="cta-btn" href="${trackingUrl}">View Full Tracking →</a>`
+    ${ctaBtn(trackingUrl, 'View Full Tracking &rarr;')}`
 
   return baseTemplate({
-    title: `${statusLabel} — SwiftShip`,
-    preheader: `Your package is now: ${statusLabel}. Tracking: ${token}`,
+    title:     `${statusLabel} — ${BRAND_NAME}`,
+    preheader: `Your package is now: ${statusLabel}. Tracking #${token}`,
     body,
   })
 }
@@ -273,63 +360,37 @@ export function buildStatusUpdateEmail({ booking, trackingUrl, newStatus }) {
 
 async function sendMail({ to, subject, html }) {
   if (!to) return
-  await transporter.sendMail({
-    from: `"SwiftShip Courier" <gofastdelivery2024@gmail.com>`,
-    to,
-    subject,
-    html,
-  })
+  await transporter.sendMail({ from: BRAND_FROM, to, subject, html })
 }
 
-/**
- * Send booking confirmation to sender and/or receiver.
- */
 export async function sendBookingConfirmed({ booking, trackingUrl }) {
   const jobs = []
-
   if (booking.senderEmail) {
     jobs.push(sendMail({
-      to: booking.senderEmail,
-      subject: `Booking Confirmed — Tracking ID: ${booking.trackingToken}`,
-      html: buildBookingConfirmedEmail({ booking, trackingUrl, recipientType: 'sender' }),
+      to:      booking.senderEmail,
+      subject: `Booking Confirmed — Tracking #${booking.trackingToken}`,
+      html:    buildBookingConfirmedEmail({ booking, trackingUrl, recipientType: 'sender' }),
     }))
   }
-
   if (booking.receiverEmail && booking.receiverEmail !== booking.senderEmail) {
     jobs.push(sendMail({
-      to: booking.receiverEmail,
-      subject: `A Package Is On Its Way — Tracking ID: ${booking.trackingToken}`,
-      html: buildBookingConfirmedEmail({ booking, trackingUrl, recipientType: 'receiver' }),
+      to:      booking.receiverEmail,
+      subject: `A Package Is On Its Way — Tracking #${booking.trackingToken}`,
+      html:    buildBookingConfirmedEmail({ booking, trackingUrl, recipientType: 'receiver' }),
     }))
   }
-
-  await Promise.allSettled(jobs) // never throw — email failure must not break booking creation
+  await Promise.allSettled(jobs)
 }
 
-/**
- * Send status update (picked_up or delivered) to sender and receiver.
- */
 export async function sendStatusUpdate({ booking, trackingUrl, newStatus }) {
   const statusLabel = STATUS_LABELS[newStatus] ?? newStatus
-  const subject = `${statusLabel} — Tracking: ${booking.trackingToken}`
-
-  const jobs = []
-
+  const subject     = `${statusLabel} — Tracking #${booking.trackingToken}`
+  const jobs        = []
   if (booking.senderEmail) {
-    jobs.push(sendMail({
-      to: booking.senderEmail,
-      subject,
-      html: buildStatusUpdateEmail({ booking, trackingUrl, newStatus }),
-    }))
+    jobs.push(sendMail({ to: booking.senderEmail, subject, html: buildStatusUpdateEmail({ booking, trackingUrl, newStatus }) }))
   }
-
   if (booking.receiverEmail && booking.receiverEmail !== booking.senderEmail) {
-    jobs.push(sendMail({
-      to: booking.receiverEmail,
-      subject,
-      html: buildStatusUpdateEmail({ booking, trackingUrl, newStatus }),
-    }))
+    jobs.push(sendMail({ to: booking.receiverEmail, subject, html: buildStatusUpdateEmail({ booking, trackingUrl, newStatus }) }))
   }
-
   await Promise.allSettled(jobs)
 }

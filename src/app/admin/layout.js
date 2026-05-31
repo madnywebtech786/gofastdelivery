@@ -5,14 +5,15 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useState } from 'react'
 import {
   LayoutDashboard, PackageOpen, Users, Tag,
-  LogOut, Truck, Menu, X, ChevronRight,
+  LogOut, Truck, Menu, X, ChevronRight, History,
 } from 'lucide-react'
 
 const NAV = [
-  { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/admin/bookings',  label: 'Bookings',  icon: PackageOpen },
-  { href: '/admin/drivers',   label: 'Drivers',   icon: Users },
-  { href: '/admin/pricing',   label: 'Pricing',   icon: Tag },
+  { href: '/admin/dashboard',         label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/admin/bookings',          label: 'Bookings',  icon: PackageOpen },
+  { href: '/admin/bookings/history',  label: 'History',   icon: History },
+  { href: '/admin/drivers',           label: 'Drivers',   icon: Users },
+  { href: '/admin/pricing',           label: 'Pricing',   icon: Tag },
 ]
 
 export default function AdminLayout({ children }) {
@@ -44,7 +45,15 @@ export default function AdminLayout({ children }) {
       {/* Nav */}
       <nav className="flex-1 px-3 py-4 space-y-0.5">
         {NAV.map(({ href, label, icon: Icon }) => {
-          const active = pathname === href || (href !== '/admin/dashboard' && pathname.startsWith(href))
+          const active = pathname === href || (
+            href !== '/admin/dashboard' &&
+            href !== '/admin/bookings' &&
+            pathname.startsWith(href)
+          ) || (
+            href === '/admin/bookings' &&
+            pathname.startsWith(href) &&
+            !pathname.startsWith('/admin/bookings/history')
+          )
           return (
             <Link
               key={href}

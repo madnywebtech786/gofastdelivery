@@ -229,90 +229,97 @@ export default function DriverRoutePage() {
     }
   }, [driverId])
 
-  // Initialize Mapbox GL when modal opens
+  // Initialize Mapbox GL when modal opens.
+  // Does NOT wait for driverPos — defaults to Calgary centre so the map always
+  // renders immediately. If GPS arrives later the map flies to the driver's position.
   useEffect(() => {
-    if (endPointStep !== 'modal' || !driverPos) return
+    if (endPointStep !== 'modal') return
+
+    const CALGARY = [-114.0719, 51.0447]
+    let map = null
+    let destroyed = false
+    let moveTimeout = null
+
+    function doReverseGeocode(lng, lat, tok) {
+      reverseAbortRef.current?.abort()
+      const controller = new AbortController()
+      reverseAbortRef.current = controller
+      reverseGeocode(lng, lat, tok, controller.signal)
+        .then((result) => {
+          if (result?.address && reverseAbortRef.current === controller) {
+            setSelectedEndPoint({ lng, lat, address: result.address })
+          }
+        })
+        .catch(() => {})
+    }
 
     import('mapbox-gl').then((mod) => {
+      if (destroyed) return
       const mapboxgl = mod.default
       mapboxglRef.current = mapboxgl
+
       const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN
       if (!token) return
 
       mapboxgl.accessToken = token
 
       const mapContainer = document.getElementById('endpoint-map')
-      if (!mapContainer) return
+      if (!mapContainer || destroyed) return
 
-      const map = new mapboxgl.Map({
+      const initialCenter = driverPos
+        ? [driverPos.lng, driverPos.lat]
+        : CALGARY
+
+      map = new mapboxgl.Map({
         container: mapContainer,
         style: 'mapbox://styles/mapbox/streets-v12',
-        center: [driverPos.lng, driverPos.lat],
+        center: initialCenter,
         zoom: 14,
       })
-
       mapRef.current = map
 
-      // Wait for map to load before initializing
-      if (map.isStyleLoaded()) {
-        initializeMapState()
-      } else {
-        map.on('load', initializeMapState)
-      }
-
-      // Cancel any previous reverse geocode and start a new one
-      function doReverseGeocode(lng, lat, tok) {
-        reverseAbortRef.current?.abort()
-        const controller = new AbortController()
-        reverseAbortRef.current = controller
-        reverseGeocode(lng, lat, tok, controller.signal)
-          .then((result) => {
-            if (result?.address && reverseAbortRef.current === controller) {
-              setSelectedEndPoint({ lng, lat, address: result.address })
-            }
-          })
-          .catch(() => {})
-      }
-
       function initializeMapState() {
+        if (destroyed) return
         const { lng, lat } = map.getCenter()
         setSelectedEndPoint({ lng, lat, address: `${lat.toFixed(4)}, ${lng.toFixed(4)}` })
         doReverseGeocode(lng, lat, token)
 
-        // On map move: update coords immediately, debounce the geocode request
-        let moveTimeout
-        const debouncedMove = () => {
+        map.on('move', () => {
           clearTimeout(moveTimeout)
           const { lng, lat } = map.getCenter()
-          // Show coordinates immediately so the confirm button always has a value
           setSelectedEndPoint((prev) =>
             prev?.lng === lng && prev?.lat === lat
               ? prev
               : { lng, lat, address: `${lat.toFixed(4)}, ${lng.toFixed(4)}` }
           )
           moveTimeout = setTimeout(() => doReverseGeocode(lng, lat, token), 500)
+        })
+
+        // Add driver marker if GPS is available
+        if (driverPos) {
+          const el = document.createElement('div')
+          el.style.cssText = 'width:24px;height:24px;background-size:contain;'
+          el.style.backgroundImage = `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%232563eb" stroke="white" stroke-width="2"><circle cx="12" cy="12" r="8"/></svg>')`
+          new mapboxgl.Marker({ element: el })
+            .setLngLat([driverPos.lng, driverPos.lat])
+            .addTo(map)
         }
-
-        map.on('move', debouncedMove)
-
-        // Add driver marker
-        const driverEl = document.createElement('div')
-        driverEl.style.width = '24px'
-        driverEl.style.height = '24px'
-        driverEl.style.backgroundImage = `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%232563eb" stroke="white" stroke-width="2"><circle cx="12" cy="12" r="8"/></svg>')`
-        driverEl.style.backgroundSize = 'contain'
-
-        new mapboxgl.Marker({ element: driverEl })
-          .setLngLat([driverPos.lng, driverPos.lat])
-          .addTo(map)
       }
 
-      return () => {
-        map.remove()
-        mapRef.current = null
+      if (map.isStyleLoaded()) {
+        initializeMapState()
+      } else {
+        map.on('load', initializeMapState)
       }
     })
-  }, [endPointStep, driverPos])
+
+    return () => {
+      destroyed = true
+      clearTimeout(moveTimeout)
+      reverseAbortRef.current?.abort()
+      if (map) { map.remove(); mapRef.current = null }
+    }
+  }, [endPointStep]) // driverPos intentionally excluded — map must render regardless of GPS
 
   // When end-point is confirmed and ready, load the route with reroute
   useEffect(() => {

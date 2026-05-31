@@ -5,19 +5,17 @@ import Link from 'next/link'
 import Badge from '@/components/ui/Badge'
 import { useToast } from '@/components/ui/Toast'
 import {
-  Plus, Search, Filter, PackageOpen, MapPin, Clock,
+  Plus, Search, Filter, PackageOpen, MapPin,
   ArrowRight, ChevronLeft, ChevronRight, X, Trash2,
-  CheckCircle2, Loader2,
+  Loader2, History,
 } from 'lucide-react'
 
 const PAGE_SIZE = 8
 
 const STATUS_FILTERS = [
-  { value: 'all',       label: 'All' },
-  { value: 'pending',   label: 'Pending' },
-  { value: 'active',    label: 'Active' },
-  { value: 'delivered', label: 'Delivered' },
-  { value: 'cancelled', label: 'Cancelled' },
+  { value: 'all',     label: 'All' },
+  { value: 'pending', label: 'Pending' },
+  { value: 'active',  label: 'Active' },
 ]
 
 const ACTIVE_STATUSES = ['assigned_pickup', 'picked_up', 'assigned_delivery']
@@ -105,10 +103,9 @@ export default function MyBookingsClient({ bookings: initial }) {
 
   /* ── Stats summary ─────────────────────────────────────────────── */
   const counts = useMemo(() => ({
-    total:     bookings.length,
-    active:    bookings.filter((b) => ACTIVE_STATUSES.includes(b.status)).length,
-    delivered: bookings.filter((b) => b.status === 'delivered').length,
-    pending:   bookings.filter((b) => b.status === 'pending').length,
+    total:   bookings.length,
+    active:  bookings.filter((b) => ACTIVE_STATUSES.includes(b.status)).length,
+    pending: bookings.filter((b) => b.status === 'pending').length,
   }), [bookings])
 
   return (
@@ -119,17 +116,25 @@ export default function MyBookingsClient({ bookings: initial }) {
         <div>
           <h1 className="text-2xl font-bold" style={{ color: 'var(--fg)' }}>My Bookings</h1>
           <p className="text-sm mt-0.5" style={{ color: 'var(--fg-3)' }}>
-            {counts.total} total · {counts.active} active · {counts.delivered} delivered
+            {counts.total} active · {counts.pending} pending
           </p>
         </div>
-        <Link href="/customer/book">
-          <button className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white shrink-0 transition-all hover:shadow-lg active:scale-95"
-            style={{ background: 'var(--accent)', boxShadow: '0 2px 12px var(--accent-glow)' }}>
-            <Plus size={14} />
-            <span className="hidden sm:inline">New Booking</span>
-            <span className="sm:hidden">New</span>
-          </button>
-        </Link>
+        <div className="flex items-center gap-2 shrink-0">
+          <Link href="/customer/my-bookings/history"
+            className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all"
+            style={{ color: 'var(--fg-2)', border: '1px solid var(--border)', background: 'var(--surface)' }}>
+            <History size={14} />
+            <span className="hidden sm:inline">History</span>
+          </Link>
+          <Link href="/customer/book">
+            <button className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:shadow-lg active:scale-95"
+              style={{ background: 'var(--accent)', boxShadow: '0 2px 12px var(--accent-glow)' }}>
+              <Plus size={14} />
+              <span className="hidden sm:inline">New Booking</span>
+              <span className="sm:hidden">New</span>
+            </button>
+          </Link>
+        </div>
       </div>
 
       {/* ── Filters + Search ───────────────────────────────────────── */}
@@ -173,11 +178,7 @@ export default function MyBookingsClient({ bookings: initial }) {
               {f.label}
               {f.value !== 'all' && (
                 <span className="ml-1 opacity-70">
-                  ({f.value === 'active'
-                    ? counts.active
-                    : f.value === 'pending' ? counts.pending
-                    : f.value === 'delivered' ? counts.delivered
-                    : bookings.filter((b) => b.status === f.value).length})
+                  ({f.value === 'active' ? counts.active : counts.pending})
                 </span>
               )}
             </button>

@@ -40,7 +40,7 @@ export async function createBooking({ customerId, stops, trackingToken, senderEm
   const now = new Date()
   const doc = {
     trackingToken,
-    customerId: new ObjectId(customerId),
+    customerId: customerId ? new ObjectId(customerId) : null,
     status: 'pending',
     stops,
     packageDetails:  normalizePackageDetails(packageDetails),
@@ -94,11 +94,13 @@ export async function findBookingByToken(trackingToken) {
 /**
  * List bookings for a specific customer (newest first).
  */
-export async function findBookingsByCustomer(customerId, { limit = 20, skip = 0 } = {}) {
+export async function findBookingsByCustomer(customerId, { limit = 20, skip = 0, statusIn = null } = {}) {
   const db = await getDb()
+  const query = { customerId: new ObjectId(customerId) }
+  if (statusIn?.length) query.status = { $in: statusIn }
   return db
     .collection('bookings')
-    .find({ customerId: new ObjectId(customerId) })
+    .find(query)
     .sort({ createdAt: -1 })
     .skip(skip)
     .limit(limit)
@@ -109,11 +111,13 @@ export async function findBookingsByCustomer(customerId, { limit = 20, skip = 0 
  * List all bookings (admin), optionally filtered by status.
  * `status` may be a single status string or an array of statuses.
  */
-export async function findAllBookings({ status, limit = 50, skip = 0 } = {}) {
+export async function findAllBookings({ status, hasDriver, limit = 50, skip = 0 } = {}) {
   const db = await getDb()
   const filter = Array.isArray(status)
     ? (status.length > 0 ? { status: { $in: status } } : {})
     : (status ? { status } : {})
+  if (hasDriver === true)  filter.assignedDriverId = { $ne: null }
+  if (hasDriver === false) filter.assignedDriverId = null
   return db
     .collection('bookings')
     .find(filter)
@@ -126,11 +130,13 @@ export async function findAllBookings({ status, limit = 50, skip = 0 } = {}) {
 /**
  * Count bookings (admin), optionally filtered by status.
  */
-export async function countAllBookings({ status } = {}) {
+export async function countAllBookings({ status, hasDriver } = {}) {
   const db = await getDb()
   const filter = Array.isArray(status)
     ? (status.length > 0 ? { status: { $in: status } } : {})
     : (status ? { status } : {})
+  if (hasDriver === true)  filter.assignedDriverId = { $ne: null }
+  if (hasDriver === false) filter.assignedDriverId = null
   return db.collection('bookings').countDocuments(filter)
 }
 

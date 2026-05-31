@@ -58,7 +58,7 @@ function Field({ label, required, children }) {
 const inputCls =
   'w-full rounded-lg border border-border bg-white dark:bg-surface px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary'
 
-export default function BookingForm() {
+export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
   const router = useRouter()
   const toast  = useToast()
   const mapRef = useRef(null)
@@ -283,7 +283,7 @@ export default function BookingForm() {
         estimatedPrice: pricingPreview?.price ?? null,
       }
 
-      const res = await fetch('/api/bookings', {
+      const res = await fetch(apiPath, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -297,11 +297,6 @@ export default function BookingForm() {
         return
       }
 
-      // Store the new booking ID in sessionStorage so MyBookingsClient can fetch fresh data
-      if (data._id) {
-        sessionStorage.setItem('newBookingId', data._id)
-      }
-
       // Reset all state
       mapRef.current?.clearAll()
       setStops([])
@@ -313,17 +308,20 @@ export default function BookingForm() {
       setReceiverEmail('')
       setPricingPreview(null)
 
-      const trackShort = data.trackingToken ? `Tracking #${String(data.trackingToken).slice(-6).toUpperCase()}` : ''
-      toast.success(
-        'Booking created',
-        trackShort
-          ? `${trackShort} — we'll notify you at every status change.`
-          : `We'll notify you at every status change.`
-      )
-
-      // Navigate and refresh to ensure new booking appears immediately
-      router.push('/customer/my-bookings')
-      router.refresh()
+      if (onSuccess) {
+        // Guest flow — delegate navigation/toast to the parent page
+        onSuccess(data)
+      } else {
+        // Customer portal flow — store ID for MyBookingsClient refresh then navigate
+        if (data._id) sessionStorage.setItem('newBookingId', data._id)
+        const trackShort = data.trackingToken ? `Tracking #${String(data.trackingToken).slice(-6).toUpperCase()}` : ''
+        toast.success(
+          'Booking created',
+          trackShort ? `${trackShort} — we'll notify you at every status change.` : `We'll notify you at every status change.`
+        )
+        router.push('/customer/my-bookings')
+        router.refresh()
+      }
     } catch {
       setError('Network error. Please try again.')
     } finally {

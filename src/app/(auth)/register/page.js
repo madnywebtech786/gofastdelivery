@@ -36,18 +36,15 @@ function validate({ name, email, password, confirmPassword }) {
 
 function FloatField({ id, label, type = 'text', icon: Icon, value, onChange, focused, setFocused, error, placeholder, autoComplete, right }) {
   const active = focused === id
-  const isOrange = active
-
   return (
     <div className="flex flex-col gap-1.5">
       <label htmlFor={id}
-        className="text-[11px] font-black tracking-widest uppercase transition-colors"
-        style={{ color: active ? '#ff580d' : 'rgba(0,0,0,0.45)' }}>
+        className={`text-[11px] font-black tracking-widest uppercase transition-colors ${active ? 'text-secondary' : 'text-muted'}`}>
         {label}
       </label>
       <div className="relative">
-        <Icon size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none transition-colors"
-          style={{ color: active ? '#ff580d' : error ? '#ef4444' : 'rgba(0,0,0,0.25)' }} />
+        <Icon size={14}
+          className={`absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none transition-colors ${active ? 'text-secondary' : error ? 'text-danger' : 'text-muted'}`} />
         <input
           id={id} name={id} type={type}
           autoComplete={autoComplete}
@@ -57,25 +54,18 @@ function FloatField({ id, label, type = 'text', icon: Icon, value, onChange, foc
           onFocus={() => setFocused(id)}
           onBlur={() => setFocused(null)}
           placeholder={placeholder}
-          className="w-full outline-none transition-all text-sm font-medium"
-          style={{
-            background: active ? '#ffffff' : '#faf8f4',
-            border: `1.5px solid ${error ? '#ef4444' : active ? '#ff580d' : 'rgba(0,0,0,0.09)'}`,
-            borderRadius: '12px',
-            color: '#0d0d0d',
-            padding: '0.8rem 1rem 0.8rem 2.75rem',
-            paddingRight: right ? '2.75rem' : '1rem',
-            boxShadow: error
-              ? '0 0 0 3px rgba(239,68,68,0.08)'
+          className={`w-full outline-none transition-all text-sm font-medium rounded-xl text-foreground pl-10 py-3.5 border-[1.5px] ${right ? 'pr-11' : 'pr-4'} ${
+            error
+              ? 'border-danger bg-danger/4 shadow-[0_0_0_3px_var(--danger-bg)]'
               : active
-                ? '0 0 0 3px rgba(255,88,13,0.1), 0 2px 12px rgba(255,88,13,0.08)'
-                : 'none',
-          }}
+                ? 'border-secondary/50 bg-surface shadow-[0_0_0_3px_var(--secondary-dim)]'
+                : 'border-border bg-background'
+          }`}
         />
         {right && <div className="absolute right-3.5 top-1/2 -translate-y-1/2">{right}</div>}
       </div>
       {error && (
-        <p className="text-[10px] font-bold flex items-center gap-1" style={{ color: '#ef4444' }}>
+        <p className="text-[10px] font-bold flex items-center gap-1 text-danger">
           <AlertCircle size={9} strokeWidth={2.5} />{error}
         </p>
       )}
@@ -86,21 +76,20 @@ function FloatField({ id, label, type = 'text', icon: Icon, value, onChange, foc
 function StrengthMeter({ password }) {
   if (!password) return null
   const passed = RULES.filter(r => r.test(password)).length
-  const color  = ['#ef4444', '#ff580d', '#1bb908'][passed - 1] ?? '#ef4444'
+  const colors = ['bg-danger', 'bg-secondary', 'bg-accent']
+  const color  = colors[passed - 1] ?? 'bg-danger'
   return (
     <div className="flex flex-col gap-2 mt-1">
       <div className="flex gap-1">
         {RULES.map((_, i) => (
-          <div key={i} className="h-1 flex-1 rounded-full transition-all duration-300"
-            style={{ background: i < passed ? color : 'rgba(0,0,0,0.08)' }} />
+          <div key={i} className={`h-1 flex-1 rounded-full transition-all duration-300 ${i < passed ? color : 'bg-border'}`} />
         ))}
       </div>
       <div className="flex gap-4 flex-wrap">
         {RULES.map(r => {
           const ok = r.test(password)
           return (
-            <span key={r.id} className="inline-flex items-center gap-1 text-[10px] font-semibold"
-              style={{ color: ok ? '#1bb908' : 'rgba(0,0,0,0.3)' }}>
+            <span key={r.id} className={`inline-flex items-center gap-1 text-[10px] font-semibold ${ok ? 'text-accent' : 'text-muted'}`}>
               <CheckCircle2 size={9} strokeWidth={ok ? 3 : 2} />{r.label}
             </span>
           )
@@ -112,13 +101,13 @@ function StrengthMeter({ password }) {
 
 export default function RegisterPage() {
   const router = useRouter()
-  const [fields, setFields]     = useState({ name: '', email: '', phone: '', password: '', confirmPassword: '' })
-  const [errors, setErrors]     = useState({})
-  const [focused, setFocused]   = useState(null)
-  const [showPass, setShowPass] = useState(false)
-  const [showConf, setShowConf] = useState(false)
+  const [fields,    setFields]    = useState({ name: '', email: '', phone: '', password: '', confirmPassword: '' })
+  const [errors,    setErrors]    = useState({})
+  const [focused,   setFocused]   = useState(null)
+  const [showPass,  setShowPass]  = useState(false)
+  const [showConf,  setShowConf]  = useState(false)
   const [serverErr, setServerErr] = useState('')
-  const [loading, setLoading]   = useState(false)
+  const [loading,   setLoading]   = useState(false)
 
   const onChange = useCallback((e) => {
     const { name, value } = e.target
@@ -149,24 +138,17 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="min-h-screen grid grid-cols-1 lg:grid-cols-2"
-      style={{ background: '#faf8f4' }}>
+    <div className="min-h-screen grid grid-cols-1 lg:grid-cols-2 bg-background">
 
       {/* ── LEFT: form ── */}
-      <div className="flex flex-col justify-center px-6 sm:px-12 lg:px-16 py-12 relative overflow-y-auto"
-        style={{ background: '#ffffff' }}>
+      <div className="flex flex-col justify-center px-6 sm:px-12 lg:px-16 py-12 relative overflow-y-auto bg-surface">
 
         {/* Top nav */}
         <div className="absolute top-6 left-6 right-6 flex items-center justify-between">
           <Link href="/">
-            <Image src="/images/logo.png" alt="GoFastDelivery" width={110} height={36}
-              className="h-8 w-auto object-contain" />
+            <Image src="/images/logo.png" alt="GoFastDelivery" width={110} height={36} className="h-8 w-auto object-contain" />
           </Link>
-          <Link href="/"
-            className="inline-flex items-center gap-1.5 text-xs font-bold transition-colors"
-            style={{ color: 'rgba(0,0,0,0.35)' }}
-            onMouseEnter={e => { e.currentTarget.style.color = '#ff580d' }}
-            onMouseLeave={e => { e.currentTarget.style.color = 'rgba(0,0,0,0.35)' }}>
+          <Link href="/" className="inline-flex items-center gap-1.5 text-xs font-bold text-secondary transition-colors">
             <ArrowRight size={11} className="rotate-180" />Back to Home
           </Link>
         </div>
@@ -175,29 +157,24 @@ export default function RegisterPage() {
 
           {/* Heading */}
           <div className="mb-8">
-            <span className="inline-flex px-3 py-1 rounded-full text-[10px] font-black tracking-widest uppercase mb-4"
-              style={{ background: 'rgba(255,88,13,0.1)', color: '#ff580d' }}>
+            <span className="inline-flex px-3 py-1 rounded-full text-[10px] font-black tracking-widest uppercase mb-4 bg-secondary/10 text-secondary">
               Free Account
             </span>
-            <h1 className="font-black leading-tight tracking-tight mb-2"
-              style={{ fontSize: 'clamp(1.8rem, 3.5vw, 2.4rem)', color: '#0d0d0d' }}>
+            <h1 className="font-black leading-tight tracking-tight mb-2 text-foreground" style={{ fontSize: 'clamp(1.8rem, 3.5vw, 2.4rem)' }}>
               Create your<br />
-              <span style={{ color: '#ff580d' }}>GoFast</span> account
+              <span className="text-secondary">GoFast</span> account
             </h1>
-            <p className="text-sm" style={{ color: 'rgba(0,0,0,0.4)' }}>
-              Already have one?{' '}
-              <Link href="/login" className="font-black"
-                style={{ color: '#1bb908' }}
-                onMouseEnter={e => { e.currentTarget.style.color = '#ff580d' }}
-                onMouseLeave={e => { e.currentTarget.style.color = '#1bb908' }}>
-                Sign in
+            {/* Sign in CTA — visible immediately, above the form */}
+            <div className="flex items-center gap-2 mt-3">
+              <span className="text-sm text-muted">Already have an account?</span>
+              <Link href="/login" className="inline-flex items-center gap-1 text-sm font-black text-accent hover:text-secondary transition-colors">
+                Sign in <ArrowRight size={13} />
               </Link>
-            </p>
+            </div>
           </div>
 
           <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
 
-            {/* Name + Phone */}
             <div className="grid grid-cols-2 gap-3">
               <FloatField id="name" label="Full Name" icon={User}
                 value={fields.name} onChange={onChange}
@@ -210,14 +187,12 @@ export default function RegisterPage() {
                 placeholder="+1 (403)…" autoComplete="tel" />
             </div>
 
-            {/* Email */}
             <FloatField id="email" label="Email Address" type="email" icon={Mail}
               value={fields.email} onChange={onChange}
               focused={focused} setFocused={setFocused}
               error={errors.email} placeholder="you@example.com"
               autoComplete="email" />
 
-            {/* Password */}
             <div>
               <FloatField id="password" label="Password"
                 type={showPass ? 'text' : 'password'} icon={Lock}
@@ -227,14 +202,13 @@ export default function RegisterPage() {
                 autoComplete="new-password"
                 right={
                   <button type="button" onClick={() => setShowPass(v => !v)}
-                    style={{ color: 'rgba(0,0,0,0.3)' }}>
+                    className="text-muted hover:text-secondary transition-colors">
                     {showPass ? <EyeOff size={13} /> : <Eye size={13} />}
                   </button>
                 } />
               <StrengthMeter password={fields.password} />
             </div>
 
-            {/* Confirm password */}
             <FloatField id="confirmPassword" label="Confirm Password"
               type={showConf ? 'text' : 'password'} icon={Lock}
               value={fields.confirmPassword} onChange={onChange}
@@ -243,93 +217,74 @@ export default function RegisterPage() {
               autoComplete="new-password"
               right={
                 <button type="button" onClick={() => setShowConf(v => !v)}
-                  style={{ color: 'rgba(0,0,0,0.3)' }}>
+                  className="text-muted hover:text-secondary transition-colors">
                   {showConf ? <EyeOff size={13} /> : <Eye size={13} />}
                 </button>
               } />
 
-            {/* Server error */}
             {serverErr && (
-              <div className="flex items-center gap-2.5 px-4 py-3 rounded-xl text-xs font-semibold"
-                style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)', color: '#dc2626' }}>
+              <div className="flex items-center gap-2.5 px-4 py-3 rounded-xl text-xs font-semibold bg-danger/6 border border-danger/20 text-danger">
                 <AlertCircle size={13} className="shrink-0" />{serverErr}
               </div>
             )}
 
-            {/* Submit */}
             <button type="submit" disabled={loading}
-              className="group relative w-full flex items-center justify-center gap-2.5 py-3.5 rounded-2xl font-black text-sm text-white transition-all disabled:opacity-50 overflow-hidden mt-1"
-              style={{ background: 'linear-gradient(135deg, #ff580d, #e04500)', boxShadow: '0 6px 24px rgba(255,88,13,0.3)' }}
-              onMouseEnter={e => { if (!loading) { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 10px 32px rgba(255,88,13,0.4)' } }}
-              onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 6px 24px rgba(255,88,13,0.3)' }}>
+              className="group w-full flex items-center justify-center gap-2.5 py-3.5 rounded-2xl font-black text-sm text-white mt-1 bg-secondary hover:bg-secondary-hover hover:-translate-y-px transition-all disabled:opacity-50 shadow-[0_6px_24px_var(--secondary-glow)] hover:shadow-[0_10px_32px_var(--secondary-glow)]">
               {loading
                 ? <><div className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />Creating account…</>
                 : <>Create Free Account <ArrowRight size={14} className="group-hover:translate-x-0.5 transition-transform" /></>
               }
             </button>
 
-            <p className="text-center text-[10px]" style={{ color: 'rgba(0,0,0,0.3)' }}>
+            <p className="text-center text-[10px] text-muted">
               By signing up you agree to our{' '}
-              <span style={{ color: 'rgba(0,0,0,0.5)', fontWeight: 700 }}>Terms</span> &amp;{' '}
-              <span style={{ color: 'rgba(0,0,0,0.5)', fontWeight: 700 }}>Privacy Policy</span>
+              <span className="text-foreground/50 font-bold">Terms</span> &amp;{' '}
+              <span className="text-foreground/50 font-bold">Privacy Policy</span>
             </p>
           </form>
         </div>
       </div>
 
       {/* ── RIGHT: brand panel ── */}
-      <div className="hidden lg:flex flex-col justify-between relative overflow-hidden p-14"
-        style={{ background: '#faf8f4' }}>
+      <div className="hidden lg:flex flex-col justify-between relative overflow-hidden p-14 bg-background">
 
-        {/* Dot grid texture */}
         <div className="absolute inset-0 dot-grid-bg pointer-events-none opacity-50" />
+        <div className="absolute pointer-events-none -top-20 -right-20 w-100 h-100 rounded-full bg-secondary/10 blur-2xl" />
+        <div className="absolute pointer-events-none -bottom-16 -left-16 w-87.5 h-87.5 rounded-full bg-accent/10 blur-2xl" />
 
-        {/* Orange blob top-right */}
-        <div className="absolute pointer-events-none"
-          style={{ top: '-80px', right: '-80px', width: '400px', height: '400px', borderRadius: '50%', background: 'radial-gradient(circle, rgba(255,88,13,0.12) 0%, transparent 65%)', filter: 'blur(40px)' }} />
-        {/* Green blob bottom-left */}
-        <div className="absolute pointer-events-none"
-          style={{ bottom: '-60px', left: '-60px', width: '350px', height: '350px', borderRadius: '50%', background: 'radial-gradient(circle, rgba(27,185,8,0.1) 0%, transparent 65%)', filter: 'blur(40px)' }} />
-
-        {/* Top: stat pills */}
+        {/* Stat pills */}
         <div className="relative flex items-center gap-3 flex-wrap">
-          {[['8000+', 'Deliveries'], ['99.2%', 'On-time'], ['8', 'Cities']].map(([val, lbl], i) => (
-            <div key={lbl} className="px-4 py-2.5 rounded-2xl"
-              style={{ background: '#ffffff', border: '1px solid rgba(0,0,0,0.07)', boxShadow: '0 2px 12px rgba(0,0,0,0.04)' }}>
-              <p className="text-xl font-black leading-none"
-                style={{ color: i % 2 === 0 ? '#ff580d' : '#1bb908' }}>{val}</p>
-              <p className="text-[10px] font-semibold uppercase tracking-widest mt-0.5"
-                style={{ color: 'rgba(0,0,0,0.35)' }}>{lbl}</p>
+          {[['8000+', 'Deliveries', 'text-secondary'], ['99.2%', 'On-time', 'text-accent'], ['8', 'Cities', 'text-secondary']].map(([val, lbl, cls]) => (
+            <div key={lbl} className="px-4 py-2.5 rounded-2xl bg-surface border border-border shadow-sm">
+              <p className={`text-xl font-black leading-none ${cls}`}>{val}</p>
+              <p className="text-[10px] font-semibold uppercase tracking-widest mt-0.5 text-muted">{lbl}</p>
             </div>
           ))}
         </div>
 
-        {/* Center: headline */}
+        {/* Headline */}
         <div className="relative">
-          <span className="inline-flex px-3 py-1 rounded-full text-[10px] font-black tracking-widest uppercase mb-6"
-            style={{ background: 'rgba(27,185,8,0.1)', color: '#1bb908' }}>
+          <span className="inline-flex px-3 py-1 rounded-full text-[10px] font-black tracking-widest uppercase mb-6 bg-accent/10 text-accent">
             Calgary&apos;s #1 Courier
           </span>
-          <h2 className="font-black leading-[0.92] tracking-tight mb-6"
-            style={{ fontSize: 'clamp(2.8rem, 5vw, 4.5rem)', color: '#0d0d0d' }}>
+          <h2 className="font-black leading-[0.92] tracking-tight mb-6 text-foreground" style={{ fontSize: 'clamp(2.8rem, 5vw, 4.5rem)' }}>
             Deliver<br />
-            <span style={{ color: '#ff580d' }}>anything,</span><br />
+            <span className="text-secondary">anything,</span><br />
             anywhere.
           </h2>
-          <p className="text-sm leading-relaxed max-w-xs" style={{ color: 'rgba(0,0,0,0.45)' }}>
-            Join thousands of Calgarians who trust GoFastDelivery for same-day, real-time tracked courier service.
+          <p className="text-sm leading-relaxed max-w-xs text-muted">
+            Join thousands of Calgarians who trust GoFastDelivery for same-day courier service.
           </p>
         </div>
 
-        {/* Bottom: perk list */}
+        {/* Perks */}
         <div className="relative flex flex-col gap-3">
           {PERKS.map(({ icon: Icon, text }) => (
             <div key={text} className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
-                style={{ background: 'rgba(255,88,13,0.1)', border: '1px solid rgba(255,88,13,0.15)' }}>
-                <Icon size={14} strokeWidth={2.2} style={{ color: '#ff580d' }} />
+              <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 bg-secondary/10 border border-secondary/15">
+                <Icon size={14} strokeWidth={2.2} className="text-secondary" />
               </div>
-              <span className="text-sm font-semibold" style={{ color: 'rgba(0,0,0,0.6)' }}>{text}</span>
+              <span className="text-sm font-semibold text-foreground/60">{text}</span>
             </div>
           ))}
         </div>

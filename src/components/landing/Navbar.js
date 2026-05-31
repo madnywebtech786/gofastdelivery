@@ -14,12 +14,12 @@ const SERVICE_ITEMS = [
 ]
 
 const NAV_LINKS = [
-  { label: 'Home',     href: '/',          scroll: false },
-  { label: 'About',   href: '/about',      scroll: false },
-  { label: 'Services', href: null,         scroll: false, dropdown: true },
-  { label: 'Track Package',   href: '/track',      scroll: false },
-  { label: 'Reviews',  href: '/#reviews',  scroll: true },
-  { label: 'Contact',  href: '/contact',   scroll: false },
+  { label: 'Home',          href: '/',         scroll: false },
+  { label: 'About',         href: '/about',    scroll: false },
+  { label: 'Services',      href: null,        scroll: false, dropdown: true },
+  { label: 'Track Package', href: '/track',    scroll: false },
+  { label: 'Reviews',       href: '/#reviews', scroll: true },
+  { label: 'Contact',       href: '/contact',  scroll: false },
 ]
 
 const CITIES = [
@@ -257,7 +257,7 @@ export default function Navbar() {
                 Login
               </Link>
               <Link
-                href="/login"
+                href="/book"
                 className="px-4 py-1.5 text-[12px] font-bold rounded-lg text-white transition-opacity hover:opacity-90 shadow-sm"
                 style={{ background: 'var(--brand-green)' }}
               >
@@ -404,7 +404,7 @@ export default function Navbar() {
             </span>
           </div>
           <Link
-            href="/login"
+            href="/book"
             onClick={closeDrawer}
             className="w-full py-3 text-center text-sm font-black rounded-2xl text-white"
             style={{ background: 'linear-gradient(135deg, #1bb908, #15960a)', boxShadow: '0 4px 16px rgba(27,185,8,0.3)' }}

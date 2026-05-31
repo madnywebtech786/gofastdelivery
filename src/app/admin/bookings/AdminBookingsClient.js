@@ -10,19 +10,15 @@ import { useToast } from '@/components/ui/Toast'
 import {
   MapPin, Clock, ChevronRight, UserCheck, AlertCircle,
   PackageCheck, CheckCircle2, Search, X,
-  Users, Zap, Circle, ChevronLeft,
+  Users, Zap, Circle, ChevronLeft, History,
 } from 'lucide-react'
 
 const STATUS_FILTER_OPTIONS = [
-  { value: '',                  label: 'All statuses' },
-  { value: 'pending',           label: 'Pending' },
-  { value: 'failed_pickup',     label: 'Pickup Failed' },
-  { value: 'assigned_pickup',   label: 'Pickup Scheduled' },
-  { value: 'picked_up',         label: 'Ready to Deliver' },
-  { value: 'failed_dropoff',    label: 'Delivery Failed' },
-  { value: 'assigned_delivery', label: 'On the Way' },
-  { value: 'delivered',         label: 'Delivered' },
-  { value: 'cancelled',         label: 'Cancelled' },
+  { value: 'pending',        label: 'Pending' },
+  { value: 'on_the_way',     label: 'On the Way' },
+  { value: 'picked_up',      label: 'Ready to Deliver' },
+  { value: 'failed_pickup',  label: 'Pickup Failed' },
+  { value: 'failed_dropoff', label: 'Delivery Failed' },
 ]
 
 const ASSIGN_KIND_BY_STATUS = {
@@ -118,7 +114,7 @@ export default function AdminBookingsClient({ initialStatusFilter, initialPage, 
   const toast      = useToast()
   const [isPending, startTransition] = useTransition()
 
-  const [statusFilter, setStatusFilter] = useState(initialStatusFilter ?? '')
+  const [statusFilter, setStatusFilter] = useState(initialStatusFilter ?? 'pending')
   // Local search filters the current page only — no network round-trip needed
   const [search, setSearch]             = useState('')
   // Map<bookingId, bookingObject> — persists across page navigation so
@@ -150,7 +146,7 @@ export default function AdminBookingsClient({ initialStatusFilter, initialPage, 
   const buildUrl = useCallback((updates) => {
     const params = new URLSearchParams(searchParams.toString())
     for (const [k, v] of Object.entries(updates)) {
-      if (v == null || v === '' || v === '1') params.delete(k)
+      if (v == null || v === '1') params.delete(k)
       else params.set(k, String(v))
     }
     // Always delete page when it would be 1
@@ -178,7 +174,11 @@ export default function AdminBookingsClient({ initialStatusFilter, initialPage, 
   const displayed = useMemo(() => {
     const q = search.trim().toLowerCase()
     if (!q) return bookings
-    return bookings.filter((b) => b.stops?.some((s) => s.address?.toLowerCase().includes(q)))
+    return bookings.filter((b) =>
+      b.stops?.some((s) => s.address?.toLowerCase().includes(q) || s.contactName?.toLowerCase().includes(q)) ||
+      b.senderEmail?.toLowerCase().includes(q) ||
+      b.receiverEmail?.toLowerCase().includes(q)
+    )
   }, [bookings, search])
 
   // All selected bookings that can actually be assigned — drawn from the Map
@@ -291,14 +291,22 @@ export default function AdminBookingsClient({ initialStatusFilter, initialPage, 
         <div>
           <h1 className="text-2xl font-bold" style={{ color: 'var(--fg)' }}>Bookings</h1>
           <p className="text-sm mt-0.5" style={{ color: 'var(--fg-3)' }}>
-            All packages — assign pickups and deliveries together on a single route
+            Active packages — assign pickups and deliveries together on a single route
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <span className="text-xs font-semibold px-3 py-1.5 rounded-full border border-border bg-white"
             style={{ color: 'var(--fg-2)' }}>
-            {total} total
+            {total} active
           </span>
+          <Link
+            href="/admin/bookings/history"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all border border-border bg-white"
+            style={{ color: 'var(--fg-2)' }}
+          >
+            <History size={13} />
+            History
+          </Link>
         </div>
       </div>
 
@@ -314,7 +322,7 @@ export default function AdminBookingsClient({ initialStatusFilter, initialPage, 
           <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--fg-3)' }} />
           <input
             type="text"
-            placeholder="Search by address on this page…"
+            placeholder="Search by address, name or email on this page…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-border bg-white text-sm focus:outline-none focus:ring-2 focus:border-transparent transition-all"
@@ -332,7 +340,7 @@ export default function AdminBookingsClient({ initialStatusFilter, initialPage, 
       {/* ── Main grid: list + assign panel ─────────────────────────── */}
       <div className="grid xl:grid-cols-[1fr_360px] gap-5 items-start anim-fade-up s2">
 
-        <div className="bg-white rounded-2xl border border-border overflow-hidden">
+        <div className="bg-white rounded-2xl border border-border overflow-hidden" style={{ opacity: isPending ? 0.5 : 1, transition: 'opacity 0.2s' }}>
           {/* List header */}
           <div className="px-5 py-3.5 border-b border-border flex items-center gap-3"
             style={{ background: 'var(--surface-2)' }}>
@@ -363,7 +371,9 @@ export default function AdminBookingsClient({ initialStatusFilter, initialPage, 
               </button>
             )}
             {isPending && (
-              <span className="text-xs" style={{ color: 'var(--fg-3)' }}>Loading…</span>
+              <svg className="animate-spin shrink-0" width="14" height="14" viewBox="0 0 16 16" fill="none" style={{ color: 'var(--fg-3)' }}>
+                <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" strokeDasharray="25 10" />
+              </svg>
             )}
           </div>
 
@@ -412,86 +422,91 @@ export default function AdminBookingsClient({ initialStatusFilter, initialPage, 
                       title={assignable ? '' : 'Not assignable in this status'}
                     />
 
-                    {assignable && (
-                      <div onClick={(e) => e.stopPropagation()} className="shrink-0 mt-0.5 w-36">
-                        <Select
-                          value={rowKinds[b._id] ?? kind}
-                          onChange={(v) => setRowKinds((prev) => ({ ...prev, [b._id]: v }))}
-                          options={
-                            (b.status === 'pending' || b.status === 'failed_pickup')
-                              ? [
-                                  { value: 'pickup_only',        label: 'Pickup only' },
-                                  { value: 'pickup_and_dropoff', label: 'Pickup + Dropoff' },
-                                ]
-                              : [
-                                  { value: 'delivery_only', label: 'Delivery only' },
-                                ]
-                          }
-                          className="[&_button]:py-1.5 [&_button]:px-2.5 [&_button]:rounded-lg [&_button]:text-xs"
-                        />
-                      </div>
-                    )}
+                    {/* On small screens the select stacks below the content; on sm+ it sits inline */}
+                    <div className="flex-1 min-w-0 sm:flex sm:items-start sm:gap-4">
 
-                    <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setDetailBooking(b)}>
-                      <div className="flex items-center gap-2 flex-wrap mb-1.5">
-                        <Badge status={b.status} />
-                        {driver && (
-                          <span className="flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full"
-                            style={{ background: 'var(--accent-dim)', color: 'var(--accent)' }}>
-                            <UserCheck size={10} />{driver}
+                      <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setDetailBooking(b)}>
+                        <div className="flex items-center gap-2 flex-wrap mb-1.5">
+                          <Badge status={b.status} />
+                          {driver && (
+                            <span className="flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full"
+                              style={{ background: 'var(--accent-dim)', color: 'var(--accent)' }}>
+                              <UserCheck size={10} />{driver}
+                            </span>
+                          )}
+                          {assignable && kind && (
+                            <span className="text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full"
+                              style={{
+                                background: kind === 'pickup_only' ? 'rgba(217,119,6,0.12)' : 'rgba(37,99,235,0.12)',
+                                color:      kind === 'pickup_only' ? '#92400e' : '#1e40af',
+                              }}>
+                              {kind === 'pickup_only' ? 'Pickup' : 'Delivery'}
+                            </span>
+                          )}
+                          <span className="flex items-center gap-1 text-xs ml-auto" style={{ color: 'var(--fg-3)' }}>
+                            <Clock size={10} />{formatTimeAgo(b.updatedAt)}
                           </span>
-                        )}
-                        {assignable && kind && (
-                          <span className="text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full"
-                            style={{
-                              background: kind === 'pickup_only' ? 'rgba(217,119,6,0.12)' : 'rgba(37,99,235,0.12)',
-                              color:      kind === 'pickup_only' ? '#92400e' : '#1e40af',
-                            }}>
-                            {kind === 'pickup_only' ? 'Pickup' : 'Delivery'}
-                          </span>
-                        )}
-                        <span className="flex items-center gap-1 text-xs ml-auto" style={{ color: 'var(--fg-3)' }}>
-                          <Clock size={10} />{formatTimeAgo(b.updatedAt)}
-                        </span>
-                        {b.estimatedPrice && (
-                          <span className="text-xs font-bold mono" style={{ color: 'var(--accent)' }}>
-                            ${b.estimatedPrice}
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-1.5">
-                          <div className="w-3.5 h-3.5 rounded-full flex items-center justify-center shrink-0"
-                            style={{ background: 'rgba(22,163,74,0.12)' }}>
-                            <Circle size={5} style={{ color: 'var(--success)' }} fill="var(--success)" />
-                          </div>
-                          <p className="text-sm font-semibold truncate" style={{ color: 'var(--fg)' }}>
-                            {pickup?.address ?? '—'}
-                          </p>
+                          {b.estimatedPrice && (
+                            <span className="text-xs font-bold mono" style={{ color: 'var(--accent)' }}>
+                              ${b.estimatedPrice}
+                            </span>
+                          )}
                         </div>
-                        <div className="flex items-center gap-1.5">
-                          <div className="w-3.5 h-3.5 rounded-full flex items-center justify-center shrink-0"
-                            style={{ background: 'rgba(220,38,38,0.12)' }}>
-                            <Circle size={5} style={{ color: 'var(--danger)' }} fill="var(--danger)" />
-                          </div>
-                          <p className="text-xs truncate" style={{ color: 'var(--fg-3)' }}>
-                            {dropoff?.address ?? '—'}
+
+                        {pickup?.contactName && (
+                          <p className="text-xs font-medium mb-1 truncate" style={{ color: 'var(--fg-2)' }}>
+                            {pickup.contactName}
                           </p>
+                        )}
+
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-3.5 h-3.5 rounded-full flex items-center justify-center shrink-0"
+                              style={{ background: 'rgba(22,163,74,0.12)' }}>
+                              <Circle size={5} style={{ color: 'var(--success)' }} fill="var(--success)" />
+                            </div>
+                            <p className="text-sm font-semibold truncate" style={{ color: 'var(--fg)' }}>
+                              {pickup?.address ?? '—'}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-3.5 h-3.5 rounded-full flex items-center justify-center shrink-0"
+                              style={{ background: 'rgba(220,38,38,0.12)' }}>
+                              <Circle size={5} style={{ color: 'var(--danger)' }} fill="var(--danger)" />
+                            </div>
+                            <p className="text-xs truncate" style={{ color: 'var(--fg-3)' }}>
+                              {dropoff?.address ?? '—'}
+                            </p>
+                          </div>
                         </div>
+
+                        {b.packageDetails?.kind && (
+                          <p className="text-xs mt-1.5" style={{ color: 'var(--fg-3)' }}>
+                            {b.packageDetails.kind}
+                            {b.packageDetails.weightSlab && ` · ${b.packageDetails.weightSlab.replace(/_/g, ' ')}`}
+                          </p>
+                        )}
+
+                        {(b.status === 'failed_pickup' || b.status === 'failed_dropoff') && b.lastFailure?.reason && (
+                          <div className="mt-2 rounded-lg px-2.5 py-1.5 text-[11px] leading-snug border"
+                            style={{ background: 'rgba(220,38,38,0.06)', borderColor: 'rgba(220,38,38,0.2)', color: '#991b1b' }}>
+                            <span className="font-semibold">Retry · last failure:</span> {b.lastFailure.reason}
+                          </div>
+                        )}
                       </div>
 
-                      {b.packageDetails?.kind && (
-                        <p className="text-xs mt-1.5" style={{ color: 'var(--fg-3)' }}>
-                          {b.packageDetails.kind}
-                          {b.packageDetails.weightSlab && ` · ${b.packageDetails.weightSlab.replace(/_/g, ' ')}`}
-                        </p>
-                      )}
-
-                      {(b.status === 'failed_pickup' || b.status === 'failed_dropoff') && b.lastFailure?.reason && (
-                        <div className="mt-2 rounded-lg px-2.5 py-1.5 text-[11px] leading-snug border"
-                          style={{ background: 'rgba(220,38,38,0.06)', borderColor: 'rgba(220,38,38,0.2)', color: '#991b1b' }}>
-                          <span className="font-semibold">Retry · last failure:</span> {b.lastFailure.reason}
+                      {/* Select: inline on sm+, stacked below on mobile */}
+                      {assignable && (b.status === 'pending' || b.status === 'failed_pickup') && (
+                        <div onClick={(e) => e.stopPropagation()} className="shrink-0 mt-2 sm:mt-0.5 w-36">
+                          <Select
+                            value={rowKinds[b._id] ?? kind}
+                            onChange={(v) => setRowKinds((prev) => ({ ...prev, [b._id]: v }))}
+                            options={[
+                              { value: 'pickup_only',        label: 'Pickup only' },
+                              { value: 'pickup_and_dropoff', label: 'Pickup + Dropoff' },
+                            ]}
+                            className="[&_button]:py-1.5 [&_button]:px-2.5 [&_button]:rounded-lg [&_button]:text-xs"
+                          />
                         </div>
                       )}
                     </div>

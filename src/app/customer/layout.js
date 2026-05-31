@@ -4,14 +4,15 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import {
   Truck, LayoutDashboard, PackageOpen, Plus, LogOut,
-  Menu, X, ChevronRight, Home,
+  Menu, X, ChevronRight, Home, History,
 } from 'lucide-react'
 import { useState } from 'react'
 
 const NAV = [
-  { href: '/customer/overview',    label: 'Dashboard',   icon: LayoutDashboard },
-  { href: '/customer/my-bookings', label: 'My Bookings',  icon: PackageOpen },
-  { href: '/customer/book',        label: 'New Booking',  icon: Plus },
+  { href: '/customer/overview',            label: 'Dashboard',   icon: LayoutDashboard },
+  { href: '/customer/my-bookings',         label: 'My Bookings', icon: PackageOpen },
+  { href: '/customer/my-bookings/history', label: 'History',     icon: History },
+  { href: '/customer/book',                label: 'New Booking', icon: Plus },
 ]
 
 export default function CustomerLayout({ children }) {
@@ -41,7 +42,15 @@ export default function CustomerLayout({ children }) {
       {/* Nav */}
       <nav className="flex-1 px-3 py-4 space-y-0.5">
         {NAV.map(({ href, label, icon: Icon }) => {
-          const active = pathname === href || (href !== '/customer/overview' && pathname.startsWith(href))
+          const active = pathname === href || (
+            href !== '/customer/overview' &&
+            href !== '/customer/my-bookings' &&
+            pathname.startsWith(href)
+          ) || (
+            href === '/customer/my-bookings' &&
+            pathname.startsWith(href) &&
+            !pathname.startsWith('/customer/my-bookings/history')
+          )
           return (
             <Link
               key={href}

@@ -19,33 +19,32 @@ const DEV_ACCOUNTS = [
   { label: 'Admin',      email: 'admin@courier.local',     password: 'Admin@1234' },
   { label: 'Customer 1', email: 'customer@courier.local',  password: 'Customer@1234' },
 ]
-
 const DEV_OPTIONS = DEV_ACCOUNTS.map(a => ({ value: a.email, label: a.label, meta: a.email }))
 
 const STREAKS = [
-  { top: '12%', w: '45%', delay: '0s',   dur: '2.8s', op: 0.5 },
-  { top: '28%', w: '60%', delay: '0.6s', dur: '3.2s', op: 0.35 },
-  { top: '44%', w: '35%', delay: '1.1s', dur: '2.5s', op: 0.55 },
-  { top: '60%', w: '50%', delay: '0.3s', dur: '3.5s', op: 0.3 },
-  { top: '76%', w: '42%', delay: '0.9s', dur: '2.9s', op: 0.45 },
-  { top: '88%', w: '28%', delay: '1.5s', dur: '3.1s', op: 0.25 },
+  { top: '12%', w: '45%', delay: '0s',   dur: '2.8s', op: 0.18 },
+  { top: '28%', w: '60%', delay: '0.6s', dur: '3.2s', op: 0.12 },
+  { top: '44%', w: '35%', delay: '1.1s', dur: '2.5s', op: 0.20 },
+  { top: '60%', w: '50%', delay: '0.3s', dur: '3.5s', op: 0.10 },
+  { top: '76%', w: '42%', delay: '0.9s', dur: '2.9s', op: 0.16 },
+  { top: '88%', w: '28%', delay: '1.5s', dur: '3.1s', op: 0.10 },
 ]
 
 const SHIFT_STATS = [
-  { icon: Navigation, label: 'Avg Route',    value: '18 km',  color: '#1bb908' },
-  { icon: Clock,      label: 'Shift Hours',  value: '8 hrs',  color: '#ff580d' },
-  { icon: Truck,      label: 'Daily Drops',  value: '22 avg', color: '#1bb908' },
+  { icon: Navigation, label: 'Avg Route',   value: '18 km',  cls: 'text-accent'    },
+  { icon: Clock,      label: 'Shift Hours', value: '8 hrs',  cls: 'text-secondary' },
+  { icon: Truck,      label: 'Daily Drops', value: '22 avg', cls: 'text-accent'    },
 ]
 
 export default function DriverLoginPage() {
   const router = useRouter()
-  const [email, setEmail]       = useState('')
+  const [email,    setEmail]    = useState('')
   const [password, setPassword] = useState('')
   const [showPass, setShowPass] = useState(false)
-  const [error, setError]       = useState('')
-  const [loading, setLoading]   = useState(false)
-  const [focused, setFocused]   = useState(null)
-  const [mounted, setMounted]   = useState(false)
+  const [error,    setError]    = useState('')
+  const [loading,  setLoading]  = useState(false)
+  const [focused,  setFocused]  = useState(null)
+  const [mounted,  setMounted]  = useState(false)
 
   useEffect(() => { setMounted(true) }, [])
 
@@ -75,100 +74,60 @@ export default function DriverLoginPage() {
   }
 
   return (
-    <div className="min-h-screen relative overflow-hidden flex items-stretch"
-      style={{ background: '#070a07', fontFamily: 'var(--font-montserrat), system-ui, sans-serif' }}>
+    <div className="min-h-screen relative overflow-hidden flex items-stretch bg-background font-sans">
 
-      {/* ── Full-bleed speed streaks behind everything ── */}
+      {/* Speed streaks */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
         {STREAKS.map((s, i) => (
           <div key={i} className="absolute left-0" style={{
-            top: s.top,
-            width: s.w,
-            height: '1.5px',
+            top: s.top, width: s.w, height: '1.5px',
             background: `linear-gradient(90deg, transparent, rgba(27,185,8,${s.op}), transparent)`,
             animation: `streak-drive ${s.dur} linear ${s.delay} infinite`,
           }} />
         ))}
       </div>
 
-      {/* Asphalt texture dots */}
-      <div className="absolute inset-0 pointer-events-none" style={{
-        backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.025) 1px, transparent 1px)',
-        backgroundSize: '20px 20px',
-      }} />
+      {/* Dot grid */}
+      <div className="absolute inset-0 pointer-events-none dot-grid-bg opacity-40" />
 
       {/* ── LEFT: Brand slab ── */}
-      <div className="hidden lg:flex flex-col relative overflow-hidden"
-        style={{ width: '44%', borderRight: '1px solid rgba(27,185,8,0.12)' }}>
+      <div className="hidden lg:flex flex-col relative overflow-hidden bg-surface border-r border-border" style={{ width: '44%' }}>
+        <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(ellipse_at_20%_60%,var(--accent-dim)_0%,transparent_55%)]" />
+        <div className="absolute pointer-events-none inset-0"
+          style={{ background: 'repeating-linear-gradient(105deg, transparent, transparent 60px, rgba(27,185,8,0.04) 60px, rgba(27,185,8,0.04) 61px)' }} />
 
-        {/* Green bloom */}
-        <div className="absolute inset-0 pointer-events-none" style={{
-          background: 'radial-gradient(ellipse at 20% 60%, rgba(27,185,8,0.1) 0%, transparent 55%)',
-        }} />
-
-        {/* Diagonal road stripe */}
-        <div className="absolute pointer-events-none" style={{
-          top: 0, left: '-10%', right: '-10%', bottom: 0,
-          background: 'repeating-linear-gradient(105deg, transparent, transparent 60px, rgba(27,185,8,0.025) 60px, rgba(27,185,8,0.025) 61px)',
-        }} />
-
-        {/* Content */}
         <div className="relative z-10 flex flex-col h-full px-10 py-10">
+          <Image src="/images/logo.png" alt="GoFastDelivery" width={130} height={44} className="h-10 w-auto object-contain mb-auto" />
 
-          {/* Logo */}
-          <Image src="/images/logo.png" alt="GoFastDelivery" width={130} height={44}
-            className="h-10 w-auto object-contain rounded-xl mb-auto"
-            style={{ background: 'white', padding: '6px 10px' }}
-          />
-
-          {/* Big headline — center */}
           <div className="my-auto">
-            {/* Truck glyph */}
-            <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-8"
-              style={{
-                background: 'rgba(27,185,8,0.1)',
-                border: '2px solid rgba(27,185,8,0.25)',
-                boxShadow: '0 0 40px rgba(27,185,8,0.1)',
-              }}>
-              <Truck size={30} style={{ color: '#1bb908' }} strokeWidth={1.8} />
+            <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-8 bg-accent/8 border-2 border-accent/20 shadow-[0_4px_24px_var(--accent-dim)]">
+              <Truck size={30} className="text-accent" strokeWidth={1.8} />
             </div>
-
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full mb-5"
-              style={{ background: 'rgba(27,185,8,0.1)', border: '1px solid rgba(27,185,8,0.25)' }}>
-              <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#1bb908', boxShadow: '0 0 8px #1bb908' }} />
-              <span className="text-[9px] font-black tracking-[0.25em] uppercase" style={{ color: '#1bb908' }}>
-                Driver Portal · Calgary
-              </span>
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full mb-5 bg-accent/8 border border-accent/20">
+              <span className="w-1.5 h-1.5 rounded-full bg-accent shadow-[0_0_6px_var(--accent)]" />
+              <span className="text-[9px] font-black tracking-[0.25em] uppercase text-accent">Driver Portal · Calgary</span>
             </div>
-
-            <h2 className="font-black text-white leading-[0.88] tracking-tighter"
-              style={{ fontSize: 'clamp(2.8rem, 5vw, 4.2rem)' }}>
+            <h2 className="font-black leading-[0.88] tracking-tighter text-foreground" style={{ fontSize: 'clamp(2.8rem, 5vw, 4.2rem)' }}>
               Time to<br />
-              <span style={{
-                color: '#1bb908',
-                textShadow: '0 0 40px rgba(27,185,8,0.4)',
-              }}>Deliver.</span>
+              <span className="text-accent">Deliver.</span>
             </h2>
-            <p className="mt-5 text-sm leading-relaxed" style={{ color: 'rgba(255,255,255,0.3)', maxWidth: '260px' }}>
-              Your route, stops, and updates — everything you need for today's shift in one place.
+            <p className="mt-5 text-sm leading-relaxed text-muted max-w-[260px]">
+              Your route, stops, and updates. Everything you need for today&apos;s shift in one place.
             </p>
           </div>
 
-          {/* Shift stats row */}
-          <div className="flex flex-col gap-3 mt-auto pt-8" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-            <p className="text-[9px] font-black tracking-[0.25em] uppercase" style={{ color: 'rgba(255,255,255,0.2)' }}>
-              Calgary drivers · avg stats
-            </p>
-            {SHIFT_STATS.map(({ icon: Icon, label, value, color }, i) => (
-              <div key={label} className="flex items-center gap-3"
-                style={{
-                  opacity: mounted ? 1 : 0,
-                  transform: mounted ? 'translateX(0)' : 'translateX(-12px)',
-                  transition: `opacity 0.4s ease ${i * 0.1 + 0.3}s, transform 0.4s ease ${i * 0.1 + 0.3}s`,
-                }}>
-                <Icon size={13} style={{ color }} />
-                <span className="text-xs font-semibold" style={{ color: 'rgba(255,255,255,0.3)' }}>{label}</span>
-                <span className="ml-auto text-xs font-black tabular-nums" style={{ color }}>{value}</span>
+          {/* Shift stats */}
+          <div className="flex flex-col gap-3 mt-auto pt-8 border-t border-border">
+            <p className="text-[9px] font-black tracking-[0.25em] uppercase text-muted">Calgary drivers · avg stats</p>
+            {SHIFT_STATS.map(({ icon: Icon, label, value, cls }, i) => (
+              <div key={label} className="flex items-center gap-3" style={{
+                opacity: mounted ? 1 : 0,
+                transform: mounted ? 'translateX(0)' : 'translateX(-12px)',
+                transition: `opacity 0.4s ease ${i * 0.1 + 0.3}s, transform 0.4s ease ${i * 0.1 + 0.3}s`,
+              }}>
+                <Icon size={13} className={cls} />
+                <span className="text-xs font-semibold text-muted">{label}</span>
+                <span className={`ml-auto text-xs font-black tabular-nums ${cls}`}>{value}</span>
               </div>
             ))}
           </div>
@@ -177,64 +136,47 @@ export default function DriverLoginPage() {
 
       {/* ── RIGHT: Form ── */}
       <div className="flex-1 flex flex-col justify-center px-6 sm:px-12 lg:px-12 py-12 relative">
-
-        {/* Green left-edge line */}
-        <div className="absolute inset-y-0 left-0 w-px pointer-events-none"
-          style={{ background: 'linear-gradient(180deg, transparent, rgba(27,185,8,0.4) 40%, rgba(27,185,8,0.4) 60%, transparent)' }} />
+        <div className="absolute inset-y-0 left-0 w-px pointer-events-none bg-[linear-gradient(180deg,transparent,var(--accent-dim)_40%,var(--accent-dim)_60%,transparent)]" />
 
         {/* Mobile logo */}
         <div className="lg:hidden mb-9">
-          <Image src="/images/logo.png" alt="GoFastDelivery" width={120} height={40}
-            className="h-9 w-auto object-contain rounded-xl"
-            style={{ background: 'white', padding: '4px 8px' }}
-          />
+          <Image src="/images/logo.png" alt="GoFastDelivery" width={120} height={40} className="h-9 w-auto object-contain" />
         </div>
 
         <div className="w-full max-w-sm mx-auto">
 
           {/* Heading */}
-          <div className="mb-8"
-            style={{
-              opacity: mounted ? 1 : 0,
-              transform: mounted ? 'translateY(0)' : 'translateY(20px)',
-              transition: 'opacity 0.5s ease 0.1s, transform 0.5s ease 0.1s',
-            }}>
-            <h1 className="font-black text-white leading-tight tracking-tight"
-              style={{ fontSize: 'clamp(1.8rem, 3.5vw, 2.4rem)' }}>
+          <div className="mb-8" style={{
+            opacity: mounted ? 1 : 0,
+            transform: mounted ? 'translateY(0)' : 'translateY(20px)',
+            transition: 'opacity 0.5s ease 0.1s, transform 0.5s ease 0.1s',
+          }}>
+            <h1 className="font-black leading-tight tracking-tight text-foreground" style={{ fontSize: 'clamp(1.8rem, 3.5vw, 2.4rem)' }}>
               Start Your Shift
             </h1>
-            <p className="text-sm mt-1.5" style={{ color: 'rgba(255,255,255,0.3)' }}>
-              Sign in to see today's deliveries
-            </p>
+            <p className="text-sm mt-1.5 text-muted">Sign in to see today&apos;s deliveries</p>
           </div>
 
           {/* Dev quick-fill */}
-          <div className="mb-5 rounded-xl p-3"
-            style={{
-              background: 'rgba(27,185,8,0.05)',
-              border: '1px solid rgba(27,185,8,0.15)',
-              opacity: mounted ? 1 : 0,
-              transition: 'opacity 0.5s ease 0.2s',
-            }}>
-            <p className="text-[9px] font-black tracking-[0.25em] uppercase mb-2 flex items-center gap-1.5"
-              style={{ color: 'rgba(27,185,8,0.6)' }}>
+          <div className="mb-5 rounded-xl p-3 bg-accent/5 border border-accent/15" style={{
+            opacity: mounted ? 1 : 0,
+            transition: 'opacity 0.5s ease 0.2s',
+          }}>
+            <p className="text-[9px] font-black tracking-[0.25em] uppercase mb-2 flex items-center gap-1.5 text-accent/70">
               <Zap size={8} />Dev accounts
             </p>
             <Select placeholder="Select account…" value="" onChange={fillAccount} options={DEV_OPTIONS} />
           </div>
 
           {/* Form */}
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4"
-            style={{
-              opacity: mounted ? 1 : 0,
-              transform: mounted ? 'translateY(0)' : 'translateY(16px)',
-              transition: 'opacity 0.5s ease 0.25s, transform 0.5s ease 0.25s',
-            }}>
+          <form onSubmit={handleSubmit} className="flex flex-col gap-4" style={{
+            opacity: mounted ? 1 : 0,
+            transform: mounted ? 'translateY(0)' : 'translateY(16px)',
+            transition: 'opacity 0.5s ease 0.25s, transform 0.5s ease 0.25s',
+          }}>
 
-            {/* Email */}
             <div className="flex flex-col gap-1.5">
-              <label className="text-[9px] font-black tracking-[0.25em] uppercase transition-colors"
-                style={{ color: focused === 'email' ? '#1bb908' : 'rgba(255,255,255,0.3)' }}>
+              <label className={`text-[9px] font-black tracking-[0.25em] uppercase transition-colors ${focused === 'email' ? 'text-accent' : 'text-muted'}`}>
                 Email
               </label>
               <input
@@ -242,20 +184,16 @@ export default function DriverLoginPage() {
                 value={email} onChange={e => setEmail(e.target.value)}
                 onFocus={() => setFocused('email')} onBlur={() => setFocused(null)}
                 placeholder="driver@gofastdelivery.ca"
-                className="w-full px-4 py-3.5 rounded-xl text-sm font-medium outline-none transition-all"
-                style={{
-                  background: focused === 'email' ? 'rgba(27,185,8,0.05)' : 'rgba(255,255,255,0.03)',
-                  border: `1.5px solid ${focused === 'email' ? 'rgba(27,185,8,0.5)' : 'rgba(255,255,255,0.07)'}`,
-                  color: 'rgba(255,255,255,0.85)',
-                  boxShadow: focused === 'email' ? '0 0 0 3px rgba(27,185,8,0.08)' : 'none',
-                }}
+                className={`w-full px-4 py-3.5 rounded-xl text-sm font-medium text-foreground outline-none transition-all border-[1.5px] ${
+                  focused === 'email'
+                    ? 'bg-surface border-accent/50 shadow-[0_0_0_3px_var(--accent-dim)]'
+                    : 'bg-background border-border'
+                }`}
               />
             </div>
 
-            {/* Password */}
             <div className="flex flex-col gap-1.5">
-              <label className="text-[9px] font-black tracking-[0.25em] uppercase transition-colors"
-                style={{ color: focused === 'password' ? '#1bb908' : 'rgba(255,255,255,0.3)' }}>
+              <label className={`text-[9px] font-black tracking-[0.25em] uppercase transition-colors ${focused === 'password' ? 'text-accent' : 'text-muted'}`}>
                 Password
               </label>
               <div className="relative">
@@ -264,80 +202,47 @@ export default function DriverLoginPage() {
                   value={password} onChange={e => setPassword(e.target.value)}
                   onFocus={() => setFocused('password')} onBlur={() => setFocused(null)}
                   placeholder="••••••••"
-                  className="w-full px-4 pr-11 py-3.5 rounded-xl text-sm font-medium outline-none transition-all"
-                  style={{
-                    background: focused === 'password' ? 'rgba(27,185,8,0.05)' : 'rgba(255,255,255,0.03)',
-                    border: `1.5px solid ${focused === 'password' ? 'rgba(27,185,8,0.5)' : 'rgba(255,255,255,0.07)'}`,
-                    color: 'rgba(255,255,255,0.85)',
-                    boxShadow: focused === 'password' ? '0 0 0 3px rgba(27,185,8,0.08)' : 'none',
-                  }}
+                  className={`w-full px-4 pr-11 py-3.5 rounded-xl text-sm font-medium text-foreground outline-none transition-all border-[1.5px] ${
+                    focused === 'password'
+                      ? 'bg-surface border-accent/50 shadow-[0_0_0_3px_var(--accent-dim)]'
+                      : 'bg-background border-border'
+                  }`}
                 />
                 <button type="button" onClick={() => setShowPass(v => !v)}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 transition-colors"
-                  style={{ color: 'rgba(255,255,255,0.25)' }}
-                  onMouseEnter={e => e.currentTarget.style.color = '#1bb908'}
-                  onMouseLeave={e => e.currentTarget.style.color = 'rgba(255,255,255,0.25)'}
-                >
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted hover:text-accent transition-colors">
                   {showPass ? <EyeOff size={14} /> : <Eye size={14} />}
                 </button>
               </div>
             </div>
 
             {error && (
-              <div className="flex items-center gap-2 rounded-xl px-3.5 py-3 text-xs font-semibold"
-                style={{ background: 'rgba(220,38,38,0.08)', border: '1px solid rgba(220,38,38,0.2)', color: '#f87171' }}>
+              <div className="flex items-center gap-2 rounded-xl px-3.5 py-3 text-xs font-semibold bg-danger/6 border border-danger/18 text-danger">
                 <AlertCircle size={13} className="shrink-0" />{error}
               </div>
             )}
 
-            {/* Submit */}
-            <button
-              type="submit" disabled={loading}
-              className="group relative w-full flex items-center justify-center gap-2.5 py-4 rounded-xl font-black text-base text-white mt-2 overflow-hidden transition-all disabled:opacity-60"
-              style={{
-                background: 'linear-gradient(135deg, #1bb908 0%, #0f8a04 100%)',
-                boxShadow: '0 6px 28px rgba(27,185,8,0.35)',
-                letterSpacing: '0.03em',
-              }}
-              onMouseEnter={e => { if (!loading) e.currentTarget.style.boxShadow = '0 8px 40px rgba(27,185,8,0.55)' }}
-              onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 6px 28px rgba(27,185,8,0.35)' }}
-            >
-              {/* Shine */}
-              <div className="absolute inset-0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity"
-                style={{ background: 'linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.1) 50%, transparent 60%)' }} />
+            <button type="submit" disabled={loading}
+              className="group relative w-full flex items-center justify-center gap-2.5 py-4 rounded-xl font-black text-base text-white mt-2 overflow-hidden transition-all disabled:opacity-60 tracking-[0.03em] bg-accent hover:bg-accent-hover shadow-[0_6px_28px_var(--accent-glow)] hover:shadow-[0_8px_40px_var(--accent-glow)]">
+              <div className="absolute inset-0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity bg-[linear-gradient(105deg,transparent_40%,rgba(255,255,255,0.1)_50%,transparent_60%)]" />
               {loading ? (
-                <>
-                  <div className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                  Signing in…
-                </>
+                <><div className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />Signing in…</>
               ) : (
-                <>
-                  <Truck size={16} strokeWidth={2.2} />
-                  Begin Shift
-                  <ArrowRight size={15} className="group-hover:translate-x-0.5 transition-transform" />
-                </>
+                <><Truck size={16} strokeWidth={2.2} />Begin Shift<ArrowRight size={15} className="group-hover:translate-x-0.5 transition-transform" /></>
               )}
             </button>
           </form>
 
           {/* Portal links */}
-          <div className="mt-7 pt-6 flex gap-3" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-            <Link href="/login"
-              className="flex-1 text-center py-2 rounded-lg text-[11px] font-bold transition-all"
-              style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.25)' }}
-              onMouseEnter={e => { e.currentTarget.style.color = 'rgba(255,255,255,0.6)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.15)' }}
-              onMouseLeave={e => { e.currentTarget.style.color = 'rgba(255,255,255,0.25)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)' }}
-            >
-              Customer Portal
-            </Link>
-            <Link href="/admin_login"
-              className="flex-1 text-center py-2 rounded-lg text-[11px] font-bold transition-all"
-              style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.25)' }}
-              onMouseEnter={e => { e.currentTarget.style.color = 'rgba(255,255,255,0.6)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.15)' }}
-              onMouseLeave={e => { e.currentTarget.style.color = 'rgba(255,255,255,0.25)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)' }}
-            >
-              Admin Portal
-            </Link>
+          <div className="mt-7 pt-6 flex gap-3 border-t border-border">
+            {[
+              { href: '/login',       label: 'Customer Portal' },
+              { href: '/admin_login', label: 'Admin Portal'    },
+            ].map(p => (
+              <Link key={p.href} href={p.href}
+                className="flex-1 text-center py-2 rounded-lg text-[11px] font-bold bg-surface border border-border text-muted hover:text-foreground hover:border-border-2 transition-all">
+                {p.label}
+              </Link>
+            ))}
           </div>
         </div>
       </div>
