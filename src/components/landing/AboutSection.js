@@ -202,7 +202,7 @@ export default function AboutSection() {
               }}
             >
               <p className="text-base leading-relaxed" style={{ color: 'var(--landing-text-2)' }}>
-                GoFastDelivery was built by Calgarians, for Calgarians. We&apos;ve spent over a decade perfecting same-day delivery across the city and surrounding areas. Every order is handled by a verified local driver, tracked live from pickup to drop-off, with zero hidden fees and real human support when you need it.
+                GoFastDelivery was built by Calgarians, for Everyone. We&apos;ve spent over a decade perfecting same-day delivery across the city and surrounding areas. Every order is handled by a verified local driver, tracked live from pickup to drop-off, with zero hidden fees and real human support when you need it.
               </p>
             </div>
 

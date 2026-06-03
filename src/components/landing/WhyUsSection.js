@@ -12,7 +12,7 @@ const FEATURES = [
     title: 'Lightning Fast',
     stat: '< 3hrs',
     statLabel: 'avg delivery',
-    desc: 'Same-day delivery across Calgary. We move at the speed your business demands.',
+    desc: 'Same-day delivery across Calgary and Surrounding areas. We move at the speed your business demands.',
   },
   {
     icon: Shield,
@@ -36,7 +36,7 @@ const FEATURES = [
     title: 'Best Pricing',
     stat: '#1',
     statLabel: 'value in Calgary',
-    desc: 'Competitive rates with no hidden fees. The best value in Calgary courier services.',
+    desc: 'Competitive rates with no hidden fees. The best value in Calgary and surrounding area courier services.',
   },
 ]
 
@@ -138,7 +138,7 @@ export default function WhyUsSection() {
                 className="text-2xl sm:text-3xl lg:text-4xl"
               />
               <p className="text-base leading-relaxed max-w-sm" style={{ color: 'rgba(0,0,0,0.5)' }}>
-                Speed and reliability aren&apos;t buzzwords here. They&apos;re our daily standard. See why Calgary businesses trust us above all others.
+                Speed and reliability aren&apos;t buzzwords here. They&apos;re our daily standard. See why all businesses trust us above other couriers.
               </p>
             </div>
 
@@ -160,7 +160,7 @@ export default function WhyUsSection() {
                 className="absolute top-4 left-4 px-3 py-1.5 rounded-full text-xs font-black tracking-wider uppercase"
                 style={{ background: 'rgba(255,88,13,0.9)', color: 'white' }}
               >
-                Calgary&apos;s Best
+                Calgary&apos;s Best 
               </div>
             </div>
           </div>

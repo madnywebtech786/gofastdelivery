@@ -350,7 +350,7 @@ export default function ServicesSection() {
             className="text-sm leading-relaxed max-w-xs"
             style={{ color: 'rgba(0,0,0,0.45)' }}
           >
-            Five ways we move Calgary forward. Pick the one that fits your need.
+            Five ways we move Canada forward. Pick the one that fits your need.
           </p>
         </div>
 
