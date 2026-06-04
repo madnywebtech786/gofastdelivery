@@ -2,6 +2,7 @@
 
 import { usePathname, useRouter } from 'next/navigation'
 import Link from 'next/link'
+import Image from 'next/image'
 
 const TABS = [
   {
@@ -58,21 +59,28 @@ export default function DriverShell({ children }) {
   const isMapPage = pathname === '/driver/route'
 
   return (
-    <div className="min-h-screen bg-[#f5f5f7] flex flex-col">
+    <div className="min-h-screen flex flex-col" style={{ background: 'var(--bg)' }}>
+
       {/* Top bar — hidden on fullscreen map */}
       {!isMapPage && (
-        <header className="sticky top-0 z-40 bg-white border-b border-gray-100 px-4 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="white">
-                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="white" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            </div>
-            <span className="font-bold text-sm text-gray-900 tracking-tight">CourierGo</span>
-          </div>
+        <header
+          className="sticky top-0 z-40 px-4 h-14 flex items-center justify-between border-b"
+          style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+        >
+          <Image
+            src="/images/logo.png"
+            alt="GoFastDelivery"
+            width={110}
+            height={34}
+            className="h-8 w-auto object-contain"
+            priority
+          />
           <button
             onClick={handleSignOut}
-            className="text-xs font-medium text-gray-500 bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-full transition"
+            className="text-xs font-semibold px-3 py-1.5 rounded-xl transition-all"
+            style={{ color: 'var(--fg-3)', background: 'var(--surface-2)', border: '1px solid var(--border)' }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--danger)'; e.currentTarget.style.background = 'var(--danger-bg)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--fg-3)'; e.currentTarget.style.background = 'var(--surface-2)' }}
           >
             Sign out
           </button>
@@ -87,39 +95,51 @@ export default function DriverShell({ children }) {
       {/* Bottom tab bar — hidden on fullscreen map */}
       {!isMapPage && (
         <nav
-          className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-100 flex"
-          style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+          className="fixed bottom-0 left-0 right-0 z-50 flex border-t"
+          style={{
+            background: 'var(--surface)',
+            borderColor: 'var(--border)',
+            paddingBottom: 'env(safe-area-inset-bottom)',
+          }}
         >
           {TABS.map((tab) => {
             const active = pathname === tab.href || (tab.href === '/driver/home' && pathname === '/driver')
             const isNavigate = tab.href === '/driver/route'
+
             return (
               <Link
                 key={tab.href}
                 href={tab.href}
-                className={[
-                  'flex-1 flex flex-col items-center justify-center gap-0.5 py-2.5 transition-colors relative',
-                  active ? 'text-blue-600' : 'text-gray-400',
-                ].join(' ')}
+                className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2.5 transition-colors relative"
+                style={{ color: active ? 'var(--accent)' : 'var(--fg-3)' }}
               >
-                {/* Navigate tab gets a prominent pill */}
                 {isNavigate ? (
-                  <div className={[
-                    'w-12 h-12 rounded-2xl flex items-center justify-center -mt-5 shadow-lg transition-colors',
-                    active ? 'bg-blue-600' : 'bg-blue-500',
-                  ].join(' ')}>
+                  <div
+                    className="w-12 h-12 rounded-2xl flex items-center justify-center -mt-5 shadow-lg transition-all"
+                    style={{ background: 'var(--accent)', boxShadow: '0 4px 16px var(--accent-glow)' }}
+                  >
                     <span className="text-white">{tab.icon(true)}</span>
                   </div>
                 ) : (
                   tab.icon(active)
                 )}
-                <span className={[
-                  'text-[10px] font-medium',
-                  active ? 'text-blue-600' : 'text-gray-400',
-                  isNavigate ? 'mt-0.5' : '',
-                ].join(' ')}>
+                <span
+                  className="text-[10px] font-semibold"
+                  style={{
+                    color: active ? 'var(--accent)' : 'var(--fg-3)',
+                    marginTop: isNavigate ? '2px' : undefined,
+                  }}
+                >
                   {tab.label}
                 </span>
+
+                {/* Active dot indicator */}
+                {active && !isNavigate && (
+                  <span
+                    className="absolute bottom-1 w-1 h-1 rounded-full"
+                    style={{ background: 'var(--accent)' }}
+                  />
+                )}
               </Link>
             )
           })}

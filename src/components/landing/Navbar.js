@@ -31,7 +31,7 @@ const DELIVERY_ITEMS = [
   'Totes', 'Gifts & Flowers', 'Industrial Samples',
 ]
 
-function Marquee({ items, reverse = false, dark = false }) {
+function Marquee({ items, reverse = false, dark = false, label }) {
   const dur = reverse ? '28s' : '22s'
   const accent = dark ? 'rgba(255,88,13,0.55)' : 'rgba(255,88,13,0.5)'
   const muted = dark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.22)'
@@ -40,36 +40,69 @@ function Marquee({ items, reverse = false, dark = false }) {
   const border = dark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'
   const repeated = [...items, ...items, ...items]
 
+  const labelSpan = label ? (
+    <span
+      className="shrink-0 flex items-center px-3 sm:px-4 whitespace-nowrap z-10"
+      style={{
+        background: '#1bb908',
+        color: '#fff',
+        fontSize: '8px',
+        fontWeight: 900,
+        letterSpacing: '0.15em',
+        textTransform: 'uppercase',
+        alignSelf: 'stretch',
+        borderRight: reverse ? 'none' : '1px solid rgba(0,0,0,0.12)',
+        borderLeft: reverse ? '1px solid rgba(0,0,0,0.12)' : 'none',
+      }}
+    >
+      {label}
+    </span>
+  ) : null
+
   return (
     <div
-      className="overflow-hidden"
+      className="flex items-stretch overflow-hidden"
       style={{
         background: bg,
         backdropFilter: 'blur(8px)',
-        borderTop: `1px solid ${border}`,
         borderBottom: `1px solid ${border}`,
       }}
     >
+      {/* Left label */}
+      {!reverse && labelSpan}
+
+      {/* Scrolling track — mask edges so text fades into the labels */}
       <div
-        className="flex whitespace-nowrap"
-        style={{ animation: `marquee-scroll ${dur} linear infinite${reverse ? ' reverse' : ''}` }}
+        className="flex-1 overflow-hidden relative"
+        style={{
+          maskImage: 'linear-gradient(to right, transparent 0%, black 6%, black 94%, transparent 100%)',
+          WebkitMaskImage: 'linear-gradient(to right, transparent 0%, black 6%, black 94%, transparent 100%)',
+        }}
       >
-        {[0, 1, 2].map(rep => (
-          <div key={rep} className="flex items-center shrink-0">
-            {repeated.map((item, i) => (
-              <span key={`${rep}-${i}`} className="inline-flex items-center gap-3 px-5 py-2">
-                <span
-                  className="text-[9px] font-black tracking-[0.22em] uppercase"
-                  style={{ color: i % 2 === 0 ? accent : muted }}
-                >
-                  {item}
+        <div
+          className="flex whitespace-nowrap"
+          style={{ animation: `marquee-scroll ${dur} linear infinite${reverse ? ' reverse' : ''}` }}
+        >
+          {[0, 1, 2].map(rep => (
+            <div key={rep} className="flex items-center shrink-0">
+              {repeated.map((item, i) => (
+                <span key={`${rep}-${i}`} className="inline-flex items-center gap-3 px-5 py-2">
+                  <span
+                    className="text-[9px] font-black tracking-[0.22em] uppercase"
+                    style={{ color: i % 2 === 0 ? accent : muted }}
+                  >
+                    {item}
+                  </span>
+                  <span style={{ color: dot, fontSize: '5px' }}>◆</span>
                 </span>
-                <span style={{ color: dot, fontSize: '5px' }}>◆</span>
-              </span>
-            ))}
-          </div>
-        ))}
+              ))}
+            </div>
+          ))}
+        </div>
       </div>
+
+      {/* Right label */}
+      {reverse && labelSpan}
     </div>
   )
 }
@@ -164,7 +197,7 @@ export default function Navbar() {
         </div>
 
         {/* Top city marquee */}
-        <Marquee items={CITIES} reverse={false} dark={false} />
+        <Marquee items={CITIES} reverse={false} dark={false} label="Service Areas" />
 
         {/* Main nav */}
         <animated.nav style={navSpring} className="backdrop-blur-md">
@@ -424,7 +457,7 @@ export default function Navbar() {
 
       {/* ── Bottom sticky delivery items marquee ── */}
       <div className="fixed bottom-0 left-0 right-0 z-40">
-        <Marquee items={DELIVERY_ITEMS} reverse={true} dark={false} />
+        <Marquee items={DELIVERY_ITEMS} reverse={true} dark={false} label="Items We Ship" />
       </div>
     </>
   )

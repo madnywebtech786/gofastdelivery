@@ -7,6 +7,33 @@ import {
   findAllBookings,
 } from '@/lib/db/bookings'
 import { sendBookingConfirmed } from '@/lib/mailer'
+import { checkRateLimit } from '@/lib/redis'
+
+// Service area bounding box — Greater Alberta / Western Canada
+const LAT_MIN =  48.0
+const LAT_MAX =  60.0
+const LNG_MIN = -120.0
+const LNG_MAX = -110.0
+const MAX_STRING = 300
+
+function sanitizeStr(val, max = MAX_STRING) {
+  if (val == null) return ''
+  return String(val).trim().slice(0, max)
+}
+
+function isValidEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+}
+
+function validateStop(stop, label) {
+  if (typeof stop.lat !== 'number' || typeof stop.lng !== 'number' || !isFinite(stop.lat) || !isFinite(stop.lng)) {
+    return `${label}: coordinates must be numbers`
+  }
+  if (stop.lat < LAT_MIN || stop.lat > LAT_MAX || stop.lng < LNG_MIN || stop.lng > LNG_MAX) {
+    return `${label}: coordinates are outside the service area`
+  }
+  return null
+}
 
 export async function GET(request) {
   try {
@@ -38,52 +65,94 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Only customers can create bookings' }, { status: 403 })
     }
 
-    const { stops, packageDetails, senderEmail, receiverEmail, estimatedPrice } = await request.json()
+    // Per-user rate limit: 10 bookings per hour
+    const { allowed } = await checkRateLimit(`rate:booking-create:${userId}`, 10, 3600)
+    if (!allowed) {
+      return NextResponse.json(
+        { error: 'Too many bookings created. Please try again later.' },
+        { status: 429 }
+      )
+    }
 
-    if (!stops || !Array.isArray(stops) || stops.length !== 2) {
+    let body
+    try {
+      body = await request.json()
+    } catch {
+      return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
+    }
+
+    const { stops, packageDetails, senderEmail, receiverEmail, estimatedPrice } = body
+
+    if (!Array.isArray(stops) || stops.length !== 2) {
       return NextResponse.json(
         { error: 'Exactly 2 stops are required: one pickup and one drop-off' },
         { status: 400 }
       )
     }
 
-    const pickups  = stops.filter((s) => s.type === 'pickup')
-    const dropoffs = stops.filter((s) => s.type === 'dropoff')
-    if (pickups.length !== 1 || dropoffs.length !== 1) {
+    const pickup  = stops.find((s) => s?.type === 'pickup')
+    const dropoff = stops.find((s) => s?.type === 'dropoff')
+    if (!pickup || !dropoff) {
       return NextResponse.json(
         { error: 'Booking must have exactly 1 pickup and 1 drop-off stop' },
         { status: 400 }
       )
     }
 
-    for (const stop of stops) {
-      if (typeof stop.lng !== 'number' || typeof stop.lat !== 'number') {
-        return NextResponse.json({ error: 'Invalid stop coordinates' }, { status: 400 })
-      }
+    const pickupErr = validateStop(pickup, 'Pickup')
+    if (pickupErr) return NextResponse.json({ error: pickupErr }, { status: 400 })
+    const dropoffErr = validateStop(dropoff, 'Drop-off')
+    if (dropoffErr) return NextResponse.json({ error: dropoffErr }, { status: 400 })
+
+    // Same-location guard (25m minimum separation)
+    const R = 6_371_000
+    const toRad = (x) => (x * Math.PI) / 180
+    const dLat = toRad(dropoff.lat - pickup.lat)
+    const dLng = toRad(dropoff.lng - pickup.lng)
+    const a =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos(toRad(pickup.lat)) * Math.cos(toRad(dropoff.lat)) * Math.sin(dLng / 2) ** 2
+    if (2 * R * Math.asin(Math.sqrt(a)) < 25) {
+      return NextResponse.json(
+        { error: 'Pickup and drop-off cannot be at the same location' },
+        { status: 400 }
+      )
     }
 
-    const trackingToken = nanoid(12)
+    // Email validation
+    const cleanSenderEmail   = sanitizeStr(senderEmail)
+    const cleanReceiverEmail = sanitizeStr(receiverEmail)
+    if (cleanSenderEmail   && !isValidEmail(cleanSenderEmail))   return NextResponse.json({ error: 'Invalid sender email'   }, { status: 400 })
+    if (cleanReceiverEmail && !isValidEmail(cleanReceiverEmail)) return NextResponse.json({ error: 'Invalid receiver email' }, { status: 400 })
+
+    // estimatedPrice sanity check
+    const price = estimatedPrice != null ? Number(estimatedPrice) : null
+    if (price !== null && (!isFinite(price) || price < 0 || price > 100_000)) {
+      return NextResponse.json({ error: 'Invalid estimated price' }, { status: 400 })
+    }
+
+    const trackingToken = nanoid(21)
     const booking = await createBooking({
       customerId: userId,
-      stops: stops.map((s, i) => ({
-        type: s.type === 'pickup' ? 'pickup' : 'dropoff',
-        order: i,
-        address: s.address ?? `${s.lat}, ${s.lng}`,
-        coordinates: { lat: s.lat, lng: s.lng },
-        contactName:  s.contactName  ?? '',
-        companyName:  s.companyName  ?? '',
-        postalCode:   s.postalCode   ?? '',
-        buzzCode:     s.buzzCode     ?? '',
-        pickupTime:   s.pickupTime   ?? null,
-        contactPhone: s.contactPhone ?? '',
-        notes:        s.notes        ?? '',
-        completedAt: null,
+      stops: [pickup, dropoff].map((s, i) => ({
+        type:         i === 0 ? 'pickup' : 'dropoff',
+        order:        i,
+        address:      sanitizeStr(s.address) || `${s.lat}, ${s.lng}`,
+        coordinates:  { lat: s.lat, lng: s.lng },
+        contactName:  sanitizeStr(s.contactName),
+        companyName:  sanitizeStr(s.companyName),
+        postalCode:   sanitizeStr(s.postalCode),
+        buzzCode:     sanitizeStr(s.buzzCode),
+        pickupTime:   sanitizeStr(s.pickupTime) || null,
+        contactPhone: sanitizeStr(s.contactPhone),
+        notes:        sanitizeStr(s.notes),
+        completedAt:  null,
       })),
       packageDetails:  packageDetails  ?? null,
       trackingToken,
-      senderEmail:    senderEmail    || null,
-      receiverEmail:  receiverEmail  || null,
-      estimatedPrice: estimatedPrice ?? null,
+      senderEmail:    cleanSenderEmail   || null,
+      receiverEmail:  cleanReceiverEmail || null,
+      estimatedPrice: price,
     })
 
     // Send confirmation emails — fire-and-forget, never block response

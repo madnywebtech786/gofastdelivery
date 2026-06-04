@@ -12,12 +12,12 @@ import ReviewsSection from './ReviewsSection'
 import ContactSection from './ContactSection'
 import Footer from './Footer'
 import SocialDock from './SocialDock'
-import AnnouncementPopup from './AnnouncementPopup'
+// import AnnouncementPopup from './AnnouncementPopup'
 
 export default function LandingPage() {
   return (
     <div data-page="landing">
-      <AnnouncementPopup />
+      {/* <AnnouncementPopup /> */}
       <Navbar />
       <SocialDock />
       <main>

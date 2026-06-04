@@ -1,24 +1,12 @@
 import { ObjectId } from 'mongodb'
-import { randomUUID } from 'node:crypto'
 import { getDb } from './client.js'
 
-/**
- * Normalize packageDetails.items — each item gets a stable server-side ID
- * and per-stage timestamp slots so the driver can check items off.
- */
 function normalizePackageDetails(pkg) {
   if (!pkg) return null
-  const items = Array.isArray(pkg.items)
-    ? pkg.items.map((it) => ({
-        itemId:      it?.itemId ?? randomUUID(),
-        name:        String(it?.name ?? '').trim().slice(0, 120),
-        type:        String(it?.type ?? '').trim().slice(0, 60),
-        quantity:    Math.max(1, Math.min(999, Number.parseInt(it?.quantity, 10) || 1)),
-        pickedUpAt:  null,
-        deliveredAt: null,
-      })).filter((it) => it.name.length > 0)
-    : []
-  return { ...pkg, items }
+  return {
+    kind:      String(pkg.kind      ?? '').trim().slice(0, 120),
+    weightSlab: String(pkg.weightSlab ?? '').trim().slice(0, 60),
+  }
 }
 
 export const BOOKING_STATUSES = [

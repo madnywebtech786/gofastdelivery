@@ -1,11 +1,12 @@
 'use client'
 
 import Link from 'next/link'
+import Image from 'next/image'
 import { usePathname, useRouter } from 'next/navigation'
 import { useState } from 'react'
 import {
   LayoutDashboard, PackageOpen, Users, Tag,
-  LogOut, Truck, Menu, X, ChevronRight, History,
+  LogOut, Truck, Menu, X, ChevronRight, History, Settings,
 } from 'lucide-react'
 
 const NAV = [
@@ -14,6 +15,7 @@ const NAV = [
   { href: '/admin/bookings/history',  label: 'History',   icon: History },
   { href: '/admin/drivers',           label: 'Drivers',   icon: Users },
   { href: '/admin/pricing',           label: 'Pricing',   icon: Tag },
+  { href: '/admin/settings',          label: 'Settings',  icon: Settings },
 ]
 
 export default function AdminLayout({ children }) {
@@ -29,17 +31,12 @@ export default function AdminLayout({ children }) {
   const SidebarContent = () => (
     <>
       {/* Brand */}
-      <div className="px-5 py-5 border-b border-border">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
-            style={{ background: 'var(--accent-dim)', color: 'var(--accent)' }}>
-            <Truck size={16} />
-          </div>
-          <div>
-            <p className="font-bold text-sm leading-tight" style={{ color: 'var(--fg)' }}>Go Fast Delivery</p>
-            <p className="text-[10px] font-semibold uppercase tracking-widest mt-0.5" style={{ color: 'var(--fg-3)' }}>Admin Panel</p>
-          </div>
-        </div>
+      <div className="px-5 py-4 border-b border-border flex items-center justify-between">
+        <Image src="/images/logo.png" alt="GoFastDelivery" width={120} height={36} className="h-9 w-auto object-contain" priority />
+        <span className="hidden sm:inline text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full shrink-0"
+          style={{ background: 'var(--accent-dim)', color: 'var(--accent)' }}>
+          Admin
+        </span>
       </div>
 
       {/* Nav */}
@@ -147,10 +144,7 @@ export default function AdminLayout({ children }) {
           >
             <Menu size={18} />
           </button>
-          <div className="flex items-center gap-2">
-            <Truck size={15} style={{ color: 'var(--accent)' }} />
-            <span className="font-bold text-sm" style={{ color: 'var(--fg)' }}>Go Fast Delivery</span>
-          </div>
+          <Image src="/images/logo.png" alt="GoFastDelivery" width={100} height={32} className="h-8 w-auto object-contain" />
           <div className="flex items-center gap-1 ml-2 text-xs" style={{ color: 'var(--fg-3)' }}>
             <ChevronRight size={12} />
             <span style={{ color: 'var(--fg-2)' }}>

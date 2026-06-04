@@ -2,12 +2,8 @@ import { ObjectId } from 'mongodb'
 import { getDb } from '@/lib/db/client'
 
 /**
- * Attach packageDetails.items to each stop that references a booking, so
- * the driver UI can render the per-stop item checklist. Items are kept on
- * the booking (not the route) so they stay authoritative after markItems
- * stamps them — the route is just a projection.
- *
- * Safe to call with already-hydrated input (it re-hydrates from bookings).
+ * Attach packageDetails.kind to each stop as packageKind so the driver UI
+ * can show the package type without a separate round-trip.
  */
 export async function hydrateRouteItems(route) {
   const stops = route?.optimizedStops ?? []
@@ -21,7 +17,7 @@ export async function hydrateRouteItems(route) {
     .collection('bookings')
     .find(
       { _id: { $in: ids.map((id) => new ObjectId(id)) } },
-      { projection: { 'packageDetails.items': 1 } },
+      { projection: { 'packageDetails.kind': 1 } },
     )
     .toArray()
   const byId = new Map(bookings.map((b) => [String(b._id), b]))
@@ -33,7 +29,7 @@ export async function hydrateRouteItems(route) {
       if (!b) return s
       return {
         ...s,
-        packageItems: Array.isArray(b.packageDetails?.items) ? b.packageDetails.items : [],
+        packageKind: b.packageDetails?.kind ?? null,
       }
     }),
   }

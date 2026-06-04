@@ -96,18 +96,6 @@ export default function AboutSection() {
             </p>
           </div>
 
-          {/* Year established stamp — top right corner of photo */}
-          <div
-            className="absolute top-8 right-12 flex flex-col items-center"
-            style={{
-              opacity: isVisible ? 0.7 : 0,
-              transition: 'opacity 0.8s ease 0.4s',
-            }}
-          >
-            <span className="text-[9px] font-black text-white tracking-[0.3em] uppercase">Experience</span>
-            <span className="text-3xl font-black text-white leading-none">10+</span>
-            <span className="text-[9px] font-black text-white tracking-[0.2em] uppercase">Years</span>
-          </div>
         </div>
 
         {/* ── RIGHT: Content pane ── */}

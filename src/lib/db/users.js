@@ -90,3 +90,38 @@ export async function emailExists(email) {
     .countDocuments({ email: email.toLowerCase().trim() })
   return count > 0
 }
+
+/**
+ * Update a user's profile info.
+ * For customers: name, email, phone, contactName, companyName, buzzCode, profile (updated flag).
+ * For admins: name, email, phone, address.
+ * Returns the updated doc (no passwordHash).
+ */
+export async function updateUserProfile(userId, fields) {
+  const db = await getDb()
+  const now = new Date()
+  const allowed = ['name', 'phone', 'address', 'contactName', 'companyName', 'buzzCode', 'profileUpdated']
+  const setFields = { updatedAt: now }
+  for (const key of allowed) {
+    if (key in fields) setFields[key] = fields[key]
+  }
+  await db.collection('users').updateOne(
+    { _id: new ObjectId(userId) },
+    { $set: setFields }
+  )
+  return db.collection('users').findOne(
+    { _id: new ObjectId(userId) },
+    { projection: { passwordHash: 0 } }
+  )
+}
+
+/**
+ * Update a user's password. Caller must verify the old password first.
+ */
+export async function updateUserPassword(userId, newPasswordHash) {
+  const db = await getDb()
+  return db.collection('users').updateOne(
+    { _id: new ObjectId(userId) },
+    { $set: { passwordHash: newPasswordHash, updatedAt: new Date() } }
+  )
+}

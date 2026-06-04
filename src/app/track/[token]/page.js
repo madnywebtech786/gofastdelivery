@@ -1,5 +1,7 @@
 import { notFound } from 'next/navigation'
+import { headers } from 'next/headers'
 import { findBookingByToken } from '@/lib/db/bookings'
+import { checkRateLimit } from '@/lib/redis'
 import Image from 'next/image'
 import Link from 'next/link'
 import { ArrowRight, MapPin, Clock, Package } from 'lucide-react'
@@ -18,6 +20,14 @@ function formatDate(dateStr) {
 
 export default async function TrackingPage({ params }) {
   const { token } = await params
+
+  // Rate limit: 30 token lookups per IP per minute — blocks enumeration attempts
+  // while being invisible to any legitimate user (a real person tracks once).
+  const headerStore = await headers()
+  const ip = headerStore.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown'
+  const { allowed } = await checkRateLimit(`rate:track:${ip}`, 12, 60)
+  if (!allowed) notFound()
+
   const booking = await findBookingByToken(token)
   if (!booking) notFound()
 

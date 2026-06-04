@@ -670,7 +670,7 @@ function CTASection({ service }) {
           }}
         >
           <Link
-            href="/login"
+            href="/book"
             className="group w-full sm:w-auto inline-flex items-center justify-center gap-3 px-8 py-4 rounded-2xl font-black text-sm text-white transition-all cta-pulse hover:scale-105"
             style={{ background: service.accent, fontSize: '0.95rem' }}
           >
@@ -830,7 +830,7 @@ export default function ServiceDetailPage({ slug }) {
 
               <div className="flex gap-3 flex-wrap">
                 <Link
-                  href="/login"
+                  href="/book"
                   className="inline-flex items-center gap-2 px-7 py-3.5 rounded-2xl text-white font-black text-sm shadow-lg transition-all hover:opacity-90 cta-pulse"
                   style={{ background: service.accent }}
                 >

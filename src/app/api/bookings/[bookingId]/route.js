@@ -42,6 +42,13 @@ export async function PATCH(request, { params }) {
       return NextResponse.json({ error: 'Invalid status' }, { status: 400 })
     }
 
+    // Drivers may only move bookings to statuses their role legitimately produces.
+    // All other driver-side transitions go through stop-complete / stop-failed.
+    const DRIVER_ALLOWED_STATUSES = ['picked_up', 'delivered', 'failed_pickup', 'failed_dropoff']
+    if (role === 'driver' && !DRIVER_ALLOWED_STATUSES.includes(status)) {
+      return NextResponse.json({ error: 'Forbidden: drivers cannot set that status' }, { status: 403 })
+    }
+
     // Drivers can only update bookings assigned to them
     const driverFilter = role === 'driver' ? userId : undefined
     const result = await updateBookingStatus(bookingId, status, {

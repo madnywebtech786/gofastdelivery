@@ -1,9 +1,34 @@
+import { checkRateLimit } from '@/lib/redis'
+
+const CONTACT_RATE_LIMIT  = 5
+const CONTACT_RATE_WINDOW = 3600 // 5 submissions per IP per hour
+
+const MAX_NAME    = 100
+const MAX_EMAIL   = 254  // RFC 5321 max
+const MAX_PHONE   = 30
+const MAX_MESSAGE = 2000
+
 export async function POST(request) {
   try {
-    const body = await request.json()
-    const { name, email, phone, message } = body
+    const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown'
+    const { allowed } = await checkRateLimit(`rate:contact:${ip}`, CONTACT_RATE_LIMIT, CONTACT_RATE_WINDOW)
+    if (!allowed) {
+      return Response.json({ error: 'Too many submissions. Please try again later.' }, { status: 429 })
+    }
 
-    if (!name?.trim() || !email?.trim() || !message?.trim()) {
+    let body
+    try {
+      body = await request.json()
+    } catch {
+      return Response.json({ error: 'Invalid request body' }, { status: 400 })
+    }
+
+    const name    = String(body.name    ?? '').trim().slice(0, MAX_NAME)
+    const email   = String(body.email   ?? '').trim().slice(0, MAX_EMAIL)
+    const phone   = String(body.phone   ?? '').trim().slice(0, MAX_PHONE)
+    const message = String(body.message ?? '').trim().slice(0, MAX_MESSAGE)
+
+    if (!name || !email || !message) {
       return Response.json({ error: 'Missing required fields' }, { status: 400 })
     }
 

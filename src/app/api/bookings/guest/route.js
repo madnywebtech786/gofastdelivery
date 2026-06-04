@@ -16,7 +16,6 @@ const LNG_MIN = -120.0
 const LNG_MAX = -110.0
 
 const MAX_STRING = 300  // max chars for any free-text field
-const MAX_DESCRIPTION = 1000
 
 function sanitizeStr(val, max = MAX_STRING) {
   if (val == null) return ''
@@ -107,14 +106,8 @@ export async function POST(request) {
     if (cleanSenderEmail   && !isValidEmail(cleanSenderEmail))   return NextResponse.json({ error: 'Invalid sender email'   }, { status: 400 })
     if (cleanReceiverEmail && !isValidEmail(cleanReceiverEmail)) return NextResponse.json({ error: 'Invalid receiver email' }, { status: 400 })
 
-    // ── Package details validation ─────────────────────────────────────────────
+    // ── Package details ───────────────────────────────────────────────────────
     const pkg = packageDetails ?? {}
-    const validItems = Array.isArray(pkg.items)
-      ? pkg.items.filter((it) => sanitizeStr(it?.name).length > 0)
-      : []
-    if (validItems.length === 0) {
-      return NextResponse.json({ error: 'At least one package item is required' }, { status: 400 })
-    }
 
     // ── estimatedPrice sanity check ───────────────────────────────────────────
     const price = estimatedPrice != null ? Number(estimatedPrice) : null
@@ -123,7 +116,7 @@ export async function POST(request) {
     }
 
     // ── Build booking ─────────────────────────────────────────────────────────
-    const trackingToken = nanoid(12)
+    const trackingToken = nanoid(21)
 
     const booking = await createBooking({
       customerId: null, // guest — no account
@@ -156,15 +149,8 @@ export async function POST(request) {
         },
       ],
       packageDetails: {
-        kind:                sanitizeStr(pkg.kind),
-        description:         sanitizeStr(pkg.description, MAX_DESCRIPTION),
-        weightSlab:          sanitizeStr(pkg.weightSlab),
-        specialInstructions: sanitizeStr(pkg.specialInstructions, MAX_DESCRIPTION),
-        items: validItems.map((it) => ({
-          name:     sanitizeStr(it.name),
-          type:     sanitizeStr(it.type),
-          quantity: Math.max(1, Math.min(999, Number.parseInt(it.quantity, 10) || 1)),
-        })),
+        kind:       sanitizeStr(pkg.kind),
+        weightSlab: sanitizeStr(pkg.weightSlab),
       },
       senderEmail:    cleanSenderEmail   || null,
       receiverEmail:  cleanReceiverEmail || null,

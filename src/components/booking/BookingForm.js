@@ -68,48 +68,45 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
 
   // Pickup details (for the pickup stop card)
   const [pickup, setPickup] = useState({
-    contactName: 'Test Name',
-    companyName: 'TechFlow Solutions',
-    buzzCode: '#4B, buzz 1234',
-    pickupTime: '2026-04-14T10:00',
-    contactPhone: '+1 403-555-1234',
-    notes: 'Gate code 5678, please ring doorbell',
+    contactName: '',
+    companyName: '',
+    buzzCode: '',
+    pickupTime: '',
+    contactPhone: '',
+    notes: '',
   })
 
   // Drop-off details (for the dropoff stop card)
   const [dropoff, setDropoff] = useState({
-    contactName: 'Sarah Mitchell',
-    buzzCode: '#2A, buzz 5678',
-    contactPhone: '+1 403-555-5678',
+    contactName: '',
+    buzzCode: '',
+    contactPhone: '',
   })
+
+  // Prefill pickup details from customer profile if profileUpdated is true
+  useEffect(() => {
+    if (apiPath !== '/api/bookings') return // guest form — skip
+    fetch('/api/user/profile')
+      .then((r) => r.ok ? r.json() : null)
+      .then((user) => {
+        if (!user?.profileUpdated) return
+        setPickup((prev) => ({
+          ...prev,
+          contactName:  user.contactName || prev.contactName,
+          companyName:  user.companyName || prev.companyName,
+          buzzCode:     user.buzzCode    || prev.buzzCode,
+          contactPhone: user.phone       || prev.contactPhone,
+        }))
+        if (user.email) setSenderEmail(user.email)
+      })
+      .catch(() => {})
+  }, [apiPath])
 
   // Package details
   const [pkg, setPkg] = useState({
-    kind: 'Electronics',
-    description: 'Laptop charger and USB cables, 3 items',
+    kind: '',
     weightSlab: 'up_to_10',
-    specialInstructions: 'Fragile - handle with care, keep upright',
   })
-
-  // Items list — what's physically inside the package.
-  // Each row: { localId, name, type, quantity }. localId is form-only;
-  // the server assigns a durable itemId on save.
-  const [items, setItems] = useState([
-    { localId: 'a', name: 'Laptop charger', type: 'Electronics', quantity: 1 },
-  ])
-
-  function addItem() {
-    setItems((prev) => [
-      ...prev,
-      { localId: Math.random().toString(36).slice(2, 8), name: '', type: '', quantity: 1 },
-    ])
-  }
-  function removeItem(localId) {
-    setItems((prev) => prev.length <= 1 ? prev : prev.filter((it) => it.localId !== localId))
-  }
-  function updateItem(localId, patch) {
-    setItems((prev) => prev.map((it) => it.localId === localId ? { ...it, ...patch } : it))
-  }
 
   // Sender + receiver notification emails
   const [senderEmail,   setSenderEmail]   = useState('')
@@ -204,12 +201,6 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
       return
     }
 
-    const validItems = items.filter((it) => it.name.trim().length > 0)
-    if (validItems.length === 0) {
-      setError('Add at least one package item.')
-      return
-    }
-
     // Same-location guard: block only when pickup and dropoff coordinates are
     // within ~25 m of each other (essentially the same pin). Address text is
     // unreliable for this — reverse-geocoded labels can be identical in rural
@@ -266,17 +257,8 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
           },
         ],
         packageDetails: {
-          kind: pkg.kind,
-          description: pkg.description,
+          kind:      pkg.kind,
           weightSlab: pkg.weightSlab,
-          specialInstructions: pkg.specialInstructions,
-          items: items
-            .filter((it) => it.name.trim().length > 0)
-            .map((it) => ({
-              name:     it.name.trim(),
-              type:     it.type.trim(),
-              quantity: Math.max(1, Number.parseInt(it.quantity, 10) || 1),
-            })),
         },
         senderEmail:   senderEmail   || null,
         receiverEmail: receiverEmail || null,
@@ -302,8 +284,7 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
       setStops([])
       setPickup({ contactName: '', companyName: '', buzzCode: '', pickupTime: '', contactPhone: '', notes: '' })
       setDropoff({ contactName: '', buzzCode: '', contactPhone: '' })
-      setPkg({ kind: '', description: '', weightSlab: 'up_to_10', specialInstructions: '' })
-      setItems([{ localId: 'a', name: '', type: '', quantity: 1 }])
+      setPkg({ kind: '', weightSlab: 'up_to_10' })
       setSenderEmail('')
       setReceiverEmail('')
       setPricingPreview(null)
@@ -378,7 +359,7 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
             <input type="text" value={pickup.buzzCode} onChange={(e) => setPickup((p) => ({ ...p, buzzCode: e.target.value }))} className={inputCls} placeholder="#4B, buzz 1234" />
           </Field>
           <Field label="Pickup Time">
-            <input type="datetime-local" value={pickup.pickupTime} onChange={(e) => setPickup((p) => ({ ...p, pickupTime: e.target.value }))} className={inputCls} />
+            <input type="datetime-local" value={pickup.pickupTime} min={new Date(Date.now() + 60000).toISOString().slice(0, 16)} onChange={(e) => setPickup((p) => ({ ...p, pickupTime: e.target.value }))} className={inputCls} />
           </Field>
           <Field label="Phone Number" required>
             <input type="tel" value={pickup.contactPhone} onChange={(e) => setPickup((p) => ({ ...p, contactPhone: e.target.value }))} className={inputCls} placeholder="+1 403-000-0000" required />
@@ -428,71 +409,6 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
             onChange={(v) => setPkg((p) => ({ ...p, weightSlab: v }))}
             options={WEIGHT_SLABS}
           />
-        </div>
-        <Field label="Description of Contents">
-          <input type="text" value={pkg.description} onChange={(e) => setPkg((p) => ({ ...p, description: e.target.value }))} className={inputCls} placeholder="e.g. prescription medicine, 3 bottles" />
-        </Field>
-        <Field label="Special Instructions">
-          <textarea
-            value={pkg.specialInstructions}
-            onChange={(e) => setPkg((p) => ({ ...p, specialInstructions: e.target.value }))}
-            className={inputCls + ' resize-none'}
-            rows={2}
-            placeholder="Fragile, keep upright, do not stack, etc."
-          />
-        </Field>
-
-        {/* Items list — what's inside the package. Driver checks each off at pickup/dropoff. */}
-        <div className="pt-1">
-          <div className="flex items-center justify-between mb-2">
-            <label className="block text-xs font-medium text-muted">
-              Items Inside <span className="text-danger">*</span>
-            </label>
-            <button
-              type="button"
-              onClick={addItem}
-              className="text-xs font-semibold text-primary hover:underline"
-            >
-              + Add item
-            </button>
-          </div>
-          <div className="space-y-2">
-            {items.map((it) => (
-              <div key={it.localId} className="grid grid-cols-[1fr_1fr_80px_32px] gap-2 items-start">
-                <input
-                  type="text"
-                  value={it.name}
-                  onChange={(e) => updateItem(it.localId, { name: e.target.value })}
-                  className={inputCls}
-                  placeholder="Item name (e.g. Laptop charger)"
-                />
-                <Select
-                  placeholder="Type…"
-                  value={it.type}
-                  onChange={(v) => updateItem(it.localId, { type: v })}
-                  options={PACKAGE_KINDS.map((k) => ({ value: k, label: k }))}
-                />
-                <input
-                  type="number"
-                  min={1}
-                  max={999}
-                  value={it.quantity}
-                  onChange={(e) => updateItem(it.localId, { quantity: e.target.value })}
-                  className={inputCls}
-                  placeholder="Qty"
-                />
-                <button
-                  type="button"
-                  onClick={() => removeItem(it.localId)}
-                  disabled={items.length <= 1}
-                  className="h-10 rounded-lg border border-border text-muted hover:text-danger disabled:opacity-30 disabled:cursor-not-allowed"
-                  title={items.length <= 1 ? 'At least one item is required' : 'Remove item'}
-                >
-                  ×
-                </button>
-              </div>
-            ))}
-          </div>
         </div>
       </div>
 

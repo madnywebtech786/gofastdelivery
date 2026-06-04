@@ -11,7 +11,7 @@ import 'swiper/css/pagination'
 import 'swiper/css/effect-fade'
 
 // Fixed CTAs shown on every slide
-const FIXED_CTA1 = { label: 'Book Delivery', href: '/login' }
+const FIXED_CTA1 = { label: 'Book Delivery', href: '/book' }
 const FIXED_CTA2 = { label: 'Track Package', href: '/track' }
 
 // Pexels stable CDN — verified delivery/logistics/courier photos
@@ -98,8 +98,8 @@ export default function HeroSlider() {
   return (
     <section
       id="home"
-      className="relative overflow-hidden pt-16 lg:pt-0"
-      style={{ background: 'var(--landing-bg)', minHeight: '100svh' }}
+      className="relative overflow-hidden pt-8 lg:pt-0"
+      style={{ background: 'var(--landing-bg)', minHeight: '92svh' }}
     >
       {/* Atmospheric blobs */}
       <div className="hero-blob-orange" />
@@ -116,7 +116,7 @@ export default function HeroSlider() {
         loop
         pagination={{ clickable: true }}
         className="landing-swiper w-full h-full"
-        style={{ minHeight: '100svh' }}
+        style={{ minHeight: '92svh' }}
         onTransitionEnd={handleTransitionEnd}
         onSlideChange={handleSlideChange}
         onAfterInit={handleInit}
@@ -124,10 +124,10 @@ export default function HeroSlider() {
         {SLIDES.map((slide, i) => {
           const BadgeIcon = slide.badge.icon
           return (
-            <SwiperSlide key={i} style={{ minHeight: '100svh' }}>
+            <SwiperSlide key={i} style={{ minHeight: '92svh' }}>
               <div
-                className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-start lg:items-center"
-                style={{ minHeight: '100svh', paddingTop: '1rem', paddingBottom: '1rem' }}
+                className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center"
+                style={{ minHeight: '92svh', paddingTop: '0.5rem', paddingBottom: '2rem' }}
               >
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 xl:gap-16 items-center w-full">
 
@@ -209,25 +209,6 @@ export default function HeroSlider() {
                       </Link>
                     </div>
 
-                    {/* Social proof strip */}
-                    <div
-                      className="flex items-center gap-4 border-t"
-                      style={{ borderColor: 'var(--landing-border)' }}
-                    >
-                      <div className="flex -space-x-2">
-                        {['bg-orange-400', 'bg-green-500', 'bg-orange-600', 'bg-green-400'].map((c, j) => (
-                          <div
-                            key={j}
-                            className={`w-7 h-7 rounded-full border-2 border-white ${c} flex items-center justify-center text-white text-[9px] font-black`}
-                          >
-                            {['JT','SM','LK','RB'][j]}
-                          </div>
-                        ))}
-                      </div>
-                      <p className="text-xs font-semibold" style={{ color: 'var(--landing-text-2)' }}>
-                        <span className="font-black" style={{ color: 'var(--stat-color)' }}>2,500+</span> deliveries completed this month
-                      </p>
-                    </div>
                   </div>
 
                   {/* ── RIGHT: Photo ── */}

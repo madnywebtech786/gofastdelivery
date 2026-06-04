@@ -56,10 +56,6 @@ export default function DriverRoutePage() {
   const [sheetOpen, setSheetOpen] = useState(true)
   const [activeStopIndex, setActiveStopIndex] = useState(0)
   const [completing, setCompleting] = useState(false)
-  // Per-stop item check state. Key = `${stopIndex}:${itemId}`, value = true when
-  // driver has ticked the item. Rebuilt locally — source of truth is the server.
-  const [itemChecks, setItemChecks] = useState({})
-
   // Failed-stop modal state — open when driver taps Failed Pickup/Dropoff.
   const [failedModal, setFailedModal] = useState(null) // { stopIndex, stop } | null
   const [failureReason, setFailureReason] = useState('')
@@ -548,47 +544,8 @@ export default function DriverRoutePage() {
   async function handleStopComplete(stop, stopIndex) {
     if (!driverId || completing) return
 
-    // If the stop has package items, require all of them to be checked before
-    // allowing the stop to be confirmed. The UI already disables the CTA in
-    // this case, but we guard here too in case it's clicked via keyboard.
-    const items = Array.isArray(stop?.packageItems) ? stop.packageItems : []
-    const stage = stop?.stopType === 'pickup' ? 'pickup' : stop?.stopType === 'dropoff' ? 'dropoff' : null
-    const ckKey = (it) => `${stop.bookingId}:${stage}:${it.itemId}`
-    if (items.length > 0 && stage) {
-      const alreadyStamped = items.filter((it) => stage === 'pickup' ? it.pickedUpAt : it.deliveredAt)
-      const checkedIds = items
-        .filter((it) => itemChecks[ckKey(it)])
-        .map((it) => it.itemId)
-      const allAccounted = alreadyStamped.length + checkedIds.length >= items.length
-      if (!allAccounted) {
-        toast?.warning?.('Check every item first', 'Tick each item you have picked up or delivered.')
-        return
-      }
-    }
-
     setCompleting(true)
     try {
-      // Stamp per-item timestamps first so the customer-visible state
-      // reflects reality even if stop-complete fails mid-flight.
-      if (items.length > 0 && stage && stop.bookingId) {
-        const newIds = items
-          .filter((it) => itemChecks[ckKey(it)])
-          .filter((it) => stage === 'pickup' ? !it.pickedUpAt : !it.deliveredAt)
-          .map((it) => it.itemId)
-        if (newIds.length > 0) {
-          try {
-            await fetch(`/api/drivers/${driverId}/mark-items`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ bookingId: String(stop.bookingId), stage, itemIds: newIds }),
-            })
-          } catch {
-            // Non-fatal — stop-complete still runs; admin can see missing
-            // per-item stamps and follow up.
-          }
-        }
-      }
-
       const pos = driverPos
       const body = {
         stopIndex,
@@ -1046,30 +1003,7 @@ export default function DriverRoutePage() {
               const stopIndex = expandedStopIndex
               const isActive = stopIndex === activeStopIndex
               const isDone = !!stop.completedAt
-              const stage = stop.stopType === 'pickup' ? 'pickup' : stop.stopType === 'dropoff' ? 'dropoff' : null
-              const items = Array.isArray(stop.packageItems) ? stop.packageItems : []
-              const ckKey = (it) => `${stop.bookingId}:${stage}:${it.itemId}`
-              const stampFor = (it) => stage === 'pickup' ? it.pickedUpAt : it.deliveredAt
-              const isChecked = (it) => !!stampFor(it) || !!itemChecks[ckKey(it)]
-              const allChecked = items.every(isChecked)
-              const checkedCount = items.filter(isChecked).length
-              const allItemsAccounted = items.length === 0 || items.every((it) => !!stampFor(it) || !!itemChecks[ckKey(it)])
-              const canConfirm = isActive && !isDone && !completing && (!stage || allItemsAccounted)
-
-              function toggleAll(next) {
-                setItemChecks((prev) => {
-                  const out = { ...prev }
-                  for (const it of items) {
-                    if (stampFor(it)) continue
-                    out[ckKey(it)] = next
-                  }
-                  return out
-                })
-              }
-              function toggleOne(it) {
-                if (stampFor(it)) return
-                setItemChecks((prev) => ({ ...prev, [ckKey(it)]: !prev[ckKey(it)] }))
-              }
+              const canConfirm = isActive && !isDone && !completing
 
               return (
                 <div className="px-4 pb-4 pt-2">
@@ -1140,44 +1074,11 @@ export default function DriverRoutePage() {
                     </div>
                   )}
 
-                  {/* Items checklist */}
-                  {stage && items.length > 0 && (
-                    <div className="mb-4 rounded-2xl border border-gray-200 bg-white">
-                      <label className="flex items-center gap-3 px-3 py-2.5 border-b border-gray-100 cursor-pointer select-none">
-                        <input
-                          type="checkbox"
-                          checked={allChecked}
-                          onChange={(e) => toggleAll(e.target.checked)}
-                          disabled={isDone || !isActive}
-                          className="w-4 h-4 accent-green-600"
-                        />
-                        <span className="text-xs font-bold text-gray-700 uppercase tracking-wide">
-                          Items ({checkedCount}/{items.length})
-                        </span>
-                        <span className="ml-auto text-[10px] text-gray-400">Check all</span>
-                      </label>
-                      <ul className="divide-y divide-gray-100 max-h-44 overflow-y-auto">
-                        {items.map((it) => {
-                          const stamped = !!stampFor(it)
-                          const checked = isChecked(it)
-                          return (
-                            <li key={it.itemId}>
-                              <label className={`flex items-center gap-3 px-3 py-2 text-xs ${stamped || isDone || !isActive ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}>
-                                <input
-                                  type="checkbox"
-                                  checked={checked}
-                                  disabled={stamped || isDone || !isActive}
-                                  onChange={() => toggleOne(it)}
-                                  className="w-4 h-4 accent-green-600"
-                                />
-                                <span className="shrink-0 inline-flex min-w-5.5 justify-center rounded-md bg-gray-100 text-gray-700 text-[10px] font-bold px-1.5 py-0.5">×{it.quantity}</span>
-                                <span className={`truncate ${stamped ? 'line-through text-gray-400' : 'text-gray-800'}`}>{it.name}</span>
-                                {it.type && <span className="text-[10px] text-gray-400 shrink-0">{it.type}</span>}
-                              </label>
-                            </li>
-                          )
-                        })}
-                      </ul>
+                  {/* Package type */}
+                  {stop.packageKind && (
+                    <div className="bg-gray-50 rounded-2xl px-4 py-3 mb-3">
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400 mb-0.5">Package Type</p>
+                      <p className="text-xs font-semibold text-gray-700">{stop.packageKind}</p>
                     </div>
                   )}
 
