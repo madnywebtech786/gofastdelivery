@@ -9,10 +9,6 @@ const nextConfig = {
         protocol: 'https',
         hostname: 'images.unsplash.com',
       },
-      {
-        protocol: 'https',
-        hostname: 'images.pexels.com',
-      },
     ],
   },
 
@@ -26,7 +22,7 @@ const nextConfig = {
       // Inline styles required by Tailwind utilities and Mapbox GL.
       "style-src 'self' 'unsafe-inline'",
       // Mapbox GL renders to a canvas and uses blob: workers; data: for map sprites.
-      "img-src 'self' data: blob: https://images.pexels.com https://*.mapbox.com",
+      "img-src 'self' data: blob: https://*.mapbox.com",
       // Mapbox GL JS spins up a Web Worker from a blob: URL.
       "worker-src blob:",
       // API calls: own origin + Mapbox tile/API + Pusher WebSocket channels.

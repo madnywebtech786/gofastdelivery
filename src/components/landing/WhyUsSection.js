@@ -145,7 +145,7 @@ export default function WhyUsSection() {
             {/* Real photo */}
             <div className="relative rounded-3xl overflow-hidden shadow-2xl" style={{ height: '260px' }}>
               <Image
-                src="https://images.pexels.com/photos/4391470/pexels-photo-4391470.jpeg?auto=compress&cs=tinysrgb&w=700&h=520&fit=crop"
+                src="/images/Why-Choose-Us-img.webp"
                 alt="GoFastDelivery courier delivering packages"
                 fill
                 className="object-cover"

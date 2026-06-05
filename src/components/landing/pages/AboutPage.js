@@ -577,7 +577,7 @@ function TeamSection() {
               style={{ height: 'clamp(280px, 42vw, 460px)', zIndex: 1 }}
             >
               <Image
-                src="https://images.pexels.com/photos/5025516/pexels-photo-5025516.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&fit=crop"
+                src="/images/Our-Team-img.webp"
                 alt="GoFastDelivery driver at work"
                 fill className="object-cover"
                 sizes="(max-width: 1024px) 100vw, 50vw"
@@ -849,7 +849,7 @@ export default function AboutPage() {
                 style={{ height: 'clamp(280px, 45vw, 500px)', border: '2px solid rgba(255,88,13,0.12)' }}
               >
                 <Image
-                  src="https://images.pexels.com/photos/6169668/pexels-photo-6169668.jpeg?auto=compress&cs=tinysrgb&w=900&h=1100&fit=crop"
+                  src="/images/About-GoFastDelivery-img.webp"
                   alt="GoFastDelivery courier on the road"
                   fill className="object-cover object-center"
                   sizes="(max-width: 1024px) 100vw, 50vw"

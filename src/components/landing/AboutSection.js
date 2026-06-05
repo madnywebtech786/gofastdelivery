@@ -58,11 +58,12 @@ export default function AboutSection() {
           }}
         >
           <Image
-            src="https://images.pexels.com/photos/6169668/pexels-photo-6169668.jpeg?auto=compress&cs=tinysrgb&w=900&h=1100&fit=crop"
+            src="/images/about-left.webp"
             alt="GoFastDelivery courier delivering a package"
             fill
             className="object-cover object-center"
             sizes="(max-width: 1024px) 100vw, 50vw"
+            priority
           />
 
           {/* Dark gradient from bottom */}

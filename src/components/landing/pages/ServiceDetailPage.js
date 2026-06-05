@@ -32,7 +32,7 @@ export const ALL_SERVICES = [
     stat: '< 3 hrs',
     statLabel: 'avg turnaround',
     accent: '#ff580d',
-    img: 'https://images.pexels.com/photos/4391469/pexels-photo-4391469.jpeg?auto=compress&cs=tinysrgb&w=900&h=600&fit=crop',
+    img: '/images/services/Same-Day-Delivery.webp',
     imgAlt: 'Courier making a fast same-day delivery',
     tags: ['Urgent parcels', 'Documents', 'Medical supplies'],
     features: [
@@ -69,7 +69,7 @@ export const ALL_SERVICES = [
     stat: '15 min',
     statLabel: 'avg pickup time',
     accent: '#1bb908',
-    img: 'https://images.pexels.com/photos/7363671/pexels-photo-7363671.jpeg?auto=compress&cs=tinysrgb&w=900&h=600&fit=crop',
+    img: '/images/services/Express-Pickup.webp',
     imgAlt: 'Driver picking up a package at a door',
     tags: ['On-demand', 'Real-time tracking', 'Door-to-door'],
     features: [
@@ -106,7 +106,7 @@ export const ALL_SERVICES = [
     stat: '500+',
     statLabel: 'businesses served',
     accent: '#ff580d',
-    img: 'https://images.pexels.com/photos/4246100/pexels-photo-4246100.jpeg?auto=compress&cs=tinysrgb&w=900&h=600&fit=crop',
+    img: '/images/services/Business-Delivery.webp',
     imgAlt: 'Business packages ready for bulk delivery',
     tags: ['Bulk orders', 'B2B logistics', 'Recurring runs'],
     features: [
@@ -143,7 +143,7 @@ export const ALL_SERVICES = [
     stat: '99.2%',
     statLabel: 'on-time rate',
     accent: '#1bb908',
-    img: 'https://images.pexels.com/photos/5025516/pexels-photo-5025516.jpeg?auto=compress&cs=tinysrgb&w=900&h=600&fit=crop',
+    img: '/images/services/Scheduled-Runs.webp',
     imgAlt: 'Delivery driver checking schedule on phone',
     tags: ['Recurring', 'Automated', 'Zero effort'],
     features: [
@@ -180,7 +180,7 @@ export const ALL_SERVICES = [
     stat: '1 hr',
     statLabel: 'priority dispatch',
     accent: '#ff580d',
-    img: 'https://images.pexels.com/photos/4391470/pexels-photo-4391470.jpeg?auto=compress&cs=tinysrgb&w=900&h=600&fit=crop',
+    img: '/images/services/Hotshot-Delivery.webp',
     imgAlt: 'Driver rushing an urgent hotshot delivery',
     tags: ['Rush freight', 'Dedicated driver', 'No stops'],
     features: [
