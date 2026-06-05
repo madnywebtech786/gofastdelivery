@@ -868,7 +868,7 @@ export default function ServiceDetailPage({ slug }) {
                   alt={service.imgAlt}
                   fill className="object-cover object-center"
                   sizes="(max-width: 1024px) 100vw, 50vw"
-                  priority
+                  loading="lazy"
                 />
                 <div
                   className="absolute inset-0 pointer-events-none"

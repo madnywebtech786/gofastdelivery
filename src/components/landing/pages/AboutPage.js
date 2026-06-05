@@ -853,7 +853,7 @@ export default function AboutPage() {
                   alt="GoFastDelivery courier on the road"
                   fill className="object-cover object-center"
                   sizes="(max-width: 1024px) 100vw, 50vw"
-                  priority
+                  loading="lazy"
                 />
                 <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, transparent 50%, rgba(13,13,13,0.5) 100%)' }} />
               </div>
