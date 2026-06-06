@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server'
-import { nanoid } from 'nanoid'
+import { customAlphabet } from 'nanoid'
+
+const trackingId = customAlphabet('23456789ABCDEFGHJKLMNPQRSTUVWXYZ', 10)
 import { checkRateLimit } from '@/lib/redis'
 import { createBooking } from '@/lib/db/bookings'
 import { sendBookingConfirmed } from '@/lib/mailer'
@@ -116,7 +118,7 @@ export async function POST(request) {
     }
 
     // ── Build booking ─────────────────────────────────────────────────────────
-    const trackingToken = nanoid(21)
+    const trackingToken = trackingId()
 
     const booking = await createBooking({
       customerId: null, // guest — no account

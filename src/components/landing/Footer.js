@@ -141,8 +141,8 @@ export default function Footer() {
               Contact
             </h4>
             <ul className="flex flex-col gap-3 text-sm" style={{ color: 'rgb(156,163,175)' }}>
-              <li>+1 (403) 555-0199</li>
-              <li>hello@gofastdelivery.ca</li>
+              <li>+1 825-488-2316</li>
+              <li>info@gfdelivery.ca</li>
               <li>Calgary, AB &amp; Surrounding Areas</li>
             </ul>
             <Link

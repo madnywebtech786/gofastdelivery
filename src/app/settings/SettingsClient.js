@@ -337,7 +337,7 @@ export default function SettingsClient({ role, initialUser }) {
                   <TextInput value={info.companyName} onChange={(v) => setInfo((p) => ({ ...p, companyName: v }))} placeholder="ABC Corp (optional)" />
                 </Field>
 
-                <Field label="Buzz / Unit code">
+                <Field label="Address">
                   <TextInput value={info.buzzCode} onChange={(v) => setInfo((p) => ({ ...p, buzzCode: v }))} placeholder="#4B, buzz 1234" />
                 </Field>
               </>

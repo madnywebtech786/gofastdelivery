@@ -867,7 +867,7 @@ export default function AboutPage() {
                   <Award size={18} strokeWidth={2} stroke="white" />
                 </div>
                 <div>
-                  <p className="text-xs font-semibold" style={{ color: 'var(--landing-text-2)' }}>Est. 2014</p>
+                  <p className="text-xs font-semibold" style={{ color: 'var(--landing-text-2)' }}>Est. 2016</p>
                   <p className="text-sm font-black" style={{ color: 'var(--landing-text)' }}>Decade of Trust</p>
                 </div>
               </div>

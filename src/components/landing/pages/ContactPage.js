@@ -14,17 +14,17 @@ const CONTACT_INFO = [
   {
     icon: Phone,
     label: 'CALL US',
-    value: '+1 (403) 555-0199',
+    value: '+1 825-488-2316',
     sub: 'Mon – Sat, 8am – 8pm',
-    href: 'tel:+14035550199',
+    href: 'tel:+18254882316',
     accent: '#ff580d',
   },
   {
     icon: Mail,
     label: 'EMAIL',
-    value: 'hello@gofastdelivery.ca',
+    value: 'info@gfdelivery.ca',
     sub: 'Reply within 2 hours',
-    href: 'mailto:hello@gofastdelivery.ca',
+    href: 'mailto:info@gfdelivery.ca',
     accent: '#1bb908',
   },
   {

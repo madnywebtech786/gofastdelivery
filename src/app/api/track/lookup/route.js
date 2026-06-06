@@ -2,8 +2,8 @@ import { NextResponse } from 'next/server'
 import { findBookingByToken } from '@/lib/db/bookings'
 import { checkRateLimit } from '@/lib/redis'
 
-// Tracking tokens are nanoid(12) — alphanumeric + _ -
-const TOKEN_RE = /^[A-Za-z0-9_-]{6,32}$/
+// Tracking tokens are 10-character uppercase alphanumeric strings
+const TOKEN_RE = /^[A-Z0-9]{10}$/
 
 export async function GET(request) {
   try {

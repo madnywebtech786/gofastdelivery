@@ -6,7 +6,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useState } from 'react'
 import {
   LayoutDashboard, PackageOpen, Users, Tag,
-  LogOut, Truck, Menu, X, ChevronRight, History, Settings,
+  LogOut, Truck, Menu, X, ChevronRight, History, Settings, UserCircle, Receipt,
 } from 'lucide-react'
 
 const NAV = [
@@ -14,6 +14,8 @@ const NAV = [
   { href: '/admin/bookings',          label: 'Bookings',  icon: PackageOpen },
   { href: '/admin/bookings/history',  label: 'History',   icon: History },
   { href: '/admin/drivers',           label: 'Drivers',   icon: Users },
+  { href: '/admin/customers',         label: 'Customers', icon: UserCircle },
+  { href: '/admin/invoices',          label: 'Invoices',  icon: Receipt },
   { href: '/admin/pricing',           label: 'Pricing',   icon: Tag },
   { href: '/admin/settings',          label: 'Settings',  icon: Settings },
 ]

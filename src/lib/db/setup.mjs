@@ -44,6 +44,16 @@ async function setup() {
   ])
   console.log('✓ location_traces indexes (TTL: 24h)')
 
+  // --- invoices ---
+  await db.collection('invoices').createIndexes([
+    { key: { invoiceNumber: 1 }, unique: true, sparse: true, name: 'invoiceNumber_unique' },
+    { key: { clientName: 1 }, name: 'clientName' },
+    { key: { clientEmail: 1 }, name: 'clientEmail' },
+    { key: { status: 1 }, name: 'status' },
+    { key: { createdAt: -1 }, name: 'createdAt_desc' },
+  ])
+  console.log('✓ invoices indexes')
+
   console.log('\nDatabase setup complete.')
   process.exit(0)
 }

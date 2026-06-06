@@ -178,14 +178,14 @@ export default function CustomerLayout({ children }) {
       <div className="px-3 pb-5 flex flex-col gap-1">
         {/* Back to landing page — prominent */}
         <Link
-          href="/"
+          href={process.env.NEXT_PUBLIC_APP_BASE_URL ?? '/'}
           className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold w-full transition-all group"
           style={{ color: 'var(--accent)', background: 'var(--accent-dim)' }}
           onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--accent-dim)'; e.currentTarget.style.opacity = '0.8' }}
           onMouseLeave={(e) => { e.currentTarget.style.opacity = '1' }}
         >
           <Home size={15} />
-          GoFastDelivery.ca
+          gfdelivery.ca
           <ChevronRight size={12} className="ml-auto opacity-50 group-hover:translate-x-0.5 transition-transform" />
         </Link>
         <button

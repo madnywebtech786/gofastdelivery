@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import Image from 'next/image'
-import { CheckCircle2 } from 'lucide-react'
+import { CheckCircle2, ArrowLeft } from 'lucide-react'
 import { useToast } from '@/components/ui/Toast'
 
 const BookingForm = dynamic(() => import('@/components/booking/BookingForm'), { ssr: false })
@@ -26,7 +26,7 @@ export default function GuestBookPage() {
     setDone({ trackingToken: data.trackingToken })
     // Replace history entry so back button skips the filled form
     router.replace('/book')
-    toast.success('Booking created!', `Tracking #${String(data.trackingToken).slice(-6).toUpperCase()}`)
+    toast.success('Booking created!', `Tracking #${data.trackingToken}`)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
@@ -114,6 +114,9 @@ export default function GuestBookPage() {
           /* ── Booking form ────────────────────────────────────────────────── */
           <>
             <div className="mb-6">
+              <Link href="/" className="inline-flex items-center gap-1.5 text-xs text-secondary font-semibold mb-4 transition-colors">
+                <ArrowLeft size={13} /> Back to Home
+              </Link>
               <h1 className="text-2xl font-bold text-foreground">Book a Delivery</h1>
               <p className="text-sm text-muted mt-1">
                 No account needed. Fill in the details below and we&apos;ll handle the rest.

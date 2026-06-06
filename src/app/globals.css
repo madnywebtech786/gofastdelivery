@@ -206,6 +206,101 @@ body {
   font-weight: 600;
 }
 
+/* ─── DatePicker Calendar (react-day-picker v10) ─────────────────────────── */
+.gfd-datepicker-popover .rdp-root {
+  /* Override the library's default accent variables with our theme */
+  --rdp-accent-color:            var(--accent);
+  --rdp-accent-background-color: var(--accent-dim);
+  --rdp-today-color:             var(--accent);
+  --rdp-selected-border:         2px solid var(--accent);
+
+  /* Compact sizing */
+  --rdp-day-height:         36px;
+  --rdp-day-width:          36px;
+  --rdp-day_button-height:  34px;
+  --rdp-day_button-width:   34px;
+  --rdp-day_button-border-radius: 8px;
+  --rdp-nav_button-height:  30px;
+  --rdp-nav_button-width:   30px;
+  --rdp-nav-height:         40px;
+
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--fg);
+  padding: 8px 10px 12px;
+}
+
+/* Month caption (title + nav) */
+.gfd-datepicker-popover .rdp-month_caption {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--fg);
+  padding-bottom: 6px;
+}
+
+/* Nav prev/next buttons */
+.gfd-datepicker-popover .rdp-button_previous,
+.gfd-datepicker-popover .rdp-button_next {
+  border: 1px solid var(--border-2);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--fg-2);
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.gfd-datepicker-popover .rdp-button_previous:hover,
+.gfd-datepicker-popover .rdp-button_next:hover {
+  background: var(--accent-dim);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.gfd-datepicker-popover .rdp-chevron {
+  fill: currentColor;
+  width: 14px;
+  height: 14px;
+}
+
+/* Weekday header row */
+.gfd-datepicker-popover .rdp-weekday {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--fg-3);
+  opacity: 1;
+}
+
+/* Day cells */
+.gfd-datepicker-popover .rdp-day_button {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--fg-2);
+  border-radius: 8px;
+  transition: background 0.12s, color 0.12s;
+}
+.gfd-datepicker-popover .rdp-day_button:hover:not(:disabled) {
+  background: var(--surface-2);
+  color: var(--fg);
+  border-color: transparent;
+}
+
+/* Today */
+.gfd-datepicker-popover .rdp-today:not(.rdp-outside) {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+/* Selected day */
+.gfd-datepicker-popover .rdp-selected .rdp-day_button {
+  background: var(--accent);
+  color: #ffffff;
+  border-color: var(--accent);
+  font-weight: 700;
+}
+.gfd-datepicker-popover .rdp-selected .rdp-day_button:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
 /* ─── Landing Page Tokens ────────────────────────────────────────────────── */
 [data-page="landing"] {
   --brand-orange:      #ff580d;

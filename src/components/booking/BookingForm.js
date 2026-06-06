@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import Button from '@/components/ui/Button'
 import Select from '@/components/ui/Select'
 import { useToast } from '@/components/ui/Toast'
+import { forwardGeocode } from '@/lib/mapbox-geocode'
 
 const BookingMap = dynamic(() => import('@/components/map/BookingMap'), {
   ssr: false,
@@ -83,7 +84,8 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
     contactPhone: '',
   })
 
-  // Prefill pickup details from customer profile if profileUpdated is true
+  // Prefill pickup details from customer profile if profileUpdated is true.
+  // Also geocode the saved address and pre-seed the pickup pin on the map.
   useEffect(() => {
     if (apiPath !== '/api/bookings') return // guest form — skip
     fetch('/api/user/profile')
@@ -98,6 +100,33 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
           contactPhone: user.phone       || prev.contactPhone,
         }))
         if (user.email) setSenderEmail(user.email)
+
+        // Geocode the saved address and pre-seed the pickup pin
+        if (!user.buzzCode?.trim()) return
+
+        // Show loading overlay as soon as the map ref is ready, then geocode
+        let attempts = 0
+        const tryShowThenGeocode = () => {
+          if (mapRef.current?.setPlacing) {
+            mapRef.current.setPlacing('pickup')
+            forwardGeocode(user.buzzCode)
+              .then((features) => {
+                if (!features.length) { mapRef.current?.setPlacing(null); return }
+                const [lng, lat] = features[0].center
+                const address = features[0].place_name ?? user.buzzCode
+                const cityCtx = features[0].context?.find(
+                  (c) => c.id?.startsWith('place.') || c.id?.startsWith('locality.')
+                )
+                const city = cityCtx?.text ?? ''
+                mapRef.current?.setPickupCoords(lng, lat, address, city)
+              })
+              .catch(() => { mapRef.current?.setPlacing(null) })
+          } else if (attempts < 20) {
+            attempts++
+            setTimeout(tryShowThenGeocode, 300)
+          }
+        }
+        tryShowThenGeocode()
       })
       .catch(() => {})
   }, [apiPath])
@@ -142,6 +171,13 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
 
   const handleStopsChange = useCallback((newStops) => {
     setStops(newStops)
+    const dropoffStop = newStops.find((s) => s.type === 'dropoff')
+    if (dropoffStop?.address) {
+      setDropoff((prev) => ({
+        ...prev,
+        buzzCode: prev.buzzCode.trim() ? prev.buzzCode : dropoffStop.address,
+      }))
+    }
   }, [])
 
   function handleDeleteStop(index) {
@@ -295,7 +331,7 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
       } else {
         // Customer portal flow — store ID for MyBookingsClient refresh then navigate
         if (data._id) sessionStorage.setItem('newBookingId', data._id)
-        const trackShort = data.trackingToken ? `Tracking #${String(data.trackingToken).slice(-6).toUpperCase()}` : ''
+        const trackShort = data.trackingToken ? `Tracking #${data.trackingToken}` : ''
         toast.success(
           'Booking created',
           trackShort ? `${trackShort} — we'll notify you at every status change.` : `We'll notify you at every status change.`
@@ -383,11 +419,11 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
           <Field label="Buzz / Unit Code">
             <input type="text" value={dropoff.buzzCode} onChange={(e) => setDropoff((p) => ({ ...p, buzzCode: e.target.value }))} className={inputCls} placeholder="#2A, buzz 5678" />
           </Field>
-          <Field label="Phone Number" required>
+          <Field label="Phone Number (for status notifications)" required>
             <input type="tel" value={dropoff.contactPhone} onChange={(e) => setDropoff((p) => ({ ...p, contactPhone: e.target.value }))} className={inputCls} placeholder="+1 403-000-0000" required />
           </Field>
         </div>
-        <Field label="Receiver Email (for status notifications)">
+        <Field label="Receiver Email">
           <input type="email" value={receiverEmail} onChange={(e) => setReceiverEmail(e.target.value)} className={inputCls} placeholder="receiver@example.com" />
         </Field>
       </div>

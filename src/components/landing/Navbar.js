@@ -169,24 +169,24 @@ export default function Navbar() {
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-1 sm:py-0 flex flex-col sm:flex-row sm:h-7 sm:items-center sm:justify-between gap-0.5 sm:gap-4">
             <div className="flex items-center justify-between sm:justify-start sm:gap-5">
               <a
-                href="tel:+14035550199"
+                href="tel:+18254882316"
                 className="inline-flex items-center gap-1.5 text-[10px] sm:text-[11px] font-semibold transition-colors"
                 style={{ color: 'rgba(255,255,255,0.85)' }}
                 onMouseEnter={e => e.currentTarget.style.color = '#ffffff'}
                 onMouseLeave={e => e.currentTarget.style.color = 'rgba(255,255,255,0.85)'}
               >
                 <Phone size={9} strokeWidth={2.2} />
-                +1 (403) 555-0199
+                +1 825-488-2316
               </a>
               <a
-                href="mailto:hello@gofastdelivery.ca"
+                href="mailto:info@gfdelivery.ca"
                 className="inline-flex items-center gap-1.5 text-[10px] sm:text-[11px] font-semibold transition-colors"
                 style={{ color: 'rgba(255,255,255,0.85)' }}
                 onMouseEnter={e => e.currentTarget.style.color = '#ffffff'}
                 onMouseLeave={e => e.currentTarget.style.color = 'rgba(255,255,255,0.85)'}
               >
                 <Mail size={9} strokeWidth={2.2} />
-                hello@gofastdelivery.ca
+                info@gfdelivery.ca
               </a>
             </div>
             <div className="flex items-center justify-center sm:justify-end gap-1.5 text-[10px] sm:text-[11px] font-semibold" style={{ color: 'rgba(255,255,255,0.75)' }}>

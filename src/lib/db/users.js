@@ -32,6 +32,30 @@ export async function findUsersByRole(role) {
     .toArray()
 }
 
+function buildCustomerFilter(search) {
+  const base = { role: 'customer', isActive: true }
+  if (!search?.trim()) return base
+  const re = { $regex: search.trim(), $options: 'i' }
+  return { ...base, $or: [{ name: re }, { email: re }, { phone: re }] }
+}
+
+export async function findCustomers({ search = '', limit = 20, skip = 0 } = {}) {
+  const db = await getDb()
+  const filter = buildCustomerFilter(search)
+  return db
+    .collection('users')
+    .find(filter, { projection: { passwordHash: 0 } })
+    .sort({ name: 1 })
+    .skip(skip)
+    .limit(limit)
+    .toArray()
+}
+
+export async function countCustomers({ search = '' } = {}) {
+  const db = await getDb()
+  return db.collection('users').countDocuments(buildCustomerFilter(search))
+}
+
 /**
  * Create a new user. passwordHash must already be bcrypt-hashed.
  */

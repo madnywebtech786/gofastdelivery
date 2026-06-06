@@ -75,7 +75,7 @@ export default async function DashboardPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <StatCard label="Pending"         value={stats.pending}        icon={Clock}        href="/admin/bookings"              accent={stats.pending > 0 ? '#d97706' : undefined}  sub="awaiting assignment" />
         <StatCard label="In Transit"      value={stats.active}         icon={Zap}          href="/admin/bookings?tab=assigned" accent={stats.active > 0 ? '#2563eb' : undefined}   sub="active deliveries" />
-        <StatCard label="Delivered Today" value={stats.todayDelivered} icon={CheckCircle2}                               accent="#16a34a"                                    sub="completed today" />
+        <StatCard label="Delivered Today" value={stats.todayDelivered} icon={CheckCircle2} href="/admin/bookings?status=delivered_today" accent="#16a34a" sub="completed today" />
         <StatCard label="Drivers"         value={drivers.length} icon={Users} href="/admin/drivers" accent="#16a34a" sub="registered drivers" />
       </div>
 

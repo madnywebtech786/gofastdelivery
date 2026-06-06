@@ -81,6 +81,21 @@ const BookingMap = forwardRef(function BookingMap({ onStopsChange }, ref) {
       setSuggestions([])
       setPlacing(null)
     },
+    // Pre-seed pickup from an external coordinate (e.g. customer's saved address)
+    setPickupCoords(lng, lat, address, city) {
+      const mapboxgl = mapboxglRef.current
+      const map = mapRef.current
+      if (!mapboxgl || !map) return
+      pickupMarker.current?.remove()
+      const el = makeMarkerEl(PICKUP_COLOR, 'P')
+      pickupMarker.current = new mapboxgl.Marker({ element: el, draggable: false })
+        .setLngLat([lng, lat])
+        .addTo(map)
+      map.flyTo({ center: [lng, lat], zoom: 14, duration: 800 })
+      setPickup({ lng, lat, address, city })
+      setPlacing(null)
+    },
+    setPlacing(val) { setPlacing(val) },
   }))
 
   // ── Map init ──────────────────────────────────────────────────────────────
@@ -346,6 +361,32 @@ const BookingMap = forwardRef(function BookingMap({ onStopsChange }, ref) {
               </svg>
               Click map to enable scroll zoom
             </div>
+          </div>
+        )}
+
+        {/* Placing overlay */}
+        {placing && (
+          <div
+            className="absolute inset-0 rounded-xl flex flex-col items-center justify-center gap-3 pointer-events-none"
+            style={{ background: 'rgba(255,255,255,0.55)', backdropFilter: 'blur(3px)', zIndex: 30 }}
+          >
+            <svg width="36" height="36" viewBox="0 0 36 36"
+              style={{ animation: 'spin 0.75s linear infinite' }}>
+              <circle cx="18" cy="18" r="14" fill="none"
+                stroke={placing === 'pickup' ? '#16a34a' : '#dc2626'}
+                strokeWidth="3" strokeOpacity="0.2" />
+              <path d="M18 4 A14 14 0 0 1 32 18"
+                fill="none"
+                stroke={placing === 'pickup' ? '#16a34a' : '#dc2626'}
+                strokeWidth="3" strokeLinecap="round" />
+            </svg>
+            <span className="text-xs font-bold px-3 py-1.5 rounded-full"
+              style={{
+                background: placing === 'pickup' ? '#16a34a' : '#dc2626',
+                color: '#fff',
+              }}>
+              Setting {placing === 'pickup' ? 'Pickup' : 'Drop-off'}…
+            </span>
           </div>
         )}
 

@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server'
-import { nanoid } from 'nanoid'
+import { customAlphabet } from 'nanoid'
+
+const trackingId = customAlphabet('23456789ABCDEFGHJKLMNPQRSTUVWXYZ', 10)
 import { verifySession, handleApiError } from '@/lib/dal'
 import {
   createBooking,
@@ -131,7 +133,7 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Invalid estimated price' }, { status: 400 })
     }
 
-    const trackingToken = nanoid(21)
+    const trackingToken = trackingId()
     const booking = await createBooking({
       customerId: userId,
       stops: [pickup, dropoff].map((s, i) => ({

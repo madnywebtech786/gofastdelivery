@@ -99,13 +99,14 @@ export async function findBookingsByCustomer(customerId, { limit = 20, skip = 0,
  * List all bookings (admin), optionally filtered by status.
  * `status` may be a single status string or an array of statuses.
  */
-export async function findAllBookings({ status, hasDriver, limit = 50, skip = 0 } = {}) {
+export async function findAllBookings({ status, hasDriver, sinceDate, limit = 50, skip = 0 } = {}) {
   const db = await getDb()
   const filter = Array.isArray(status)
     ? (status.length > 0 ? { status: { $in: status } } : {})
     : (status ? { status } : {})
   if (hasDriver === true)  filter.assignedDriverId = { $ne: null }
   if (hasDriver === false) filter.assignedDriverId = null
+  if (sinceDate) filter.updatedAt = { $gte: sinceDate }
   return db
     .collection('bookings')
     .find(filter)
@@ -118,13 +119,14 @@ export async function findAllBookings({ status, hasDriver, limit = 50, skip = 0 
 /**
  * Count bookings (admin), optionally filtered by status.
  */
-export async function countAllBookings({ status, hasDriver } = {}) {
+export async function countAllBookings({ status, hasDriver, sinceDate } = {}) {
   const db = await getDb()
   const filter = Array.isArray(status)
     ? (status.length > 0 ? { status: { $in: status } } : {})
     : (status ? { status } : {})
   if (hasDriver === true)  filter.assignedDriverId = { $ne: null }
   if (hasDriver === false) filter.assignedDriverId = null
+  if (sinceDate) filter.updatedAt = { $gte: sinceDate }
   return db.collection('bookings').countDocuments(filter)
 }
 

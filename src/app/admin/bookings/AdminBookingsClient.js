@@ -14,11 +14,12 @@ import {
 } from 'lucide-react'
 
 const STATUS_FILTER_OPTIONS = [
-  { value: 'pending',        label: 'Pending' },
-  { value: 'on_the_way',     label: 'On the Way' },
-  { value: 'picked_up',      label: 'Ready to Deliver' },
-  { value: 'failed_pickup',  label: 'Pickup Failed' },
-  { value: 'failed_dropoff', label: 'Delivery Failed' },
+  { value: 'pending',         label: 'Pending' },
+  { value: 'on_the_way',      label: 'On the Way' },
+  { value: 'picked_up',       label: 'Ready to Deliver' },
+  { value: 'failed_pickup',   label: 'Pickup Failed' },
+  { value: 'failed_dropoff',  label: 'Delivery Failed' },
+  { value: 'delivered_today', label: 'Delivered Today' },
 ]
 
 const ASSIGN_KIND_BY_STATUS = {
