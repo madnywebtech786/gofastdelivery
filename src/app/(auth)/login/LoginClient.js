@@ -168,10 +168,15 @@ export default function LoginClient() {
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="password"
-                className={`text-[11px] font-black tracking-widest uppercase transition-colors ${focused === 'password' ? 'text-secondary' : 'text-muted'}`}>
-                Password
-              </label>
+              <div className="flex items-center justify-between">
+                <label htmlFor="password"
+                  className={`text-[11px] font-black tracking-widest uppercase transition-colors ${focused === 'password' ? 'text-secondary' : 'text-muted'}`}>
+                  Password
+                </label>
+                <Link href="/forgot-password" className="text-[11px] font-bold text-accent hover:underline transition-colors">
+                  Forgot password?
+                </Link>
+              </div>
               <div className="relative">
                 <Lock size={14}
                   className={`absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none transition-colors ${focused === 'password' ? 'text-secondary' : 'text-muted'}`} />

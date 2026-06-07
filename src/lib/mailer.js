@@ -356,6 +356,69 @@ export function buildStatusUpdateEmail({ booking, trackingUrl, newStatus }) {
   })
 }
 
+// ── Email: Password Reset OTP ─────────────────────────────────────────────────
+
+export function buildPasswordResetEmail({ otp, userName }) {
+  const name = esc(userName ?? 'there')
+
+  const body = `
+    <h1 class="title-text" style="margin:0 0 8px;font-size:24px;font-weight:800;color:#0f172a;line-height:1.2;">
+      Reset your password
+    </h1>
+    <p style="margin:0 0 28px;font-size:14px;color:#64748b;line-height:1.65;">
+      Hi ${name},<br /><br />
+      We received a request to reset the password for your GoFastDelivery account.
+      Use the verification code below — it expires in <strong style="color:#0f172a;">5 minutes</strong>.
+    </p>
+
+    <!-- OTP box -->
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+      style="background:linear-gradient(135deg,#f0fdf4 0%,#dcfce7 100%);border:1.5px solid rgba(27,185,8,0.25);border-radius:16px;margin-bottom:28px;">
+      <tr>
+        <td style="padding:32px 24px;text-align:center;">
+          <p style="margin:0 0 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.14em;color:#64748b;">Verification Code</p>
+          <div style="display:inline-block;background:#ffffff;border:1.5px solid rgba(27,185,8,0.2);border-radius:12px;padding:16px 28px;box-shadow:0 2px 12px rgba(27,185,8,0.10);">
+            <span style="font-size:40px;font-weight:900;color:#0f172a;letter-spacing:10px;font-family:'Courier New',Courier,monospace;line-height:1;">${otp}</span>
+          </div>
+          <p style="margin:16px 0 0;font-size:12px;color:#94a3b8;">This code expires in 5 minutes</p>
+        </td>
+      </tr>
+    </table>
+
+    <!-- Security notice -->
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+      style="background:#fff7ed;border:1px solid #fed7aa;border-radius:12px;margin-bottom:24px;">
+      <tr>
+        <td style="padding:16px 20px;">
+          <p style="margin:0;font-size:13px;color:#92400e;line-height:1.55;">
+            <strong style="color:#78350f;">⚠ Didn&apos;t request this?</strong><br />
+            If you didn&apos;t request a password reset, you can safely ignore this email.
+            Your account password will not be changed.
+          </p>
+        </td>
+      </tr>
+    </table>
+
+    <p style="margin:0;font-size:12px;color:#94a3b8;text-align:center;line-height:1.6;">
+      For security, never share this code with anyone.<br />
+      GoFastDelivery will never ask for your verification code.
+    </p>`
+
+  return baseTemplate({
+    title:     `Password Reset Code — GoFastDelivery`,
+    preheader: `Your password reset code is ${otp} — expires in 5 minutes.`,
+    body,
+  })
+}
+
+export async function sendPasswordResetOtp({ to, otp, userName }) {
+  await sendMail({
+    to,
+    subject: `Your GoFastDelivery password reset code: ${otp}`,
+    html: buildPasswordResetEmail({ otp, userName }),
+  })
+}
+
 // ── Send helpers ──────────────────────────────────────────────────────────────
 
 async function sendMail({ to, subject, html }) {

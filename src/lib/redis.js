@@ -42,3 +42,27 @@ export async function checkRateLimit(key, maxRequests, windowSeconds) {
   const count = await incrementWithExpiry(key, windowSeconds)
   return { allowed: count <= maxRequests, count }
 }
+
+// ── Password reset helpers ────────────────────────────────────────────────────
+// OTP storage has moved to MongoDB (src/lib/db/otps.js).
+// Redis is used here only for:
+//   - rate limiting (login, forgot-password, verify-otp)
+//   - short-lived one-time reset tokens issued after OTP is verified
+
+const RESET_TTL = 900  // 15 minutes
+
+export function generateOtp() {
+  return String(Math.floor(100000 + Math.random() * 900000))
+}
+
+export async function storeResetToken(token, email) {
+  await redis.set(`reset_token:${token}`, email, { ex: RESET_TTL })
+}
+
+export async function consumeResetToken(token) {
+  const key   = `reset_token:${token}`
+  const email = await redis.get(key)
+  if (!email) return null
+  await redis.del(key)
+  return String(email)
+}

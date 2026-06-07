@@ -149,3 +149,15 @@ export async function updateUserPassword(userId, newPasswordHash) {
     { $set: { passwordHash: newPasswordHash, updatedAt: new Date() } }
   )
 }
+
+/**
+ * Reset a user's password by userId string (used in forgot-password flow).
+ * Caller is responsible for verifying the reset token before calling this.
+ */
+export async function resetPasswordByUserId(userId, newPasswordHash) {
+  const db = await getDb()
+  return db.collection('users').updateOne(
+    { _id: new ObjectId(userId), isActive: true },
+    { $set: { passwordHash: newPasswordHash, updatedAt: new Date() } }
+  )
+}
