@@ -3,23 +3,13 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
-import Link from 'next/link'
-import { AlertCircle, ArrowRight, Eye, EyeOff, Zap, Truck, Navigation, Clock } from 'lucide-react'
-import Select from '@/components/ui/Select'
+import { AlertCircle, ArrowRight, Eye, EyeOff, Truck, Navigation, Clock } from 'lucide-react'
 
 const ROLE_DASHBOARDS = {
   admin:    '/admin/dashboard',
   driver:   '/driver/home',
   customer: '/customer/overview',
 }
-
-const DEV_ACCOUNTS = [
-  { label: 'Driver 1',   email: 'driver1@courier.local',   password: 'Driver@1234' },
-  { label: 'Driver 2',   email: 'driver2@courier.local',   password: 'Driver@1234' },
-  { label: 'Admin',      email: 'admin@courier.local',     password: 'Admin@1234' },
-  { label: 'Customer 1', email: 'customer@courier.local',  password: 'Customer@1234' },
-]
-const DEV_OPTIONS = DEV_ACCOUNTS.map(a => ({ value: a.email, label: a.label, meta: a.email }))
 
 const STREAKS = [
   { top: '12%', w: '45%', delay: '0s',   dur: '2.8s', op: 0.18 },
@@ -47,11 +37,6 @@ export default function DriverLoginPage() {
   const [mounted,  setMounted]  = useState(false)
 
   useEffect(() => { setMounted(true) }, [])
-
-  function fillAccount(emailVal) {
-    const a = DEV_ACCOUNTS.find(a => a.email === emailVal)
-    if (a) { setEmail(a.email); setPassword(a.password) }
-  }
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -157,17 +142,6 @@ export default function DriverLoginPage() {
             <p className="text-sm mt-1.5 text-muted">Sign in to see today&apos;s deliveries</p>
           </div>
 
-          {/* Dev quick-fill */}
-          <div className="mb-5 rounded-xl p-3 bg-accent/5 border border-accent/15" style={{
-            opacity: mounted ? 1 : 0,
-            transition: 'opacity 0.5s ease 0.2s',
-          }}>
-            <p className="text-[9px] font-black tracking-[0.25em] uppercase mb-2 flex items-center gap-1.5 text-accent/70">
-              <Zap size={8} />Dev accounts
-            </p>
-            <Select placeholder="Select account…" value="" onChange={fillAccount} options={DEV_OPTIONS} />
-          </div>
-
           {/* Form */}
           <form onSubmit={handleSubmit} className="flex flex-col gap-4" style={{
             opacity: mounted ? 1 : 0,
@@ -232,18 +206,6 @@ export default function DriverLoginPage() {
             </button>
           </form>
 
-          {/* Portal links */}
-          <div className="mt-7 pt-6 flex gap-3 border-t border-border">
-            {[
-              { href: '/login',       label: 'Customer Portal' },
-              { href: '/admin_login', label: 'Admin Portal'    },
-            ].map(p => (
-              <Link key={p.href} href={p.href}
-                className="flex-1 text-center py-2 rounded-lg text-[11px] font-bold bg-surface border border-border text-muted hover:text-foreground hover:border-border-2 transition-all">
-                {p.label}
-              </Link>
-            ))}
-          </div>
         </div>
       </div>
 

@@ -4,23 +4,13 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import Link from 'next/link'
-import { Mail, Lock, AlertCircle, ArrowRight, Eye, EyeOff, Zap } from 'lucide-react'
-import Select from '@/components/ui/Select'
+import { Mail, Lock, AlertCircle, ArrowRight, Eye, EyeOff } from 'lucide-react'
 
 const ROLE_DASHBOARDS = {
   admin:    '/admin/dashboard',
   driver:   '/driver/home',
   customer: '/customer/overview',
 }
-
-const DEV_ACCOUNTS = [
-  { label: 'Admin',      email: 'admin@courier.local',     password: 'Admin@1234' },
-  { label: 'Driver 1',   email: 'driver1@courier.local',   password: 'Driver@1234' },
-  { label: 'Driver 2',   email: 'driver2@courier.local',   password: 'Driver@1234' },
-  { label: 'Customer 1', email: 'customer@courier.local',  password: 'Customer@1234' },
-  { label: 'Customer 2', email: 'customer2@courier.local', password: 'Customer@1234' },
-]
-const DEV_OPTIONS = DEV_ACCOUNTS.map(a => ({ value: a.email, label: a.label, meta: a.email }))
 
 const STATS = [
   { value: '8000+', label: 'Deliveries', cls: 'text-secondary' },
@@ -36,11 +26,6 @@ export default function LoginClient() {
   const [error,    setError]    = useState('')
   const [loading,  setLoading]  = useState(false)
   const [focused,  setFocused]  = useState(null)
-
-  function fillAccount(emailVal) {
-    const a = DEV_ACCOUNTS.find(a => a.email === emailVal)
-    if (a) { setEmail(a.email); setPassword(a.password) }
-  }
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -134,14 +119,6 @@ export default function LoginClient() {
             </p>
           </div>
 
-          {/* Dev quick-fill */}
-          <div className="mb-5 rounded-2xl p-3.5 bg-secondary/5 border border-secondary/12">
-            <p className="text-[10px] font-black tracking-[0.2em] uppercase mb-2 flex items-center gap-1.5 text-secondary">
-              <Zap size={9} />Dev quick-fill
-            </p>
-            <Select placeholder="Select account…" value="" onChange={fillAccount} options={DEV_OPTIONS} />
-          </div>
-
           {/* Form */}
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
 
@@ -229,22 +206,6 @@ export default function LoginClient() {
             <p className="text-center text-[11px] mt-2.5 text-muted">
               Free forever · No credit card required
             </p>
-          </div>
-
-          {/* Other portals */}
-          <div className="mt-6 pt-5 border-t border-border flex flex-col gap-2">
-            <p className="text-[10px] font-black tracking-widest uppercase mb-1 text-muted">Other portals</p>
-            <div className="flex gap-2">
-              {[
-                { href: '/admin_login',  label: 'Admin' },
-                { href: '/driver_login', label: 'Driver' },
-              ].map(p => (
-                <Link key={p.href} href={p.href}
-                  className="flex-1 text-center py-2 rounded-xl text-xs font-bold bg-background border border-border text-muted hover:text-foreground hover:border-border-2 transition-all">
-                  {p.label} Portal
-                </Link>
-              ))}
-            </div>
           </div>
 
         </div>

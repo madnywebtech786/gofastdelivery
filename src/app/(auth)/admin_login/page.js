@@ -3,22 +3,13 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
-import Link from 'next/link'
-import { AlertCircle, ArrowRight, Eye, EyeOff, Zap, Shield, BarChart2, Users, Package } from 'lucide-react'
-import Select from '@/components/ui/Select'
+import { AlertCircle, ArrowRight, Eye, EyeOff, Shield, BarChart2, Users, Package } from 'lucide-react'
 
 const ROLE_DASHBOARDS = {
   admin:    '/admin/dashboard',
   driver:   '/driver/home',
   customer: '/customer/overview',
 }
-
-const DEV_ACCOUNTS = [
-  { label: 'Admin',      email: 'admin@courier.local',     password: 'Admin@1234' },
-  { label: 'Driver 1',   email: 'driver1@courier.local',   password: 'Driver@1234' },
-  { label: 'Customer 1', email: 'customer@courier.local',  password: 'Customer@1234' },
-]
-const DEV_OPTIONS = DEV_ACCOUNTS.map(a => ({ value: a.email, label: a.label, meta: a.email }))
 
 function useCountUp(target, duration = 1800, start = false) {
   const [val, setVal] = useState(0)
@@ -100,11 +91,6 @@ export default function AdminLoginPage() {
     return () => clearInterval(id)
   }, [])
 
-  function fillAccount(emailVal) {
-    const a = DEV_ACCOUNTS.find(a => a.email === emailVal)
-    if (a) { setEmail(a.email); setPassword(a.password) }
-  }
-
   async function handleSubmit(e) {
     e.preventDefault()
     setError('')
@@ -175,13 +161,12 @@ export default function AdminLoginPage() {
       </div>
 
       {/* ── RIGHT: Form ── */}
-      <div className="flex-1 flex flex-col justify-center px-6 sm:px-12 lg:px-14 py-12 relative bg-background">
+      <div className="flex-1 flex flex-col justify-center px-6 sm:px-12 lg:px-12 py-12 relative">
         <div className="absolute inset-y-0 left-0 w-px pointer-events-none bg-[linear-gradient(180deg,transparent_0%,var(--secondary-dim)_40%,var(--secondary-dim)_60%,transparent_100%)]" />
 
         {/* Mobile logo */}
-        <div className="lg:hidden mb-8 flex items-center justify-between">
-          <Image src="/images/logo.png" alt="GoFastDelivery" width={110} height={36} className="h-8 w-auto object-contain" />
-          <span className="text-[10px] font-black tabular-nums text-secondary/60 font-mono">{time}</span>
+        <div className="lg:hidden mb-9">
+          <Image src="/images/logo.png" alt="GoFastDelivery" width={120} height={40} className="h-9 w-auto object-contain" />
         </div>
 
         <div className="w-full max-w-sm mx-auto">
@@ -192,21 +177,10 @@ export default function AdminLoginPage() {
             transform: mounted ? 'translateY(0)' : 'translateY(20px)',
             transition: 'opacity 0.5s ease 0.1s, transform 0.5s ease 0.1s',
           }}>
-            <h1 className="text-3xl font-black tracking-tight leading-tight text-foreground">
-              Secure<br />Sign In
+            <h1 className="font-black leading-tight tracking-tight text-foreground" style={{ fontSize: 'clamp(1.8rem, 3.5vw, 2.4rem)' }}>
+              Secure Sign In
             </h1>
-            <p className="text-xs mt-2 text-muted font-mono">Restricted · Administrators only</p>
-          </div>
-
-          {/* Dev quick-fill */}
-          <div className="mb-5 rounded-xl p-3 bg-secondary/5 border border-secondary/15" style={{
-            opacity: mounted ? 1 : 0,
-            transition: 'opacity 0.5s ease 0.2s',
-          }}>
-            <p className="text-[9px] font-black tracking-[0.25em] uppercase mb-2 flex items-center gap-1.5 text-secondary/70">
-              <Zap size={8} />Dev accounts
-            </p>
-            <Select placeholder="Select account…" value="" onChange={fillAccount} options={DEV_OPTIONS} />
+            <p className="text-sm mt-1.5 text-muted">Restricted · Administrators only</p>
           </div>
 
           {/* Form */}
@@ -217,15 +191,15 @@ export default function AdminLoginPage() {
           }}>
 
             <div className="flex flex-col gap-1.5">
-              <label className={`text-[9px] font-black tracking-[0.25em] uppercase font-mono transition-colors ${focused === 'email' ? 'text-secondary' : 'text-muted'}`}>
-                Admin Email
+              <label className={`text-[9px] font-black tracking-[0.25em] uppercase transition-colors ${focused === 'email' ? 'text-secondary' : 'text-muted'}`}>
+                Email
               </label>
               <input
                 type="email" autoComplete="email" required
                 value={email} onChange={e => setEmail(e.target.value)}
                 onFocus={() => setFocused('email')} onBlur={() => setFocused(null)}
                 placeholder="admin@gofastdelivery.ca"
-                className={`w-full px-4 py-3.5 rounded-xl text-sm text-foreground outline-none transition-all border-[1.5px] ${
+                className={`w-full px-4 py-3.5 rounded-xl text-sm font-medium text-foreground outline-none transition-all border-[1.5px] ${
                   focused === 'email'
                     ? 'bg-surface border-secondary/50 shadow-[0_0_0_3px_var(--secondary-dim)]'
                     : 'bg-background border-border'
@@ -234,16 +208,16 @@ export default function AdminLoginPage() {
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label className={`text-[9px] font-black tracking-[0.25em] uppercase font-mono transition-colors ${focused === 'password' ? 'text-secondary' : 'text-muted'}`}>
-                Passphrase
+              <label className={`text-[9px] font-black tracking-[0.25em] uppercase transition-colors ${focused === 'password' ? 'text-secondary' : 'text-muted'}`}>
+                Password
               </label>
               <div className="relative">
                 <input
                   type={showPass ? 'text' : 'password'} autoComplete="current-password" required
                   value={password} onChange={e => setPassword(e.target.value)}
                   onFocus={() => setFocused('password')} onBlur={() => setFocused(null)}
-                  placeholder="••••••••••••"
-                  className={`w-full px-4 pr-11 py-3.5 rounded-xl text-sm text-foreground outline-none transition-all border-[1.5px] ${
+                  placeholder="••••••••"
+                  className={`w-full px-4 pr-11 py-3.5 rounded-xl text-sm font-medium text-foreground outline-none transition-all border-[1.5px] ${
                     focused === 'password'
                       ? 'bg-surface border-secondary/50 shadow-[0_0_0_3px_var(--secondary-dim)]'
                       : 'bg-background border-border'
@@ -263,7 +237,7 @@ export default function AdminLoginPage() {
             )}
 
             <button type="submit" disabled={loading}
-              className="group relative w-full flex items-center justify-center gap-2.5 py-4 rounded-xl font-black text-sm text-white mt-1 overflow-hidden transition-all disabled:opacity-60 bg-secondary hover:bg-secondary-hover shadow-[0_6px_28px_var(--secondary-glow)] hover:shadow-[0_8px_36px_var(--secondary-glow)]">
+              className="group relative w-full flex items-center justify-center gap-2.5 py-4 rounded-xl font-black text-base text-white mt-2 overflow-hidden transition-all disabled:opacity-60 tracking-[0.03em] bg-secondary hover:bg-secondary-hover shadow-[0_6px_28px_var(--secondary-glow)] hover:shadow-[0_8px_36px_var(--secondary-glow)]">
               <div className="absolute inset-0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity bg-[linear-gradient(105deg,transparent_40%,rgba(255,255,255,0.12)_50%,transparent_60%)]" />
               {loading ? (
                 <><div className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />Authenticating…</>
@@ -273,18 +247,6 @@ export default function AdminLoginPage() {
             </button>
           </form>
 
-          {/* Portal links */}
-          <div className="mt-7 pt-6 flex gap-3 border-t border-border">
-            {[
-              { href: '/login',        label: 'Customer Portal' },
-              { href: '/driver_login', label: 'Driver Portal'   },
-            ].map(p => (
-              <Link key={p.href} href={p.href}
-                className="flex-1 text-center py-2 rounded-lg text-[11px] font-bold bg-surface border border-border text-muted hover:text-foreground hover:border-border-2 transition-all">
-                {p.label}
-              </Link>
-            ))}
-          </div>
         </div>
       </div>
     </div>

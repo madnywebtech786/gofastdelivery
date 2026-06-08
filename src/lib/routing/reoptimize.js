@@ -5,12 +5,18 @@ import { checkBudget, MapboxBudgetError } from '@/lib/mapbox-budget'
 import { hydrateRouteItems } from './hydrate'
 
 const MAPBOX_API = 'https://api.mapbox.com'
-const MAPBOX_MAX_STOPS = 11
+const ORS_API    = 'https://api.openrouteservice.org/optimization'
 
 function getToken() {
   const token = process.env.MAPBOX_SECRET_TOKEN
   if (!token) throw new Error('MAPBOX_SECRET_TOKEN not set')
   return token
+}
+
+function getOrsKey() {
+  const key = process.env.ORS_API_KEY
+  if (!key) throw new Error('ORS_API_KEY not set')
+  return key
 }
 
 function haversine(lat1, lng1, lat2, lng2) {
@@ -26,114 +32,95 @@ function haversine(lat1, lng1, lat2, lng2) {
 }
 
 /**
- * Enforce pickup-before-dropoff for pickup_and_dropoff bookings.
- * If Mapbox returns (or fallback produces) an order where a dropoff appears
- * before its paired pickup, swap the two positions.
- * Applied after optimization so we never break the API's overall optimality
- * except for the mandatory constraint.
+ * Optimise stop order using Vroom via the ORS public API.
+ *
+ * pickup_and_dropoff bookings are submitted as Vroom "shipments" so the engine
+ * enforces pickup-before-dropoff natively — no post-processing needed.
+ * Standalone pickup_only / dropoff_only stops are submitted as "jobs".
+ *
+ * Returns an array of indices into `stops[]` in visit order.
  */
-function enforcePrecedence(stopOrder, stops) {
-  const order = [...stopOrder]
-  for (let i = 0; i < order.length; i++) {
-    const s = stops[order[i]]
-    if (s.stopType !== 'dropoff' || s.assignmentKind !== 'pickup_and_dropoff') continue
-    const pickupPos = order.findIndex(
-      (idx) => stops[idx].stopType === 'pickup' && stops[idx].bookingId === s.bookingId && stops[idx].assignmentKind === 'pickup_and_dropoff'
-    )
-    if (pickupPos !== -1 && pickupPos > i) {
-      // Dropoff is before its pickup — swap them
-      ;[order[i], order[pickupPos]] = [order[pickupPos], order[i]]
-    }
-  }
-  return order
-}
+async function orsOptimizeOrder(driverLat, driverLng, stops, endPoint = null) {
+  const key = getOrsKey()
 
-function nearestNeighbourOrder(driverLat, driverLng, stops) {
-  const remaining = stops.map((_, i) => i)
-  const order = []
-  let curLat = driverLat
-  let curLng = driverLng
-  while (remaining.length > 0) {
-    let bestIdx = 0
-    let bestDist = Infinity
-    for (let i = 0; i < remaining.length; i++) {
-      const s = stops[remaining[i]]
-      const d = haversine(curLat, curLng, s.coordinates.lat, s.coordinates.lng)
-      if (d < bestDist) { bestDist = d; bestIdx = i }
-    }
-    const chosen = remaining.splice(bestIdx, 1)[0]
-    order.push(chosen)
-    curLat = stops[chosen].coordinates.lat
-    curLng = stops[chosen].coordinates.lng
-  }
-  return order
-}
+  const shipments = []
+  const jobs      = []
 
-async function mapboxOptimizeOrder(driverLat, driverLng, stops, endPoint = null) {
-  await checkBudget('optimization')
-  const token = getToken()
-  const allCoords = [
-    { lng: driverLng, lat: driverLat },
-    ...stops.map((s) => ({ lng: s.coordinates.lng, lat: s.coordinates.lat })),
-    ...(endPoint ? [{ lng: endPoint.lng, lat: endPoint.lat }] : []),
-  ]
-  const coordStr = allCoords.map((c) => `${c.lng},${c.lat}`).join(';')
-  const url = new URL(`${MAPBOX_API}/optimized-trips/v1/mapbox/driving/${coordStr}`)
-  url.searchParams.set('access_token', token)
-  url.searchParams.set('geometries', 'polyline6')
-  url.searchParams.set('overview', 'full')
+  // Track which stops have already been paired to avoid double-adding dropoffs
+  const pairedDropoffIndices = new Set()
 
-  if (endPoint) {
-    url.searchParams.set('roundtrip', 'false')
-    url.searchParams.set('source', 'first')
-    url.searchParams.set('destination', 'last')
-  } else {
-    url.searchParams.set('roundtrip', 'true')
-  }
-
-  // Build distributions for pickup_and_dropoff bookings so Mapbox guarantees
-  // pickup is visited before its corresponding dropoff.
-  // stops[] indices are 0-based; allCoords adds 1 for the driver at index 0.
-  const distributionPairs = []
   for (let i = 0; i < stops.length; i++) {
     const s = stops[i]
-    if (s.stopType === 'pickup' && s.assignmentKind === 'pickup_and_dropoff') {
+
+    if (s.assignmentKind === 'pickup_and_dropoff' && s.stopType === 'pickup') {
       const dropoffIdx = stops.findIndex(
-        (t, j) => j !== i && t.stopType === 'dropoff' && t.bookingId === s.bookingId && t.assignmentKind === 'pickup_and_dropoff'
+        (t, j) =>
+          j !== i &&
+          t.stopType === 'dropoff' &&
+          t.bookingId === s.bookingId &&
+          t.assignmentKind === 'pickup_and_dropoff'
       )
       if (dropoffIdx !== -1) {
-        // +1 because allCoords[0] is the driver position
-        distributionPairs.push(`${i + 1},${dropoffIdx + 1}`)
+        pairedDropoffIndices.add(dropoffIdx)
+        // Vroom shipment IDs must be unique positive integers.
+        // We encode the stop index directly so we can decode the order later.
+        // pickup id = i, delivery id = dropoffIdx (both globally unique per stop).
+        shipments.push({
+          pickup:   { id: i,          location: [stops[i].coordinates.lng,          stops[i].coordinates.lat]          },
+          delivery: { id: dropoffIdx, location: [stops[dropoffIdx].coordinates.lng, stops[dropoffIdx].coordinates.lat] },
+        })
+        continue
       }
     }
-  }
-  if (distributionPairs.length > 0) {
-    url.searchParams.set('distributions', distributionPairs.join(';'))
-  }
 
-  const res = await fetch(url.toString(), { cache: 'no-store' })
-  if (!res.ok) throw new Error(`Mapbox Optimization error ${res.status}`)
-  const data = await res.json()
-  if (data.code !== 'Ok' || !data.trips?.length) {
-    throw new Error(`Mapbox Optimization bad response: code=${data.code}`)
+    // Skip dropoffs already paired above
+    if (pairedDropoffIndices.has(i)) continue
+
+    // All other stops (pickup_only, dropoff_only, or unpaired) go in as jobs
+    jobs.push({ id: i, location: [s.coordinates.lng, s.coordinates.lat] })
   }
 
-  const visitOrder = data.waypoints
-    .map((w, inputIndex) => ({ inputIndex, visitPos: w.waypoint_index }))
-    .sort((a, b) => a.visitPos - b.visitPos)
-    .map((w) => w.inputIndex)
-
-  let stopOrder
+  const vehicle = {
+    id:      1,
+    profile: 'driving-car',
+    start:   [driverLng, driverLat],
+  }
   if (endPoint) {
-    stopOrder = visitOrder.filter((idx) => idx > 0 && idx <= stops.length).map((idx) => idx - 1)
-  } else {
-    const driverVisitPos = visitOrder.indexOf(0)
-    const rotated = [
-      ...visitOrder.slice(driverVisitPos + 1),
-      ...visitOrder.slice(0, driverVisitPos),
-    ]
-    stopOrder = rotated.filter((idx) => idx > 0).map((idx) => idx - 1)
+    vehicle.end = [endPoint.lng, endPoint.lat]
   }
+
+  const payload = { vehicles: [vehicle], shipments, jobs }
+
+  const res = await fetch(ORS_API, {
+    method:  'POST',
+    headers: {
+      'Content-Type':  'application/json',
+      'Authorization': key,
+    },
+    body:  JSON.stringify(payload),
+    cache: 'no-store',
+  })
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    throw new Error(`ORS Optimization error ${res.status}: ${text}`)
+  }
+
+  const data = await res.json()
+
+  const route = data.routes?.[0]
+  if (!route) throw new Error('ORS returned no routes')
+
+  // Extract stop indices from steps in visit order.
+  // step.type is 'start' | 'job' | 'pickup' | 'delivery' | 'end'
+  // step.id corresponds to the original stop index we encoded above.
+  const stopOrder = []
+  for (const step of route.steps) {
+    if (step.type === 'job' || step.type === 'pickup' || step.type === 'delivery') {
+      stopOrder.push(step.id)
+    }
+  }
+
   return stopOrder
 }
 
@@ -176,9 +163,9 @@ export async function reoptimizeRoute({ driverId, currentLng, currentLat, endPoi
   if (!route) return null
 
   const allStops = route.optimizedStops ?? []
-  const completedStops = allStops.filter((s) => s.completedAt)
-  const pendingStops   = allStops.filter((s) => !s.completedAt && s.stopType !== 'endpoint')
-  const existingEndpoint = allStops.find((s) => s.stopType === 'endpoint' && !s.completedAt)
+  const completedStops    = allStops.filter((s) => s.completedAt)
+  const pendingStops      = allStops.filter((s) => !s.completedAt && s.stopType !== 'endpoint')
+  const existingEndpoint  = allStops.find((s) => s.stopType === 'endpoint' && !s.completedAt)
 
   if (pendingStops.length < 1) return null
 
@@ -187,24 +174,20 @@ export async function reoptimizeRoute({ driverId, currentLng, currentLat, endPoi
       ? { lng: existingEndpoint.coordinates.lng, lat: existingEndpoint.coordinates.lat, address: existingEndpoint.address }
       : route.endPoint ?? null)
 
-  // 1 stop: nothing to reorder, but we may still need to add/refresh endpoint
+  // 1 stop: nothing to reorder
   let stopOrder
   if (pendingStops.length === 1) {
     stopOrder = [0]
-  } else if (pendingStops.length <= MAPBOX_MAX_STOPS) {
-    try {
-      stopOrder = await mapboxOptimizeOrder(currentLat, currentLng, pendingStops, endPoint)
-      // Mapbox enforces pickup-before-dropoff natively via distributions — no post-processing needed
-    } catch (err) {
-      if (err instanceof MapboxBudgetError) {
-        console.warn(`[reoptimize] budget tripped (${err.scope}) — falling back to nearest-neighbour`)
-      }
-      // Fallback: nearest-neighbour has no constraint support, enforce manually
-      stopOrder = enforcePrecedence(nearestNeighbourOrder(currentLat, currentLng, pendingStops), pendingStops)
-    }
   } else {
-    // Over Mapbox limit: nearest-neighbour fallback, enforce manually
-    stopOrder = enforcePrecedence(nearestNeighbourOrder(currentLat, currentLng, pendingStops), pendingStops)
+    try {
+      stopOrder = await orsOptimizeOrder(currentLat, currentLng, pendingStops, endPoint)
+    } catch (err) {
+      // ORS failed — fall back to identity order (current DB order) with a warning.
+      // We do not use nearest-neighbour as a fallback because it ignores
+      // pickup-before-dropoff constraints for paired bookings.
+      console.warn('[reoptimize] ORS optimization failed — keeping current stop order:', err.message)
+      stopOrder = pendingStops.map((_, i) => i)
+    }
   }
 
   const reorderedPending = stopOrder.map((origIdx, visitOrder) => ({
