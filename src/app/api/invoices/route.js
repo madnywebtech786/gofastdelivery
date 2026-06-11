@@ -41,6 +41,9 @@ export async function POST(request) {
     if (!body.clientName?.trim()) {
       return NextResponse.json({ error: 'Client name is required' }, { status: 400 })
     }
+    if (!body.clientEmail?.trim()) {
+      return NextResponse.json({ error: 'Client email is required' }, { status: 400 })
+    }
     const invoice = await createInvoice(body)
     return NextResponse.json(JSON.parse(JSON.stringify(invoice)), { status: 201 })
   } catch (err) {

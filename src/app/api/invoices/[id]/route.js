@@ -28,6 +28,9 @@ export async function PATCH(request, { params }) {
     if (!body.clientName?.trim()) {
       return NextResponse.json({ error: 'Client name is required' }, { status: 400 })
     }
+    if (!body.clientEmail?.trim()) {
+      return NextResponse.json({ error: 'Client email is required' }, { status: 400 })
+    }
     const result = await updateInvoice(id, body)
     if (result.matchedCount === 0) return NextResponse.json({ error: 'Invoice not found' }, { status: 404 })
     const updated = await findInvoiceById(id)

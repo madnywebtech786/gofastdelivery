@@ -8,6 +8,7 @@ import {
   CheckCircle2, AlertTriangle, Send, Loader2,
 } from 'lucide-react'
 import { triggerPrint } from './InvoicePDF'
+import { useToast } from '@/components/ui/Toast'
 
 const PAGE_SIZE = 20
 
@@ -116,12 +117,15 @@ export default function InvoicesClient({ initialInvoices, total, currentPage, cu
   const pathname     = usePathname()
   const searchParams = useSearchParams()
   const [isPending, startTransition] = useTransition()
+  const toast        = useToast()
 
   const [search, setSearch]             = useState(currentSearch ?? '')
   const [statusFilter, setStatusFilter] = useState(currentStatus ?? '')
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [deleting, setDeleting]         = useState(false)
   const [error, setError]               = useState('')
+  const [sendingId, setSendingId]       = useState(null)
+  const [sentId, setSentId]             = useState(null)
   const debounceRef                     = useRef(null)
 
   const buildUrl = useCallback((updates) => {
@@ -151,6 +155,28 @@ export default function InvoicesClient({ initialInvoices, total, currentPage, cu
   function handleStatusChange(val) {
     setStatusFilter(val)
     navigate({ status: val, page: 1 })
+  }
+
+  async function handleSend(inv) {
+    if (sendingId) return
+    setSendingId(inv._id)
+    setSentId(null)
+    try {
+      const res = await fetch(`/api/invoices/${inv._id}/send`, { method: 'POST' })
+      const b   = await res.json()
+      if (!res.ok) {
+        toast.error('Failed to send invoice', b.error || 'Please try again.')
+        return
+      }
+      setSentId(inv._id)
+      toast.success('Invoice sent!', `Invoice emailed to ${b.sentTo}`)
+      startTransition(() => router.refresh())
+      setTimeout(() => setSentId(null), 3000)
+    } catch {
+      toast.error('Network error', 'Could not reach the server. Please try again.')
+    } finally {
+      setSendingId(null)
+    }
   }
 
   async function handleDelete() {
@@ -290,6 +316,20 @@ export default function InvoicesClient({ initialInvoices, total, currentPage, cu
                               <Download size={14} />
                             </button>
                             <button
+                              onClick={() => handleSend(inv)}
+                              disabled={sendingId === inv._id}
+                              title={sentId === inv._id ? 'Sent!' : 'Send to client'}
+                              className="p-1.5 rounded-lg transition-colors disabled:opacity-50"
+                              style={{ color: sentId === inv._id ? '#16a34a' : 'var(--fg-3)' }}
+                              onMouseEnter={e => { if (sendingId !== inv._id) e.currentTarget.style.color = '#2563eb' }}
+                              onMouseLeave={e => { if (sentId !== inv._id) e.currentTarget.style.color = 'var(--fg-3)' }}>
+                              {sendingId === inv._id
+                                ? <Loader2 size={14} className="animate-spin" />
+                                : sentId === inv._id
+                                ? <CheckCircle2 size={14} />
+                                : <Send size={14} />}
+                            </button>
+                            <button
                               onClick={() => router.push(`/admin/invoices/${inv._id}/edit`)}
                               title="Edit"
                               className="p-1.5 rounded-lg transition-colors"
@@ -340,6 +380,18 @@ export default function InvoicesClient({ initialInvoices, total, currentPage, cu
                       <div className="flex items-center gap-1 justify-end">
                         <button onClick={() => triggerPrint(inv)} className="p-1 rounded" style={{ color: 'var(--fg-3)' }}>
                           <Download size={13} />
+                        </button>
+                        <button
+                          onClick={e => { e.stopPropagation(); handleSend(inv) }}
+                          disabled={sendingId === inv._id}
+                          title={sentId === inv._id ? 'Sent!' : 'Send to client'}
+                          className="p-1 rounded disabled:opacity-50"
+                          style={{ color: sentId === inv._id ? '#16a34a' : 'var(--fg-3)' }}>
+                          {sendingId === inv._id
+                            ? <Loader2 size={13} className="animate-spin" />
+                            : sentId === inv._id
+                            ? <CheckCircle2 size={13} />
+                            : <Send size={13} />}
                         </button>
                         <button onClick={() => router.push(`/admin/invoices/${inv._id}/edit`)} className="p-1 rounded" style={{ color: 'var(--fg-3)' }}>
                           <Pencil size={13} />

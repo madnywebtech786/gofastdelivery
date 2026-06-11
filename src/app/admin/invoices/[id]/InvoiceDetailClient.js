@@ -5,9 +5,10 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
   ArrowLeft, Download, Pencil, Trash2, X,
-  FileText, CheckCircle2, AlertTriangle, Send, Building2, User,
+  FileText, CheckCircle2, AlertTriangle, Send, Building2, User, Loader2,
 } from 'lucide-react'
 import { triggerPrint } from '../InvoicePDF'
+import { useToast } from '@/components/ui/Toast'
 
 const STATUS_CONFIG = {
   draft:   { label: 'Draft',   color: '#64748b', bg: 'rgba(100,116,139,0.08)', border: 'rgba(100,116,139,0.2)', icon: FileText },
@@ -55,9 +56,34 @@ const CARD = {
 
 export default function InvoiceDetailClient({ invoice }) {
   const router = useRouter()
+  const toast  = useToast()
   const [showDelete, setShowDelete] = useState(false)
   const [deleting, setDeleting]     = useState(false)
   const [error, setError]           = useState('')
+  const [sending, setSending]       = useState(false)
+  const [sent, setSent]             = useState(false)
+
+  async function handleSend() {
+    if (sending) return
+    setSending(true)
+    setSent(false)
+    try {
+      const res = await fetch(`/api/invoices/${invoice._id}/send`, { method: 'POST' })
+      const b   = await res.json()
+      if (!res.ok) {
+        toast.error('Failed to send invoice', b.error || 'Please try again.')
+        return
+      }
+      setSent(true)
+      toast.success('Invoice sent!', `Invoice emailed to ${b.sentTo}`)
+      router.refresh()
+      setTimeout(() => setSent(false), 4000)
+    } catch {
+      toast.error('Network error', 'Could not reach the server. Please try again.')
+    } finally {
+      setSending(false)
+    }
+  }
 
   const { subtotal, taxAmt, total, balance } = calcTotals(invoice)
   const currency = invoice.currency ?? 'CAD'
@@ -131,6 +157,24 @@ export default function InvoiceDetailClient({ invoice }) {
             onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)';  e.currentTarget.style.color = 'var(--fg-2)' }}
           >
             <Download size={14} /> Download PDF
+          </button>
+          <button
+            onClick={handleSend}
+            disabled={sending}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border transition-all disabled:opacity-60"
+            style={{
+              color: sent ? '#16a34a' : 'var(--fg-2)',
+              background: '#fff',
+              borderColor: sent ? '#16a34a' : 'var(--border)',
+            }}
+            onMouseEnter={e => { if (!sending && !sent) { e.currentTarget.style.borderColor = '#2563eb'; e.currentTarget.style.color = '#2563eb' } }}
+            onMouseLeave={e => { if (!sent) { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--fg-2)' } }}
+          >
+            {sending
+              ? <><Loader2 size={14} className="animate-spin" /> Sending…</>
+              : sent
+              ? <><CheckCircle2 size={14} /> Sent!</>
+              : <><Send size={14} /> Send Invoice</>}
           </button>
           <Link
             href={`/admin/invoices/${invoice._id}/edit`}

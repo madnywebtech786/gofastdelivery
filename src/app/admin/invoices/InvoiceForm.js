@@ -202,8 +202,8 @@ export default function InvoiceForm({ initial = {}, onSubmit, onCancel, submitti
           <Field label="Phone">
             <input className={inputCls} value={form.clientPhone} onChange={e => set('clientPhone', e.target.value)} />
           </Field>
-          <Field label="Email" className="sm:col-span-2">
-            <input className={inputCls} type="email" value={form.clientEmail} onChange={e => set('clientEmail', e.target.value)} />
+          <Field label="Email" required className="sm:col-span-2">
+            <input className={inputCls} type="email" required value={form.clientEmail} onChange={e => set('clientEmail', e.target.value)} placeholder="client@example.com" />
           </Field>
         </div>
       </div>

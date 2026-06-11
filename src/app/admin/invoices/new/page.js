@@ -6,10 +6,21 @@ import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
 import InvoiceForm from '../InvoiceForm'
 
+function generateInvoiceNumber() {
+  const now   = new Date()
+  const yy    = String(now.getFullYear()).slice(2)
+  const mm    = String(now.getMonth() + 1).padStart(2, '0')
+  const dd    = String(now.getDate()).padStart(2, '0')
+  const rand  = Math.floor(Math.random() * 36 ** 5)
+  const suffix = rand.toString(36).toUpperCase().padStart(5, '0')
+  return `INV-${yy}${mm}${dd}-${suffix}`
+}
+
 export default function NewInvoicePage() {
   const router = useRouter()
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const [invoiceNumber] = useState(generateInvoiceNumber)
 
   async function handleSubmit(data) {
     setSubmitting(true)
@@ -63,9 +74,11 @@ export default function NewInvoicePage() {
           </p>
         )}
         <InvoiceForm
+          initial={{ invoiceNumber }}
           onSubmit={handleSubmit}
           onCancel={() => router.push('/admin/invoices')}
           submitting={submitting}
+          disableInvoiceNumber
         />
       </div>
     </div>

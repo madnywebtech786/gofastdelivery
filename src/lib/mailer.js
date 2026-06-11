@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer'
+import { buildInvoicePdf } from './invoicePdf'
 
 // ── Transport ─────────────────────────────────────────────────────────────────
 
@@ -51,7 +52,7 @@ const BRAND_GREEN      = '#1bb908'
 const BRAND_GREEN_DARK = '#15960a'
 const BRAND_NAME       = 'GoFastDelivery'
 const BRAND_TAGLINE    = "Calgary's Same-Day Courier"
-const BRAND_EMAIL      = 'hello@gofastdelivery.ca'
+const BRAND_EMAIL      = 'info@gfdelivery.ca'
 const BRAND_FROM       = `"GoFastDelivery" <gofastdelivery2024@gmail.com>`
 const BASE_URL         = process.env.APP_BASE_URL ?? 'https://gofastdelivery.ca'
 
@@ -99,7 +100,7 @@ function baseTemplate({ title, preheader, body }) {
 
           <!-- ── Header ── -->
           <tr>
-            <td style="background:linear-gradient(135deg,#071407 0%,#0d200c 60%,#0a1a09 100%);padding:0;">
+            <td style="background-color:#0d200c;background:linear-gradient(135deg,#071407 0%,#0d200c 60%,#0a1a09 100%);padding:0;">
 
               <!-- Green top accent line -->
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
@@ -122,7 +123,7 @@ function baseTemplate({ title, preheader, body }) {
                           <div style="font-size:22px;font-weight:800;color:#ffffff;letter-spacing:-0.5px;line-height:1;">
                             GoFast<span style="color:${BRAND_GREEN};">Delivery</span>
                           </div>
-                          <div style="font-size:12px;color:rgba(255,255,255,0.4);margin-top:3px;letter-spacing:0.04em;">
+                          <div style="font-size:12px;color:#6b9e6b;margin-top:3px;letter-spacing:0.04em;">
                             ${BRAND_TAGLINE} &middot; Calgary, AB
                           </div>
                         </td>
@@ -416,6 +417,176 @@ export async function sendPasswordResetOtp({ to, otp, userName }) {
     to,
     subject: `Your GoFastDelivery password reset code: ${otp}`,
     html: buildPasswordResetEmail({ otp, userName }),
+  })
+}
+
+// ── Email: Invoice ────────────────────────────────────────────────────────────
+
+function formatInvoiceDate(val) {
+  if (!val) return '—'
+  return new Date(val).toLocaleDateString('en-CA', { year: 'numeric', month: 'long', day: 'numeric' })
+}
+
+function buildInvoiceEmailHtml(invoice) {
+  const items    = invoice.items ?? []
+  const subtotal = items.reduce((s, it) => s + (it.rate ?? 0) * (it.quantity ?? 0), 0)
+  const taxAmt   = Math.round(subtotal * ((invoice.taxRate ?? 5) / 100) * 100) / 100
+  const total    = subtotal + taxAmt
+  const balance  = total - (invoice.amountPaid ?? 0)
+  const currency = invoice.currency ?? 'CAD'
+  const fmt      = (n) => `${currency} $${Number(n ?? 0).toFixed(2)}`
+
+  const itemRows = items.map((item, i) => {
+    const amt = (item.rate ?? 0) * (item.quantity ?? 0)
+    return `
+      <tr style="background:${i % 2 === 0 ? '#ffffff' : '#f8fafc'};">
+        <td style="padding:10px 20px;border-bottom:1px solid #e2e8f0;font-size:13px;color:#334155;font-weight:600;line-height:1.5;">
+          ${esc(item.description)}
+          ${item.serviceDate ? `<div style="font-size:11px;color:#94a3b8;margin-top:3px;">${esc(item.serviceDate)}</div>` : ''}
+          ${item.details     ? `<div style="font-size:11px;color:#94a3b8;margin-top:4px;white-space:pre-line;line-height:1.5;">${esc(item.details)}</div>` : ''}
+        </td>
+        <td style="padding:10px 16px;border-bottom:1px solid #e2e8f0;text-align:right;font-size:13px;color:#475569;white-space:nowrap;">$${Number(item.rate ?? 0).toFixed(2)}</td>
+        <td style="padding:10px 16px;border-bottom:1px solid #e2e8f0;text-align:right;font-size:13px;color:#475569;">${item.quantity ?? 0}</td>
+        <td style="padding:10px 20px;border-bottom:1px solid #e2e8f0;text-align:right;font-size:13px;font-weight:700;color:#334155;white-space:nowrap;">$${amt.toFixed(2)}</td>
+      </tr>`
+  }).join('')
+
+  const body = `
+    <!-- Invoice header (table layout — no flex, works in all email clients) -->
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:24px;">
+      <tr>
+        <td style="vertical-align:top;">
+          <p style="margin:0 0 6px;font-size:20px;font-weight:900;color:#0f172a;letter-spacing:-0.3px;line-height:1.2;">
+            Invoice&nbsp;<span style="color:${BRAND_GREEN};font-family:'Courier New',Courier,monospace;">${esc(invoice.invoiceNumber)}</span>
+          </p>
+          <p style="margin:0;font-size:13px;color:#64748b;line-height:1.5;">${esc(invoice.clientName)} &middot; ${formatInvoiceDate(invoice.invoiceDate)}</p>
+        </td>
+      </tr>
+    </table>
+
+    <!-- Balance due hero -->
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+      style="background:#f0fdf0;border:1.5px solid rgba(27,185,8,0.22);border-radius:12px;margin-bottom:28px;">
+      <tr>
+        <td style="padding:20px 28px;">
+          <p style="margin:0 0 4px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.14em;color:#64748b;">Balance Due</p>
+          <p style="margin:0;font-size:28px;font-weight:900;color:#0f172a;letter-spacing:-0.5px;line-height:1.2;">${fmt(balance)}</p>
+          ${invoice.dueDate ? `<p style="margin:6px 0 0;font-size:12px;color:#64748b;">Due:&nbsp;<strong style="color:#334155;">${formatInvoiceDate(invoice.dueDate)}</strong></p>` : ''}
+        </td>
+      </tr>
+    </table>
+
+    <!-- From + Bill To -->
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:24px;">
+      <tr>
+        <td width="50%" style="vertical-align:top;padding-right:16px;">
+          <p style="margin:0 0 6px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#94a3b8;">From</p>
+          <p style="margin:0;font-weight:700;font-size:13px;color:#0f172a;">${esc(invoice.companyName || 'GoFastDelivery')}</p>
+          ${invoice.companyAddress ? `<p style="margin:3px 0 0;font-size:12px;color:#475569;">${esc(invoice.companyAddress)}</p>` : ''}
+          ${invoice.companyCity    ? `<p style="margin:1px 0 0;font-size:12px;color:#475569;">${esc(invoice.companyCity)}</p>`    : ''}
+          ${invoice.companyEmail   ? `<p style="margin:5px 0 0;font-size:12px;color:${BRAND_GREEN};font-weight:600;">${esc(invoice.companyEmail)}</p>` : ''}
+        </td>
+        <td width="50%" style="vertical-align:top;padding-left:16px;border-left:2px solid #e2e8f0;">
+          <p style="margin:0 0 6px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#94a3b8;">Bill To</p>
+          <p style="margin:0;font-weight:700;font-size:13px;color:#0f172a;">${esc(invoice.clientName)}</p>
+          ${invoice.clientAddress ? `<p style="margin:3px 0 0;font-size:12px;color:#475569;">${esc(invoice.clientAddress)}</p>` : ''}
+          ${invoice.clientCity    ? `<p style="margin:1px 0 0;font-size:12px;color:#475569;">${esc(invoice.clientCity)}</p>`    : ''}
+          ${invoice.clientPhone   ? `<p style="margin:5px 0 0;font-size:12px;color:#475569;">${esc(invoice.clientPhone)}</p>`   : ''}
+          ${invoice.clientEmail   ? `<p style="margin:3px 0 0;font-size:12px;color:${BRAND_GREEN};font-weight:600;">${esc(invoice.clientEmail)}</p>` : ''}
+        </td>
+      </tr>
+    </table>
+
+    <!-- Divider -->
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:16px;">
+      <tr><td style="height:1px;background:#e2e8f0;font-size:0;line-height:0;">&nbsp;</td></tr>
+    </table>
+
+    <!-- Line items table -->
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+      style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;margin-bottom:20px;">
+      <thead>
+        <tr style="background:#f1f5f9;">
+          <th style="padding:10px 20px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#64748b;">Description</th>
+          <th style="padding:10px 16px;text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#64748b;">Rate</th>
+          <th style="padding:10px 16px;text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#64748b;">Qty</th>
+          <th style="padding:10px 20px;text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#64748b;">Amount</th>
+        </tr>
+      </thead>
+      <tbody>${itemRows}</tbody>
+    </table>
+
+    <!-- Totals -->
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="right" style="margin-bottom:28px;min-width:240px;">
+      <tbody>
+        <tr>
+          <td style="padding:5px 0;font-size:13px;color:#64748b;padding-right:32px;">Subtotal</td>
+          <td style="padding:5px 0;font-size:13px;font-weight:600;color:#334155;text-align:right;white-space:nowrap;">$${subtotal.toFixed(2)}</td>
+        </tr>
+        <tr>
+          <td style="padding:5px 0;font-size:13px;color:#64748b;padding-right:32px;">Tax (${invoice.taxRate ?? 5}% GST)</td>
+          <td style="padding:5px 0;font-size:13px;font-weight:600;color:#334155;text-align:right;white-space:nowrap;">$${taxAmt.toFixed(2)}</td>
+        </tr>
+        ${(invoice.amountPaid ?? 0) > 0 ? `
+        <tr>
+          <td style="padding:5px 0;font-size:13px;color:#16a34a;padding-right:32px;">Amount Paid</td>
+          <td style="padding:5px 0;font-size:13px;font-weight:600;color:#16a34a;text-align:right;white-space:nowrap;">&#8722;$${Number(invoice.amountPaid).toFixed(2)}</td>
+        </tr>` : ''}
+        <tr>
+          <td style="padding:10px 0 0;border-top:2px solid ${BRAND_GREEN};font-size:15px;font-weight:800;color:#0f172a;padding-right:32px;">Balance Due</td>
+          <td style="padding:10px 0 0;border-top:2px solid ${BRAND_GREEN};font-size:17px;font-weight:900;color:#0f172a;text-align:right;white-space:nowrap;">${fmt(balance)}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    ${invoice.notes?.trim() ? `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+      style="background:#f8fafc;border-left:4px solid ${BRAND_GREEN};border-radius:0 8px 8px 0;margin-bottom:24px;">
+      <tr>
+        <td style="padding:14px 18px;">
+          <p style="margin:0 0 5px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#94a3b8;">Notes</p>
+          <p style="margin:0;font-size:13px;color:#475569;white-space:pre-line;line-height:1.65;">${esc(invoice.notes)}</p>
+        </td>
+      </tr>
+    </table>` : ''}
+
+    <p style="margin:24px 0 0;font-size:12px;color:#94a3b8;text-align:center;line-height:1.7;">
+      Please reference invoice <strong style="color:#64748b;">${esc(invoice.invoiceNumber)}</strong> when making payment.<br />
+      Thank you for your business.
+    </p>`
+
+  return baseTemplate({
+    title:     `Invoice ${invoice.invoiceNumber} — GoFastDelivery`,
+    preheader: `Invoice ${invoice.invoiceNumber} from GoFastDelivery — Balance due: ${fmt(balance)}`,
+    body,
+  })
+}
+
+export async function sendInvoiceEmail(invoice) {
+  const to = invoice.clientEmail
+  if (!to) throw new Error('Invoice has no client email address')
+
+  const items    = invoice.items ?? []
+  const subtotal = items.reduce((s, it) => s + (it.rate ?? 0) * (it.quantity ?? 0), 0)
+  const taxAmt   = Math.round(subtotal * ((invoice.taxRate ?? 5) / 100) * 100) / 100
+  const total    = subtotal + taxAmt
+  const balance  = (total - (invoice.amountPaid ?? 0)).toFixed(2)
+  const currency = invoice.currency ?? 'CAD'
+
+  const pdfBuffer = await buildInvoicePdf(invoice)
+
+  await transporter.sendMail({
+    from: BRAND_FROM,
+    to,
+    subject: `Invoice ${invoice.invoiceNumber} from GoFastDelivery — Balance Due: ${currency} $${balance}`,
+    html: buildInvoiceEmailHtml(invoice),
+    attachments: [
+      {
+        filename: `Invoice-${invoice.invoiceNumber}.pdf`,
+        content:  pdfBuffer,
+        contentType: 'application/pdf',
+      },
+    ],
   })
 }
 

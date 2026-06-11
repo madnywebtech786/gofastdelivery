@@ -3,6 +3,9 @@ const nextConfig = {
   // Enables Cache Components — unlocks use cache, cacheLife, cacheTag (stable in Next.js 16)
   cacheComponents: true,
 
+  // pdfkit resolves font files at runtime via __dirname — bundling it breaks those paths
+  serverExternalPackages: ['pdfkit'],
+
   images: {
     remotePatterns: [
       {
