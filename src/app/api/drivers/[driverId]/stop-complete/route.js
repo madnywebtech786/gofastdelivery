@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server'
 import { requireDriver, handleApiError } from '@/lib/dal'
 import { findActiveRoute, updateRoute } from '@/lib/db/drivers'
-import { updateBookingStatus, findBookingById } from '@/lib/db/bookings'
+import { updateBookingStatus } from '@/lib/db/bookings'
 import { pushBookingStatusChange, pushRouteUpdate } from '@/lib/pusher'
-import { sendStatusUpdate } from '@/lib/mailer'
+// import { sendStatusUpdate } from '@/lib/mailer'
 import { hydrateRouteItems } from '@/lib/routing/hydrate'
 import redis from '@/lib/redis'
 
@@ -96,17 +96,18 @@ export async function POST(request, { params }) {
         })
       } catch { /* non-fatal */ }
 
-      if (newBookingStatus === 'picked_up' || newBookingStatus === 'delivered') {
-        try {
-          const booking = await findBookingById(String(stop.bookingId))
-          if (booking && (booking.senderEmail || booking.receiverEmail)) {
-            const base = process.env.APP_BASE_URL ?? 'http://localhost:3000'
-            const trackingUrl = `${base}/track/${booking.trackingToken}`
-            sendStatusUpdate({ booking: JSON.parse(JSON.stringify(booking)), trackingUrl, newStatus: newBookingStatus })
-              .catch((e) => console.error('[mailer] status update:', e))
-          }
-        } catch { /* non-fatal */ }
-      }
+      // Status-change emails disabled — only booking creation sends email.
+      // if (newBookingStatus === 'picked_up' || newBookingStatus === 'delivered') {
+      //   try {
+      //     const booking = await findBookingById(String(stop.bookingId))
+      //     if (booking && (booking.senderEmail || booking.receiverEmail)) {
+      //       const base = process.env.APP_BASE_URL ?? 'http://localhost:3000'
+      //       const trackingUrl = `${base}/track/${booking.trackingToken}`
+      //       sendStatusUpdate({ booking: JSON.parse(JSON.stringify(booking)), trackingUrl, newStatus: newBookingStatus })
+      //         .catch((e) => console.error('[mailer] status update:', e))
+      //     }
+      //   } catch { /* non-fatal */ }
+      // }
     }
 
     const finalRoute = { ...JSON.parse(JSON.stringify(route)), ...routeUpdateData }

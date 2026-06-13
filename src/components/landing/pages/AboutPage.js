@@ -708,11 +708,11 @@ function CTABand() {
               </span>
             </div>
             <Link
-              href="/book"
+              href="/register"
               className="inline-flex items-center justify-center gap-2 px-8 py-4 rounded-2xl text-white font-black text-sm shadow-lg transition-all hover:opacity-90 cta-pulse"
               style={{ background: 'var(--brand-green)' }}
             >
-              Book a Delivery <ArrowRight size={15} />
+              Join Now <ArrowRight size={15} />
             </Link>
             <Link
               href="/contact"
@@ -814,11 +814,11 @@ export default function AboutPage() {
 
               <div className="flex gap-3 flex-wrap">
                 <Link
-                  href="/book"
+                  href="/register"
                   className="inline-flex items-center gap-2 px-6 py-3.5 rounded-2xl text-white font-black text-sm shadow-lg transition-all hover:opacity-90 cta-pulse"
                   style={{ background: 'var(--brand-green)' }}
                 >
-                  Book a Delivery <ArrowRight size={15} />
+                  Create Account <ArrowRight size={15} />
                 </Link>
                 <Link
                   href="/contact"

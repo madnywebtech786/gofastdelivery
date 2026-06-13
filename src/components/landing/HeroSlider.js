@@ -11,7 +11,7 @@ import 'swiper/css/pagination'
 import 'swiper/css/effect-fade'
 
 // Fixed CTAs shown on every slide
-const FIXED_CTA1 = { label: 'Book Delivery', href: '/book' }
+const FIXED_CTA1 = { label: 'Create Account', href: '/register' }
 const FIXED_CTA2 = { label: 'Track Package', href: '/track' }
 
 // Pexels stable CDN — verified delivery/logistics/courier photos

@@ -190,7 +190,7 @@ const BookingMap = forwardRef(function BookingMap({ onStopsChange }, ref) {
           searchAbortRef.current = null
         }
       }
-    }, 350)
+    }, 500)
   }
 
   function pickSuggestion(feature) {

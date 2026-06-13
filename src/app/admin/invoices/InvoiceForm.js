@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Plus, Trash2, ChevronDown, ChevronUp } from 'lucide-react'
+import { Plus, Trash2, ChevronDown, ChevronUp, Loader2 } from 'lucide-react'
 import Select from '@/components/ui/Select'
 import DatePicker from '@/components/ui/DatePicker'
 
@@ -358,9 +358,10 @@ export default function InvoiceForm({ initial = {}, onSubmit, onCancel, submitti
         <button
           type="submit"
           disabled={submitting}
-          className="px-6 py-2.5 rounded-xl text-sm font-bold transition-all disabled:opacity-60"
+          className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all disabled:opacity-70 disabled:cursor-not-allowed"
           style={{ background: 'var(--accent)', color: 'white' }}
         >
+          {submitting && <Loader2 size={14} className="animate-spin" />}
           {submitting ? 'Saving…' : 'Save Invoice'}
         </button>
       </div>

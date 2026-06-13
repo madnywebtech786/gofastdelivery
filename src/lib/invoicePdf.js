@@ -1,4 +1,5 @@
 import PDFDocument from 'pdfkit'
+import path from 'path'
 
 const BRAND_GREEN  = '#1bb908'
 const DARK         = '#0f172a'
@@ -41,26 +42,32 @@ export function buildInvoicePdf(invoice) {
     // ── Header bar ────────────────────────────────────────────────────────────
     doc.rect(0, 0, doc.page.width, 6).fill(BRAND_GREEN)
 
-    // Company name + tagline
-    doc.font('Helvetica-Bold').fontSize(20).fillColor(DARK)
-       .text('GoFast', L, 30, { continued: true })
-       .fillColor(BRAND_GREEN).text('Delivery')
+    // Logo image
+    const logoPath = path.join(process.cwd(), 'public', 'images', 'logo.png')
+    try {
+      doc.image(logoPath, L, 18, { height: 48, fit: [120, 48] })
+    } catch {
+      // fallback to text if image missing
+      doc.font('Helvetica-Bold').fontSize(20).fillColor(DARK)
+         .text('GoFast', L, 30, { continued: true })
+         .fillColor(BRAND_GREEN).text('Delivery')
+    }
 
     doc.font('Helvetica').fontSize(9).fillColor(LIGHT)
-       .text("Calgary's Same-Day Courier · Calgary, AB", L, 54)
+       .text("Calgary's Same-Day Courier · Calgary, AB", L, 72)
 
     // Invoice label top-right
     doc.font('Helvetica-Bold').fontSize(22).fillColor(DARK)
-       .text('INVOICE', L, 30, { align: 'right', width: W })
+       .text('INVOICE', L, 24, { align: 'right', width: W })
 
     doc.font('Helvetica-Bold').fontSize(11).fillColor(BRAND_GREEN)
-       .text(invoice.invoiceNumber ?? '', L, 56, { align: 'right', width: W })
+       .text(invoice.invoiceNumber ?? '', L, 50, { align: 'right', width: W })
 
-    doc.moveTo(L, 80).lineTo(L + W, 80).lineWidth(1).strokeColor(BORDER).stroke()
+    doc.moveTo(L, 92).lineTo(L + W, 92).lineWidth(1).strokeColor(BORDER).stroke()
 
     // ── From / Bill To columns ─────────────────────────────────────────────────
     const colW = W / 2 - 10
-    let y = 92
+    let y = 104
 
     doc.font('Helvetica-Bold').fontSize(8).fillColor(LIGHT)
        .text('FROM', L, y).text('BILL TO', L + colW + 20, y)
@@ -109,9 +116,8 @@ export function buildInvoicePdf(invoice) {
     // ── Invoice meta row ───────────────────────────────────────────────────────
     const metaItems = [
       ['Invoice Date', formatDate(invoice.invoiceDate)],
-      ['Due Date',     formatDate(invoice.dueDate)],
-      ['Terms',        invoice.paymentTerms || '—'],
-      ['Status',       (invoice.status ?? 'draft').charAt(0).toUpperCase() + (invoice.status ?? 'draft').slice(1)],
+      ['Due Date',     'On Receipt'],
+      ['For',          'Delivery Services'],
     ]
     const metaColW = W / metaItems.length
 

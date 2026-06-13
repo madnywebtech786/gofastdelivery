@@ -5,11 +5,6 @@ import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { AlertCircle, ArrowRight, Eye, EyeOff, Shield, BarChart2, Users, Package } from 'lucide-react'
 
-const ROLE_DASHBOARDS = {
-  admin:    '/admin/dashboard',
-  driver:   '/driver/home',
-  customer: '/customer/overview',
-}
 
 function useCountUp(target, duration = 1800, start = false) {
   const [val, setVal] = useState(0)
@@ -99,11 +94,12 @@ export default function AdminLoginPage() {
       const res  = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, portal: 'admin' }),
       })
       const data = await res.json()
       if (!res.ok) { setError(data.error || 'Access denied.'); return }
-      router.replace(ROLE_DASHBOARDS[data.role] ?? '/admin_login')
+      setEmail(''); setPassword('')
+      router.replace(data.redirect)
     } catch {
       setError('Network error. Please try again.')
     } finally {

@@ -290,11 +290,11 @@ export default function Navbar() {
                 Login
               </Link>
               <Link
-                href="/book"
+                href="/register"
                 className="px-4 py-1.5 text-[12px] font-bold rounded-lg text-white transition-opacity hover:opacity-90 shadow-sm"
                 style={{ background: 'var(--brand-green)' }}
               >
-                Book Delivery
+                Get Started
               </Link>
             </div>
 
@@ -437,12 +437,12 @@ export default function Navbar() {
             </span>
           </div>
           <Link
-            href="/book"
+            href="/register"
             onClick={closeDrawer}
             className="w-full py-3 text-center text-sm font-black rounded-2xl text-white"
             style={{ background: 'linear-gradient(135deg, #1bb908, #15960a)', boxShadow: '0 4px 16px rgba(27,185,8,0.3)' }}
           >
-            Book Delivery
+            Create Account
           </Link>
           <Link
             href="/login"

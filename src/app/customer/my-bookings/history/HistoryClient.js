@@ -3,6 +3,7 @@
 import { useState, useMemo } from 'react'
 import Link from 'next/link'
 import Badge from '@/components/ui/Badge'
+import DatePicker from '@/components/ui/DatePicker'
 import {
   Search, PackageOpen, MapPin, ArrowRight,
   ChevronLeft, ChevronRight, X, Filter,
@@ -18,35 +19,49 @@ const STATUS_FILTERS = [
 ]
 
 function formatDate(d) {
-  return new Date(d).toLocaleDateString('en-PK', {
+  return new Date(d).toLocaleDateString('en-CA', {
     day: 'numeric', month: 'short', year: 'numeric',
   })
 }
 
 function formatTime(d) {
-  return new Date(d).toLocaleTimeString('en-PK', { hour: '2-digit', minute: '2-digit' })
+  return new Date(d).toLocaleTimeString('en-CA', { hour: '2-digit', minute: '2-digit' })
 }
 
 export default function HistoryClient({ bookings }) {
-  const [search, setSearch] = useState('')
-  const [filter, setFilter] = useState('all')
-  const [page,   setPage]   = useState(1)
+  const [search,   setSearch]   = useState('')
+  const [filter,   setFilter]   = useState('all')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo,   setDateTo]   = useState('')
+  const [page,     setPage]     = useState(1)
 
   const counts = useMemo(() => ({
-    delivered:     bookings.filter((b) => b.status === 'delivered').length,
-    cancelled:     bookings.filter((b) => b.status === 'cancelled').length,
-    failed:        bookings.filter((b) => b.status === 'failed_pickup' || b.status === 'failed_dropoff').length,
+    delivered: bookings.filter((b) => b.status === 'delivered').length,
+    cancelled: bookings.filter((b) => b.status === 'cancelled').length,
+    failed:    bookings.filter((b) => b.status === 'failed_pickup' || b.status === 'failed_dropoff').length,
   }), [bookings])
 
   const filtered = useMemo(() => {
     let list = bookings
+
     if (filter !== 'all') {
-      if (filter === 'failed_pickup') {
-        list = list.filter((b) => b.status === 'failed_pickup' || b.status === 'failed_dropoff')
-      } else {
-        list = list.filter((b) => b.status === filter)
-      }
+      list = filter === 'failed_pickup'
+        ? list.filter((b) => b.status === 'failed_pickup' || b.status === 'failed_dropoff')
+        : list.filter((b) => b.status === filter)
     }
+
+    if (dateFrom) {
+      const from = new Date(dateFrom)
+      from.setHours(0, 0, 0, 0)
+      list = list.filter((b) => new Date(b.createdAt) >= from)
+    }
+
+    if (dateTo) {
+      const to = new Date(dateTo)
+      to.setHours(23, 59, 59, 999)
+      list = list.filter((b) => new Date(b.createdAt) <= to)
+    }
+
     if (search.trim()) {
       const q = search.toLowerCase()
       list = list.filter((b) =>
@@ -54,19 +69,27 @@ export default function HistoryClient({ bookings }) {
         b._id?.toString().includes(q)
       )
     }
+
     return list
-  }, [bookings, filter, search])
+  }, [bookings, filter, dateFrom, dateTo, search])
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
   const safePage   = Math.min(page, totalPages)
   const paged      = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)
 
+  const hasActiveFilters = filter !== 'all' || dateFrom || dateTo || search.trim()
+
   function onFilterChange(val) { setFilter(val); setPage(1) }
   function onSearch(val)       { setSearch(val); setPage(1) }
+  function onDateFrom(val)     { setDateFrom(val); setPage(1) }
+  function onDateTo(val)       { setDateTo(val); setPage(1) }
+
+  function clearAll() {
+    setFilter('all'); setDateFrom(''); setDateTo(''); setSearch(''); setPage(1)
+  }
 
   return (
     <div className="space-y-5">
-
       {/* Header */}
       <div className="flex items-start justify-between gap-4 anim-fade-up">
         <div>
@@ -84,8 +107,9 @@ export default function HistoryClient({ bookings }) {
         </div>
       </div>
 
-      {/* Filters + Search */}
+      {/* Filters */}
       <div className="bg-white rounded-2xl border border-border p-4 space-y-3 anim-fade-up s1">
+        {/* Search */}
         <div className="relative">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
             style={{ color: 'var(--fg-3)' }} />
@@ -105,37 +129,61 @@ export default function HistoryClient({ bookings }) {
           )}
         </div>
 
+        {/* Date range */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs font-medium shrink-0" style={{ color: 'var(--fg-3)' }}>Date:</span>
+          <DatePicker
+            value={dateFrom}
+            onChange={onDateFrom}
+            placeholder="From"
+            clearable
+            className="flex-1 min-w-32.5"
+          />
+          <span className="text-xs shrink-0" style={{ color: 'var(--fg-3)' }}>—</span>
+          <DatePicker
+            value={dateTo}
+            onChange={onDateTo}
+            placeholder="To"
+            clearable
+            className="flex-1 min-w-32.5"
+          />
+        </div>
+
+        {/* Status pills */}
         <div className="flex items-center gap-2 flex-wrap">
           <span className="flex items-center gap-1 text-xs font-medium shrink-0" style={{ color: 'var(--fg-3)' }}>
-            <Filter size={11} /> Filter:
+            <Filter size={11} /> Status:
           </span>
           {STATUS_FILTERS.map((f) => {
-            const count = f.value === 'all' ? bookings.length
-              : f.value === 'failed_pickup' ? counts.failed
-              : f.value === 'delivered' ? counts.delivered
+            const count = f.value === 'all'       ? bookings.length
+              : f.value === 'failed_pickup'       ? counts.failed
+              : f.value === 'delivered'           ? counts.delivered
               : counts.cancelled
             return (
-              <button
-                key={f.value}
-                onClick={() => onFilterChange(f.value)}
+              <button key={f.value} onClick={() => onFilterChange(f.value)}
                 className="px-3 py-1 rounded-full text-xs font-semibold transition-all"
                 style={{
                   background: filter === f.value ? 'var(--accent)' : 'var(--surface-2)',
                   color:      filter === f.value ? '#fff' : 'var(--fg-2)',
                   border:     filter === f.value ? 'none' : '1px solid var(--border)',
-                }}
-              >
+                }}>
                 {f.label}
                 {f.value !== 'all' && <span className="ml-1 opacity-70">({count})</span>}
               </button>
             )
           })}
+          {hasActiveFilters && (
+            <button onClick={clearAll}
+              className="ml-auto flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-lg"
+              style={{ color: 'var(--danger)', background: 'var(--danger-bg)' }}>
+              <X size={11} /> Clear all
+            </button>
+          )}
         </div>
       </div>
 
       {/* Table */}
       <div className="bg-white rounded-2xl border border-border overflow-hidden anim-fade-up s2">
-
         {/* Desktop */}
         <div className="hidden md:block overflow-x-auto">
           <table className="data-table">
@@ -154,8 +202,13 @@ export default function HistoryClient({ bookings }) {
                   <td colSpan={5} className="py-16 text-center">
                     <PackageOpen size={28} className="mx-auto mb-2" style={{ color: 'var(--fg-3)' }} />
                     <p className="text-sm" style={{ color: 'var(--fg-3)' }}>
-                      {search || filter !== 'all' ? 'No bookings match your filters.' : 'No completed bookings yet.'}
+                      {hasActiveFilters ? 'No bookings match your filters.' : 'No completed bookings yet.'}
                     </p>
+                    {hasActiveFilters && (
+                      <button onClick={clearAll} className="mt-2 text-xs font-semibold" style={{ color: 'var(--accent)' }}>
+                        Clear filters
+                      </button>
+                    )}
                   </td>
                 </tr>
               ) : paged.map((b) => {
@@ -212,8 +265,13 @@ export default function HistoryClient({ bookings }) {
             <div className="py-16 text-center">
               <PackageOpen size={28} className="mx-auto mb-2" style={{ color: 'var(--fg-3)' }} />
               <p className="text-sm" style={{ color: 'var(--fg-3)' }}>
-                {search || filter !== 'all' ? 'No bookings match.' : 'No completed bookings yet.'}
+                {hasActiveFilters ? 'No bookings match.' : 'No completed bookings yet.'}
               </p>
+              {hasActiveFilters && (
+                <button onClick={clearAll} className="mt-2 text-xs font-semibold" style={{ color: 'var(--accent)' }}>
+                  Clear filters
+                </button>
+              )}
             </div>
           ) : paged.map((b) => {
             const pickup  = b.stops?.find((s) => s.type === 'pickup')
@@ -249,7 +307,7 @@ export default function HistoryClient({ bookings }) {
           })}
         </div>
 
-        {/* Pagination */}
+        {/* Pagination — hidden when all results fit on one page */}
         {totalPages > 1 && (
           <div className="px-5 py-3.5 border-t border-border flex items-center justify-between gap-4"
             style={{ background: 'var(--surface-2)' }}>

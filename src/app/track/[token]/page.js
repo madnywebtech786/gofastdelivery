@@ -126,7 +126,7 @@ export default async function TrackingPage({ params }) {
                           </span>
                         )}
                       </div>
-                      <p className={`text-sm mt-0.5 flex items-start gap-1.5 text-muted`}>
+                      <p className="text-sm mt-0.5 flex items-start gap-1.5 text-muted">
                         <MapPin size={12} strokeWidth={2} className={`mt-0.5 shrink-0 ${isPickup ? 'text-accent' : 'text-danger'}`} />
                         {stop.address}
                       </p>

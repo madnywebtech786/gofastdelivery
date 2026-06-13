@@ -210,9 +210,8 @@ export async function POST(request) {
           estimatedDistanceMeters:  null,
           estimatedDurationSeconds: null,
           newStatus:         cfg.newBookingStatus,
-          // Booking's current status was validated above; allow any of the
-          // configured from-statuses (covers failed_pickup/failed_dropoff retry).
           allowedFromStatus: booking.status,
+          kind:              a.kind,
         })
         if (assignResult.matchedCount === 0) {
           throw Object.assign(new Error(`Booking ${booking._id} status changed before assignment completed`), { status: 409 })

@@ -116,3 +116,20 @@ export async function deleteInvoice(id) {
   const db = await getDb()
   return db.collection('invoices').deleteOne({ _id: new ObjectId(id) })
 }
+
+export async function getNextInvoiceNumber() {
+  const db = await getDb()
+  // Find the highest existing INV\d+ number
+  const last = await db.collection('invoices')
+    .find({ invoiceNumber: /^INV\d+$/ })
+    .sort({ invoiceNumber: -1 })
+    .limit(1)
+    .toArray()
+
+  let next = 1
+  if (last.length > 0) {
+    const num = parseInt(last[0].invoiceNumber.replace('INV', ''), 10)
+    if (!isNaN(num)) next = num + 1
+  }
+  return `INV${String(next).padStart(3, '0')}`
+}

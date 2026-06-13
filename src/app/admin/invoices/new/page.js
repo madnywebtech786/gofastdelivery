@@ -1,26 +1,25 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
 import InvoiceForm from '../InvoiceForm'
-
-function generateInvoiceNumber() {
-  const now   = new Date()
-  const yy    = String(now.getFullYear()).slice(2)
-  const mm    = String(now.getMonth() + 1).padStart(2, '0')
-  const dd    = String(now.getDate()).padStart(2, '0')
-  const rand  = Math.floor(Math.random() * 36 ** 5)
-  const suffix = rand.toString(36).toUpperCase().padStart(5, '0')
-  return `INV-${yy}${mm}${dd}-${suffix}`
-}
+import { useToast } from '@/components/ui/Toast'
 
 export default function NewInvoicePage() {
   const router = useRouter()
-  const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState('')
-  const [invoiceNumber] = useState(generateInvoiceNumber)
+  const toast  = useToast()
+  const [submitting, setSubmitting]       = useState(false)
+  const [error, setError]                 = useState('')
+  const [invoiceNumber, setInvoiceNumber] = useState(null)
+
+  useEffect(() => {
+    fetch('/api/invoices/next-number')
+      .then(r => r.json())
+      .then(d => { setInvoiceNumber(d.invoiceNumber || 'INV001') })
+      .catch(() => { setInvoiceNumber('INV001') })
+  }, [])
 
   async function handleSubmit(data) {
     setSubmitting(true)
@@ -33,12 +32,15 @@ export default function NewInvoicePage() {
       })
       const body = await res.json()
       if (!res.ok) {
+        toast.error('Failed to create invoice', body.error || 'Please check the form and try again.')
         setError(body.error || 'Failed to create invoice')
         return
       }
+      toast.success('Invoice created!', `Invoice ${body.invoiceNumber} has been saved.`)
       router.push('/admin/invoices')
       router.refresh()
     } catch {
+      toast.error('Network error', 'Could not reach the server. Please try again.')
       setError('Network error. Please try again.')
     } finally {
       setSubmitting(false)
@@ -73,13 +75,19 @@ export default function NewInvoicePage() {
             {error}
           </p>
         )}
-        <InvoiceForm
-          initial={{ invoiceNumber }}
-          onSubmit={handleSubmit}
-          onCancel={() => router.push('/admin/invoices')}
-          submitting={submitting}
-          disableInvoiceNumber
-        />
+        {invoiceNumber === null ? (
+          <div className="py-16 text-center text-sm" style={{ color: 'var(--fg-3)' }}>
+            Loading…
+          </div>
+        ) : (
+          <InvoiceForm
+            initial={{ invoiceNumber }}
+            onSubmit={handleSubmit}
+            onCancel={() => router.push('/admin/invoices')}
+            submitting={submitting}
+            disableInvoiceNumber
+          />
+        )}
       </div>
     </div>
   )

@@ -4,9 +4,22 @@ import { findUserByEmail } from '@/lib/db/users'
 import { createSession } from '@/lib/session'
 import { checkRateLimit } from '@/lib/redis'
 
+// Which portal each role must use, and where to redirect if they use the wrong one
+const ROLE_PORTAL = {
+  admin:    { portal: 'admin',    loginPath: '/admin_login' },
+  driver:   { portal: 'driver',   loginPath: '/driver_login' },
+  customer: { portal: 'customer', loginPath: '/login' },
+}
+
+const ROLE_DASHBOARDS = {
+  admin:    '/admin/dashboard',
+  driver:   '/driver/home',
+  customer: '/customer/overview',
+}
+
 export async function POST(request) {
   try {
-    const { email, password } = await request.json()
+    const { email, password, portal } = await request.json()
 
     if (!email || !password) {
       return NextResponse.json({ error: 'Email and password are required' }, { status: 400 })
@@ -34,9 +47,17 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 })
     }
 
+    const roleConfig = ROLE_PORTAL[user.role]
+
+    // If the user authenticated successfully but from the wrong portal,
+    // do NOT create a session — just tell the client which login page to go to.
+    if (portal && roleConfig && roleConfig.portal !== portal) {
+      return NextResponse.json({ redirect: roleConfig.loginPath }, { status: 200 })
+    }
+
     await createSession(user._id, user.role)
 
-    return NextResponse.json({ role: user.role }, { status: 200 })
+    return NextResponse.json({ role: user.role, redirect: ROLE_DASHBOARDS[user.role] }, { status: 200 })
   } catch (err) {
     console.error('[POST /api/auth/login]', err)
     return NextResponse.json({ error: 'An unexpected error occurred' }, { status: 500 })

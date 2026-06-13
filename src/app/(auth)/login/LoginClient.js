@@ -6,12 +6,6 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { Mail, Lock, AlertCircle, ArrowRight, Eye, EyeOff } from 'lucide-react'
 
-const ROLE_DASHBOARDS = {
-  admin:    '/admin/dashboard',
-  driver:   '/driver/home',
-  customer: '/customer/overview',
-}
-
 const STATS = [
   { value: '8000+', label: 'Deliveries', cls: 'text-secondary' },
   { value: '99.2%', label: 'On-time',    cls: 'text-accent'    },
@@ -34,11 +28,12 @@ export default function LoginClient() {
       const res  = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, portal: 'customer' }),
       })
       const data = await res.json()
       if (!res.ok) { setError(data.error || 'Invalid credentials. Please try again.'); return }
-      router.replace(ROLE_DASHBOARDS[data.role] ?? '/login')
+      setEmail(''); setPassword('')
+      router.replace(data.redirect)
     } catch {
       setError('Network error. Please try again.')
     } finally {

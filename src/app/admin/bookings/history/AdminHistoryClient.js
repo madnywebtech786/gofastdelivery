@@ -1,10 +1,11 @@
 'use client'
 
-import { useState, useMemo, useTransition, useCallback } from 'react'
+import { useState, useRef, useTransition, useCallback } from 'react'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import Badge from '@/components/ui/Badge'
 import Select from '@/components/ui/Select'
+import DatePicker from '@/components/ui/DatePicker'
 import {
   MapPin, Clock, ChevronRight, ChevronLeft,
   PackageCheck, Search, X, Circle,
@@ -88,19 +89,25 @@ function Pagination({ page, total, pageSize, onNavigate }) {
   )
 }
 
-export default function AdminHistoryClient({ initialStatusFilter, initialPage, bookings, total, pageSize }) {
+export default function AdminHistoryClient({
+  initialStatusFilter, initialDateFrom, initialDateTo, initialSearch,
+  initialPage, bookings, total, pageSize,
+}) {
   const router       = useRouter()
   const pathname     = usePathname()
   const searchParams = useSearchParams()
   const [isPending, startTransition] = useTransition()
 
   const [statusFilter, setStatusFilter] = useState(initialStatusFilter ?? '')
-  const [search,       setSearch]       = useState('')
+  const [dateFrom,     setDateFrom]     = useState(initialDateFrom ?? '')
+  const [dateTo,       setDateTo]       = useState(initialDateTo ?? '')
+  const [search,       setSearch]       = useState(initialSearch ?? '')
+  const debounceRef = useRef(null)
 
   const buildUrl = useCallback((updates) => {
     const params = new URLSearchParams(searchParams.toString())
     for (const [k, v] of Object.entries(updates)) {
-      if (v == null || v === '' || v === '1') params.delete(k)
+      if (v == null || v === '' || v === 1 || v === '1') params.delete(k)
       else params.set(k, String(v))
     }
     if (updates.page === 1 || updates.page === '1') params.delete('page')
@@ -114,23 +121,38 @@ export default function AdminHistoryClient({ initialStatusFilter, initialPage, b
 
   function onStatusChange(next) {
     setStatusFilter(next)
-    setSearch('')
     navigateTo({ status: next, page: 1 })
+  }
+
+  function onDateFrom(val) {
+    setDateFrom(val)
+    navigateTo({ from: val, page: 1 })
+  }
+
+  function onDateTo(val) {
+    setDateTo(val)
+    navigateTo({ to: val, page: 1 })
+  }
+
+  function onSearchChange(val) {
+    setSearch(val)
+    clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => {
+      navigateTo({ search: val.trim(), page: 1 })
+    }, 400)
   }
 
   function onPageChange(p) {
     navigateTo({ page: p })
   }
 
-  const displayed = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    if (!q) return bookings
-    return bookings.filter((b) =>
-      b.stops?.some((s) => s.address?.toLowerCase().includes(q) || s.contactName?.toLowerCase().includes(q)) ||
-      b.senderEmail?.toLowerCase().includes(q) ||
-      b.receiverEmail?.toLowerCase().includes(q)
-    )
-  }, [bookings, search])
+  function clearAll() {
+    clearTimeout(debounceRef.current)
+    setStatusFilter(''); setDateFrom(''); setDateTo(''); setSearch('')
+    navigateTo({ status: '', from: '', to: '', search: '', page: 1 })
+  }
+
+  const hasActiveFilters = statusFilter || dateFrom || dateTo || search.trim()
 
   return (
     <div className="space-y-6">
@@ -159,27 +181,58 @@ export default function AdminHistoryClient({ initialStatusFilter, initialPage, b
       </div>
 
       {/* Filters */}
-      <div className="grid md:grid-cols-[260px_1fr] gap-3 anim-fade-up s1" style={{ position: 'relative', zIndex: 10 }}>
-        <Select
-          value={statusFilter}
-          onChange={onStatusChange}
-          options={STATUS_FILTER_OPTIONS}
-          placeholder="Filter by status"
-        />
-        <div className="relative">
-          <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--fg-3)' }} />
-          <input
-            type="text"
-            placeholder="Search by address, name or email on this page…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-border bg-white text-sm focus:outline-none focus:ring-2 focus:border-transparent transition-all"
-            style={{ '--tw-ring-color': 'var(--accent-glow)', color: 'var(--fg)' }}
+      <div className="bg-white rounded-2xl border border-border p-4 space-y-3 anim-fade-up s1" style={{ position: 'relative', zIndex: 10 }}>
+
+        {/* Row 1: search + status */}
+        <div className="grid md:grid-cols-[1fr_220px] gap-3">
+          <div className="relative">
+            <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--fg-3)' }} />
+            <input
+              type="text"
+              placeholder="Search by name, email or address…"
+              value={search}
+              onChange={(e) => onSearchChange(e.target.value)}
+              className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-border bg-white text-sm focus:outline-none focus:ring-2 focus:border-transparent transition-all"
+              style={{ '--tw-ring-color': 'var(--accent-glow)', color: 'var(--fg)' }}
+            />
+            {search && (
+              <button className="absolute right-3.5 top-1/2 -translate-y-1/2 transition-opacity hover:opacity-70"
+                style={{ color: 'var(--fg-3)' }} onClick={() => onSearchChange('')}>
+                <X size={14} />
+              </button>
+            )}
+          </div>
+          <Select
+            value={statusFilter}
+            onChange={onStatusChange}
+            options={STATUS_FILTER_OPTIONS}
+            placeholder="Filter by status"
           />
-          {search && (
-            <button className="absolute right-3.5 top-1/2 -translate-y-1/2 transition-opacity hover:opacity-70"
-              style={{ color: 'var(--fg-3)' }} onClick={() => setSearch('')}>
-              <X size={14} />
+        </div>
+
+        {/* Row 2: date range + clear */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs font-medium shrink-0" style={{ color: 'var(--fg-3)' }}>Date:</span>
+          <DatePicker
+            value={dateFrom}
+            onChange={onDateFrom}
+            placeholder="From"
+            clearable
+            className="flex-1 min-w-32"
+          />
+          <span className="text-xs shrink-0" style={{ color: 'var(--fg-3)' }}>—</span>
+          <DatePicker
+            value={dateTo}
+            onChange={onDateTo}
+            placeholder="To"
+            clearable
+            className="flex-1 min-w-32"
+          />
+          {hasActiveFilters && (
+            <button onClick={clearAll}
+              className="ml-auto flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-lg shrink-0"
+              style={{ color: 'var(--danger)', background: 'var(--danger-bg)' }}>
+              <X size={11} /> Clear all
             </button>
           )}
         </div>
@@ -202,26 +255,24 @@ export default function AdminHistoryClient({ initialStatusFilter, initialPage, b
         </div>
 
         {/* Empty state */}
-        {displayed.length === 0 ? (
+        {bookings.length === 0 ? (
           <div className="py-20 text-center">
             <div className="w-16 h-16 rounded-full mx-auto mb-4 flex items-center justify-center"
               style={{ background: 'var(--surface-2)' }}>
               <PackageCheck size={28} style={{ color: 'var(--fg-3)' }} />
             </div>
             <p className="text-sm font-medium" style={{ color: 'var(--fg-2)' }}>
-              {search ? 'No bookings match your search on this page' : 'No completed bookings yet'}
+              {hasActiveFilters ? 'No bookings match your filters' : 'No completed bookings yet'}
             </p>
-            {(search || statusFilter) && (
-              <button
-                onClick={() => { setSearch(''); onStatusChange('') }}
-                className="text-xs mt-2 font-medium" style={{ color: 'var(--accent)' }}>
+            {hasActiveFilters && (
+              <button onClick={clearAll} className="text-xs mt-2 font-medium" style={{ color: 'var(--accent)' }}>
                 Clear filters
               </button>
             )}
           </div>
         ) : (
           <div className="divide-y divide-border">
-            {displayed.map((b) => {
+            {bookings.map((b) => {
               const pickup  = b.stops?.find((s) => s.type === 'pickup')
               const dropoff = b.stops?.find((s) => s.type === 'dropoff')
               return (

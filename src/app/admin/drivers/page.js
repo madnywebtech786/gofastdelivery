@@ -2,11 +2,9 @@ import Link from 'next/link'
 import { requireAdmin } from '@/lib/dal'
 import { findAllDrivers } from '@/lib/db/drivers'
 import Button from '@/components/ui/Button'
-import { UserPlus, Bike, Car, Truck, Phone, ChevronRight } from 'lucide-react'
+import { UserPlus, Truck, Phone, ChevronRight } from 'lucide-react'
 
 export const metadata = { title: 'Drivers — Go Fast Delivery' }
-
-const VEHICLE_ICONS = { motorcycle: Bike, car: Car, van: Truck }
 
 export default async function AdminDriversPage() {
   await requireAdmin()
@@ -44,76 +42,60 @@ export default async function AdminDriversPage() {
                 <tr>
                   <th>Driver</th>
                   <th className="hidden md:table-cell">Phone</th>
-                  <th className="hidden lg:table-cell">Vehicle</th>
                   <th />
                 </tr>
               </thead>
               <tbody>
-                {drivers.map((d, i) => {
-                  const VIcon = VEHICLE_ICONS[d.driverProfile?.vehicleType] ?? Truck
-                  return (
-                    <tr key={d._id.toString()} className={`anim-fade-up s${Math.min(i + 1, 6)}`}>
-                      <td>
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0"
-                            style={{ background: 'var(--accent-dim)', color: 'var(--accent)' }}>
-                            {d.name.charAt(0).toUpperCase()}
-                          </div>
-                          <div>
-                            <p className="font-semibold text-sm" style={{ color: 'var(--fg)' }}>{d.name}</p>
-                            <p className="text-xs" style={{ color: 'var(--fg-3)' }}>{d.email}</p>
-                          </div>
+                {drivers.map((d, i) => (
+                  <tr key={d._id.toString()} className={`anim-fade-up s${Math.min(i + 1, 6)}`}>
+                    <td>
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0"
+                          style={{ background: 'var(--accent-dim)', color: 'var(--accent)' }}>
+                          {d.name.charAt(0).toUpperCase()}
                         </div>
-                      </td>
-                      <td className="hidden md:table-cell">
-                        <span className="flex items-center gap-1.5 text-xs mono" style={{ color: 'var(--fg-2)' }}>
-                          <Phone size={11} style={{ color: 'var(--fg-3)' }} />
-                          {d.phone ?? '—'}
-                        </span>
-                      </td>
-                      <td className="hidden lg:table-cell">
-                        <span className="flex items-center gap-1.5 text-xs capitalize" style={{ color: 'var(--fg-2)' }}>
-                          <VIcon size={13} style={{ color: 'var(--fg-3)' }} />
-                          {d.driverProfile?.vehicleType ?? '—'}
-                        </span>
-                      </td>
-                      <td className="text-right">
-                        <Link href={`/admin/drivers/${d._id}`}
-                          className="inline-flex items-center gap-1 text-xs font-semibold transition-colors hover:text-accent"
-                          style={{ color: 'var(--fg-3)' }}
-                        >
-                          View <ChevronRight size={12} />
-                        </Link>
-                      </td>
-                    </tr>
-                  )
-                })}
+                        <div>
+                          <p className="font-semibold text-sm" style={{ color: 'var(--fg)' }}>{d.name}</p>
+                          <p className="text-xs" style={{ color: 'var(--fg-3)' }}>{d.email}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="hidden md:table-cell">
+                      <span className="flex items-center gap-1.5 text-xs mono" style={{ color: 'var(--fg-2)' }}>
+                        <Phone size={11} style={{ color: 'var(--fg-3)' }} />
+                        {d.phone ?? '—'}
+                      </span>
+                    </td>
+                    <td className="text-right">
+                      <Link href={`/admin/drivers/${d._id}`}
+                        className="inline-flex items-center gap-1 text-xs font-semibold transition-colors hover:text-accent"
+                        style={{ color: 'var(--fg-3)' }}
+                      >
+                        View <ChevronRight size={12} />
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
 
           {/* Cards — mobile */}
           <div className="sm:hidden divide-y divide-border">
-            {drivers.map((d) => {
-              const VIcon = VEHICLE_ICONS[d.driverProfile?.vehicleType] ?? Truck
-              return (
-                <Link key={d._id.toString()} href={`/admin/drivers/${d._id}`}
-                  className="flex items-center gap-3 px-4 py-3.5 hover:bg-(--surface-2) transition-colors">
-                  <div className="w-9 h-9 rounded-full flex items-center justify-center font-bold shrink-0"
-                    style={{ background: 'var(--accent-dim)', color: 'var(--accent)' }}>
-                    {d.name.charAt(0).toUpperCase()}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold truncate" style={{ color: 'var(--fg)' }}>{d.name}</p>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <VIcon size={11} style={{ color: 'var(--fg-3)' }} />
-                      <span className="text-xs capitalize" style={{ color: 'var(--fg-3)' }}>{d.driverProfile?.vehicleType ?? '—'}</span>
-                    </div>
-                  </div>
-                  <ChevronRight size={14} style={{ color: 'var(--fg-3)' }} />
-                </Link>
-              )
-            })}
+            {drivers.map((d) => (
+              <Link key={d._id.toString()} href={`/admin/drivers/${d._id}`}
+                className="flex items-center gap-3 px-4 py-3.5 hover:bg-(--surface-2) transition-colors">
+                <div className="w-9 h-9 rounded-full flex items-center justify-center font-bold shrink-0"
+                  style={{ background: 'var(--accent-dim)', color: 'var(--accent)' }}>
+                  {d.name.charAt(0).toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold truncate" style={{ color: 'var(--fg)' }}>{d.name}</p>
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--fg-3)' }}>{d.phone ?? d.email}</p>
+                </div>
+                <ChevronRight size={14} style={{ color: 'var(--fg-3)' }} />
+              </Link>
+            ))}
           </div>
         </div>
       )}

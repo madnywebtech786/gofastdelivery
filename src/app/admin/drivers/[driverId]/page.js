@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { requireAdmin } from '@/lib/dal'
 import { findDriverById, findActiveRoute } from '@/lib/db/drivers'
-import { ArrowLeft, Mail, Phone, Truck, Clock, MapPin, CheckCircle2, Circle } from 'lucide-react'
+import { ArrowLeft, Mail, Phone, Clock, MapPin, CheckCircle2, Circle } from 'lucide-react'
 
 export const metadata = { title: 'Driver Detail — Go Fast Delivery' }
 
@@ -56,7 +56,6 @@ export default async function AdminDriverDetailPage({ params }) {
         <div className="px-5">
           <InfoRow icon={Mail}  label="Email"         value={d.email} />
           <InfoRow icon={Phone} label="Phone"         value={d.phone ?? '—'} />
-          <InfoRow icon={Truck} label="Vehicle"       value={d.driverProfile?.vehicleType ? d.driverProfile.vehicleType.charAt(0).toUpperCase() + d.driverProfile.vehicleType.slice(1) : '—'} />
           <InfoRow icon={Clock} label="Last Location" value={formatDate(d.driverProfile?.currentLocation?.updatedAt)} />
         </div>
       </div>

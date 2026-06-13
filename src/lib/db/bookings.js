@@ -61,13 +61,14 @@ export async function findBookingById(id, { customerId, driverId } = {}) {
 
 /**
  * Find a booking by its public tracking token (no auth required).
+ * Joins driver name+phone for pickup and dropoff so the tracking page can
+ * show the correct driver at each stage without exposing internal IDs.
  */
 export async function findBookingByToken(trackingToken) {
   const db = await getDb()
-  return db.collection('bookings').findOne(
+  const booking = await db.collection('bookings').findOne(
     { trackingToken },
     {
-      // Only expose safe fields to receiver — exclude sensitive internals
       projection: {
         customerId: 0,
         assignedDriverId: 0,
@@ -77,6 +78,36 @@ export async function findBookingByToken(trackingToken) {
       },
     }
   )
+  if (!booking) return null
+
+  // Collect unique driver IDs that need to be resolved
+  const driverIdSet = new Set()
+  if (booking.pickupDriverId)  driverIdSet.add(String(booking.pickupDriverId))
+  if (booking.dropoffDriverId) driverIdSet.add(String(booking.dropoffDriverId))
+
+  if (driverIdSet.size > 0) {
+    const drivers = await db.collection('users')
+      .find(
+        { _id: { $in: [...driverIdSet].map((id) => new ObjectId(id)) } },
+        { projection: { name: 1, phone: 1 } }
+      )
+      .toArray()
+
+    const driverMap = new Map(drivers.map((d) => [String(d._id), { name: d.name ?? null, phone: d.phone ?? null }]))
+
+    if (booking.pickupDriverId) {
+      booking.pickupDriver = driverMap.get(String(booking.pickupDriverId)) ?? null
+    }
+    if (booking.dropoffDriverId) {
+      booking.dropoffDriver = driverMap.get(String(booking.dropoffDriverId)) ?? null
+    }
+  }
+
+  // Remove raw ObjectId fields — only expose the resolved name/phone objects
+  delete booking.pickupDriverId
+  delete booking.dropoffDriverId
+
+  return booking
 }
 
 /**
@@ -99,35 +130,44 @@ export async function findBookingsByCustomer(customerId, { limit = 20, skip = 0,
  * List all bookings (admin), optionally filtered by status.
  * `status` may be a single status string or an array of statuses.
  */
-export async function findAllBookings({ status, hasDriver, sinceDate, limit = 50, skip = 0 } = {}) {
-  const db = await getDb()
+function buildAdminFilter({ status, hasDriver, sinceDate, untilDate, search }) {
   const filter = Array.isArray(status)
     ? (status.length > 0 ? { status: { $in: status } } : {})
     : (status ? { status } : {})
   if (hasDriver === true)  filter.assignedDriverId = { $ne: null }
   if (hasDriver === false) filter.assignedDriverId = null
-  if (sinceDate) filter.updatedAt = { $gte: sinceDate }
+  if (sinceDate || untilDate) {
+    filter.createdAt = {}
+    if (sinceDate) filter.createdAt.$gte = sinceDate
+    if (untilDate) filter.createdAt.$lte = untilDate
+  }
+  if (search) {
+    const re = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')
+    filter.$or = [
+      { senderEmail:          re },
+      { 'stops.contactName':  re },
+      { 'stops.address':      re },
+    ]
+  }
+  return filter
+}
+
+export async function findAllBookings({ status, hasDriver, sinceDate, untilDate, search, limit = 50, skip = 0 } = {}) {
+  const db = await getDb()
   return db
     .collection('bookings')
-    .find(filter)
-    .sort({ updatedAt: -1 })
+    .find(buildAdminFilter({ status, hasDriver, sinceDate, untilDate, search }))
+    .sort({ createdAt: -1 })
     .skip(skip)
     .limit(limit)
     .toArray()
 }
 
-/**
- * Count bookings (admin), optionally filtered by status.
- */
-export async function countAllBookings({ status, hasDriver, sinceDate } = {}) {
+export async function countAllBookings({ status, hasDriver, sinceDate, untilDate, search } = {}) {
   const db = await getDb()
-  const filter = Array.isArray(status)
-    ? (status.length > 0 ? { status: { $in: status } } : {})
-    : (status ? { status } : {})
-  if (hasDriver === true)  filter.assignedDriverId = { $ne: null }
-  if (hasDriver === false) filter.assignedDriverId = null
-  if (sinceDate) filter.updatedAt = { $gte: sinceDate }
-  return db.collection('bookings').countDocuments(filter)
+  return db.collection('bookings').countDocuments(
+    buildAdminFilter({ status, hasDriver, sinceDate, untilDate, search })
+  )
 }
 
 /**
@@ -170,23 +210,40 @@ export async function updateBookingStatus(id, status, { note = '', driverId, cle
 export async function assignDriverToBooking(
   bookingId,
   driverId,
-  { estimatedDistanceMeters, estimatedDurationSeconds, newStatus, allowedFromStatus } = {}
+  { estimatedDistanceMeters, estimatedDurationSeconds, newStatus, allowedFromStatus, kind } = {}
 ) {
   const db = await getDb()
   const now = new Date()
   const status = newStatus ?? 'assigned_pickup'
   const fromStatus = allowedFromStatus ?? 'pending'
+
+  const setFields = {
+    assignedDriverId: new ObjectId(driverId),
+    assignedAt: now,
+    status,
+    estimatedDistanceMeters: estimatedDistanceMeters || null,
+    estimatedDurationSeconds: estimatedDurationSeconds || null,
+    updatedAt: now,
+  }
+
+  // Track which driver handles each stage so the tracking page shows the right
+  // person at pickup vs drop-off, including split-driver orders.
+  // pickup_only    → only pickupDriverId (dropoffDriverId set later when delivery assigned)
+  // pickup_and_dropoff → both fields, same driver
+  // delivery_only  → only dropoffDriverId
+  if (kind === 'pickup_only') {
+    setFields.pickupDriverId = new ObjectId(driverId)
+  } else if (kind === 'pickup_and_dropoff') {
+    setFields.pickupDriverId  = new ObjectId(driverId)
+    setFields.dropoffDriverId = new ObjectId(driverId)
+  } else if (kind === 'delivery_only') {
+    setFields.dropoffDriverId = new ObjectId(driverId)
+  }
+
   return db.collection('bookings').updateOne(
     { _id: new ObjectId(bookingId), status: fromStatus },
     {
-      $set: {
-        assignedDriverId: new ObjectId(driverId),
-        assignedAt: now,
-        status,
-        estimatedDistanceMeters: estimatedDistanceMeters || null,
-        estimatedDurationSeconds: estimatedDurationSeconds || null,
-        updatedAt: now,
-      },
+      $set: setFields,
       $push: { statusHistory: { status, timestamp: now, note: 'Driver assigned' } },
     }
   )

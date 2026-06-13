@@ -5,11 +5,6 @@ import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { AlertCircle, ArrowRight, Eye, EyeOff, Truck, Navigation, Clock } from 'lucide-react'
 
-const ROLE_DASHBOARDS = {
-  admin:    '/admin/dashboard',
-  driver:   '/driver/home',
-  customer: '/customer/overview',
-}
 
 const STREAKS = [
   { top: '12%', w: '45%', delay: '0s',   dur: '2.8s', op: 0.18 },
@@ -46,11 +41,12 @@ export default function DriverLoginPage() {
       const res  = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, portal: 'driver' }),
       })
       const data = await res.json()
       if (!res.ok) { setError(data.error || 'Invalid credentials.'); return }
-      router.replace(ROLE_DASHBOARDS[data.role] ?? '/driver_login')
+      setEmail(''); setPassword('')
+      router.replace(data.redirect)
     } catch {
       setError('Network error. Please try again.')
     } finally {

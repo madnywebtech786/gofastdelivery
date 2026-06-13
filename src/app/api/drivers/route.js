@@ -31,15 +31,10 @@ export async function POST(request) {
   try {
     await requireAdmin()
 
-    const { name, email, phone, vehicleType } = await request.json()
+    const { name, email, phone } = await request.json()
 
     if (!name || !email) {
       return NextResponse.json({ error: 'Name and email are required' }, { status: 400 })
-    }
-
-    const validVehicles = ['motorcycle', 'car', 'van']
-    if (vehicleType && !validVehicles.includes(vehicleType)) {
-      return NextResponse.json({ error: 'Invalid vehicle type' }, { status: 400 })
     }
 
     // Check email uniqueness
@@ -60,7 +55,6 @@ export async function POST(request) {
       phone: phone || null,
       role: 'driver',
       driverProfile: {
-        vehicleType: vehicleType ?? 'motorcycle',
         isOnDuty: false,
         currentLocation: null,
         activeAssignmentId: null,

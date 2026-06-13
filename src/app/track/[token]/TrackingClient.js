@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import BookingStatusListener from '@/components/realtime/BookingStatusListener'
 import OnlineIndicator from '@/components/ui/OnlineIndicator'
+import { User, Phone } from 'lucide-react'
 
 /* ── Brand-aligned status palette ───────────────────────────────────── */
 const STATUS_STYLES = {
@@ -238,6 +239,10 @@ export default function TrackingClient({ initialBooking }) {
             >
               {[...booking.statusHistory].reverse().map((h, i) => {
                 const ss = STATUS_STYLES[h.status] ?? STATUS_STYLES.pending
+                const driver =
+                  h.status === 'assigned_pickup'   ? booking.pickupDriver  :
+                  h.status === 'assigned_delivery'  ? booking.dropoffDriver :
+                  null
                 return (
                   <li key={i} className="pl-5 relative">
                     {/* Timeline dot */}
@@ -267,6 +272,24 @@ export default function TrackingClient({ initialBooking }) {
                       <p className="text-xs mt-0.5" style={{ color: 'rgba(0,0,0,0.4)' }}>
                         {h.note}
                       </p>
+                    )}
+                    {driver && (
+                      <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1">
+                        <span className="flex items-center gap-1 text-xs font-semibold" style={{ color: 'rgba(0,0,0,0.55)' }}>
+                          <User size={11} strokeWidth={2.5} style={{ color: '#ff580d', flexShrink: 0 }} />
+                          {driver.name}
+                        </span>
+                        {driver.phone && (
+                          <a
+                            href={`tel:${driver.phone}`}
+                            className="flex items-center gap-1 text-xs font-semibold"
+                            style={{ color: 'rgba(0,0,0,0.55)' }}
+                          >
+                            <Phone size={11} strokeWidth={2.5} style={{ color: '#ff580d', flexShrink: 0 }} />
+                            {driver.phone}
+                          </a>
+                        )}
+                      </div>
                     )}
                   </li>
                 )

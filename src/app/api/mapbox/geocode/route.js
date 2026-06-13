@@ -5,7 +5,7 @@ import redis from '@/lib/redis'
 import { checkBudget, MapboxBudgetError } from '@/lib/mapbox-budget'
 import { checkRateLimit } from '@/lib/redis'
 
-const GEOCODE_LIMIT  = 20  // per caller per hour
+const GEOCODE_LIMIT  = 40  // per caller per hour
 const GEOCODE_WINDOW = 3600
 
 const MAPBOX_API = 'https://api.mapbox.com'

@@ -38,7 +38,7 @@ const CONTACT_INFO = [
 ]
 
 const QUICK_OPTIONS = [
-  { icon: Zap,          label: 'Book a Delivery',  desc: 'Ready to ship? Create your first order in 2 minutes.',         href: '/book',            accent: '#1bb908' },
+  { icon: Zap,          label: 'Create Account',   desc: 'Sign up and start booking deliveries in minutes.',              href: '/register',        accent: '#1bb908' },
   { icon: MessageSquare, label: 'General Enquiry', desc: 'Questions about our service, coverage, or pricing.',            href: null,               accent: '#ff580d' },
   { icon: Building2,    label: 'Business Account', desc: 'Set up a recurring delivery account for your business.',        href: '/services/business-delivery', accent: '#ff580d' },
   { icon: Clock,        label: 'Track a Package',  desc: 'Already booked? Enter your tracking number to see live status.', href: '/track',          accent: '#1bb908' },
@@ -430,11 +430,11 @@ export default function ContactPage() {
               </p>
             </div>
             <Link
-              href="/book"
+              href="/register"
               className="inline-flex items-center gap-2 px-7 py-3.5 rounded-2xl text-white font-black text-sm shrink-0 transition-all hover:opacity-90 cta-pulse"
               style={{ background: 'var(--brand-green)', boxShadow: '0 4px 18px rgba(27,185,8,0.35)' }}
             >
-              Book a Delivery <ArrowRight size={15} />
+              Get Started <ArrowRight size={15} />
             </Link>
           </div>
         </div>

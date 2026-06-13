@@ -5,10 +5,12 @@ import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
 import InvoiceForm from '../../InvoiceForm'
+import { useToast } from '@/components/ui/Toast'
 
 export default function EditInvoicePage() {
   const router = useRouter()
   const { id } = useParams()
+  const toast  = useToast()
 
   const [invoice, setInvoice]     = useState(null)
   const [loading, setLoading]     = useState(true)
@@ -38,12 +40,15 @@ export default function EditInvoicePage() {
       })
       const body = await res.json()
       if (!res.ok) {
+        toast.error('Failed to save invoice', body.error || 'Please check the form and try again.')
         setError(body.error || 'Failed to update invoice')
         return
       }
+      toast.success('Invoice updated!', `Invoice ${body.invoiceNumber} has been saved.`)
       router.push('/admin/invoices')
       router.refresh()
     } catch {
+      toast.error('Network error', 'Could not reach the server. Please try again.')
       setError('Network error. Please try again.')
     } finally {
       setSubmitting(false)

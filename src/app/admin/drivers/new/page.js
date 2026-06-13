@@ -4,18 +4,11 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
-import Select from '@/components/ui/Select'
 import { ArrowLeft, CheckCircle2, Copy, AlertCircle, Mail, User, Phone } from 'lucide-react'
-
-const VEHICLE_OPTIONS = [
-  { value: 'motorcycle', label: 'Motorcycle' },
-  { value: 'car',        label: 'Car' },
-  { value: 'van',        label: 'Van' },
-]
 
 export default function AddDriverPage() {
   const router = useRouter()
-  const [form, setForm] = useState({ name: '', email: '', phone: '', vehicleType: 'motorcycle' })
+  const [form, setForm] = useState({ name: '', email: '', phone: '' })
   const [loading, setLoading]             = useState(false)
   const [error, setError]                 = useState('')
   const [createdDriver, setCreatedDriver] = useState(null)
@@ -99,19 +92,16 @@ export default function AddDriverPage() {
         </div>
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
           <Input label="Full Name" name="name" type="text" required value={form.name}
-            onChange={(e) => set('name', e.target.value)} placeholder="Ahmad bin Ali"
+            onChange={(e) => set('name', e.target.value)} placeholder="Liam Thompson"
             icon={<User size={14} />} />
 
           <Input label="Email" name="email" type="email" required value={form.email}
-            onChange={(e) => set('email', e.target.value)} placeholder="driver@example.com"
+            onChange={(e) => set('email', e.target.value)} placeholder="liam.thompson@gmail.com"
             icon={<Mail size={14} />} />
 
           <Input label="Phone" name="phone" type="tel" value={form.phone}
-            onChange={(e) => set('phone', e.target.value)} placeholder="+92 3XX-XXXXXXX"
+            onChange={(e) => set('phone', e.target.value)} placeholder="403-555-0182"
             icon={<Phone size={14} />} />
-
-          <Select label="Vehicle Type" value={form.vehicleType}
-            onChange={(v) => set('vehicleType', v)} options={VEHICLE_OPTIONS} />
 
           {error && (
             <div className="flex items-start gap-2 rounded-xl px-3 py-2.5 text-xs"
