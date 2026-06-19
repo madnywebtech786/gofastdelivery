@@ -7,7 +7,7 @@ import { revalidateTag } from 'next/cache'
 import redis from '@/lib/redis'
 import { ObjectId } from 'mongodb'
 
-const MAX_STOPS_PER_ROUTE = 23 // Mapbox Optimization v1 limit (24 waypoints incl. driver)
+const MAX_STOPS_PER_ROUTE = 23
 
 // kind → { allowedFromStatuses[], newBookingStatus, stopTypes[] }
 // `failed_pickup` is re-assignable the same as `pending`; `failed_dropoff`
@@ -225,23 +225,6 @@ export async function POST(request) {
         } catch { /* non-fatal */ }
       })
     )
-
-    // ── On merge: auto-trigger reroute using driver's last known GPS ──
-    // Completed stops are preserved; only pending stops get re-optimized.
-    // If no GPS known, we skip reroute — the driver's own client will reroute
-    // on next GPS tick via route:updated push.
-    if (merged) {
-      const gps = driver?.driverProfile?.currentLocation
-      if (gps && typeof gps.lat === 'number' && typeof gps.lng === 'number') {
-        try {
-          // Direct internal re-optimization (avoid HTTP self-call)
-          const { reoptimizeRoute } = await import('@/lib/routing/reoptimize')
-          await reoptimizeRoute({ driverId, currentLng: gps.lng, currentLat: gps.lat })
-        } catch {
-          // Non-fatal — driver client will reroute on its own GPS update
-        }
-      }
-    }
 
     // ── Refresh Redis cache + push live update to driver ──
     try {

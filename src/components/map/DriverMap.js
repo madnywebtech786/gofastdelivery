@@ -1,12 +1,11 @@
 'use client'
 
 import { useEffect, useRef, useCallback, useState } from 'react'
-import polyline from '@mapbox/polyline'
 
 // How far off-corridor (metres) before we consider the driver off-route
 const OFF_ROUTE_THRESHOLD_M  = 300
 // How long (ms) the driver must stay off-route before we trigger a reroute
-const OFF_ROUTE_DURATION_MS  = 30000
+const OFF_ROUTE_DURATION_MS  = 15000
 // Speak when this close to the next turn (metres)
 const SPEAK_AT_M             = 150
 // Trigger arrival when driver is within this radius of the stop (metres)
@@ -99,6 +98,26 @@ function pointToSegmentM(p, a, b) {
   return haversineM(p, { lng: a.lng + t * dx, lat: a.lat + t * dy })
 }
 
+/**
+ * Decode a Polyline5-encoded string to [[lng, lat], ...] (GeoJSON order).
+ * Google Maps JS API uses precision 5 (1e5). This replaces the @mapbox/polyline
+ * import which used precision 6 (1e6).
+ */
+function decodePolyline5(encoded) {
+  const coords = []
+  let index = 0, lat = 0, lng = 0
+  while (index < encoded.length) {
+    let b, shift = 0, result = 0
+    do { b = encoded.charCodeAt(index++) - 63; result |= (b & 0x1f) << shift; shift += 5 } while (b >= 0x20)
+    lat += result & 1 ? ~(result >> 1) : result >> 1
+    shift = 0; result = 0
+    do { b = encoded.charCodeAt(index++) - 63; result |= (b & 0x1f) << shift; shift += 5 } while (b >= 0x20)
+    lng += result & 1 ? ~(result >> 1) : result >> 1
+    coords.push([lng / 1e5, lat / 1e5]) // GeoJSON order [lng, lat]
+  }
+  return coords
+}
+
 // Car arrow SVG — points UP. We rotate the outer div by heading degrees.
 const CAR_SVG = `
 <svg xmlns="http://www.w3.org/2000/svg" width="36" height="44" viewBox="0 0 36 44">
@@ -124,54 +143,58 @@ export default function DriverMap({
 }) {
   const containerRef       = useRef(null)
   const mapRef             = useRef(null)
-  const mapboxglRef        = useRef(null)
-  const markersRef         = useRef([])
-  const driverMarkerRef    = useRef(null)
+  const mapsLibRef         = useRef(null) // google.maps namespace
+  const markerLibRef       = useRef(null) // google.maps.marker namespace
+  const markersRef         = useRef([])   // AdvancedMarkerElement[]
+  const driverMarkerRef    = useRef(null) // AdvancedMarkerElement for car
+  const infoWindowRef      = useRef(null) // shared InfoWindow for stop popups
+
+  // Full-route gray polyline and active-leg blue polyline (google.maps.Polyline)
+  const fullPolylineRef    = useRef(null)
+  const activePolylineRef  = useRef(null)
 
   // Current heading in degrees (0=North). Updated from GPS heading OR computed bearing.
   const headingRef         = useRef(0)
   // Previous position — used to compute bearing when GPS heading is null
   const prevPosRef         = useRef(null)
+  // Inner div we rotate for the car marker (Google sets transform on the outer element)
+  const carInnerRef        = useRef(null)
 
   const activeStopIndexRef = useRef(activeStopIndex)
-  // Initialised directly from the prop so map init can read the GPS immediately
-  // before any useEffect has run.
   const driverPosRef       = useRef(driverPos)
   const routeRef           = useRef(route)
   const onStepUpdateRef    = useRef(onStepUpdate)
   const onRerouteRef       = useRef(onReroute)
+  const onArrivalRef       = useRef(onArrival)
   const driverIdRef        = useRef(driverId)
-  const newStopIdsRef          = useRef(newStopIds)
-  // Holds the renderStopMarkers callback once it is defined below.
-  // Using a ref avoids a temporal-dead-zone ReferenceError that occurs when
-  // the useEffect dep-array is evaluated before the useCallback declaration.
-  const renderStopMarkersRef   = useRef(null)
+  const newStopIdsRef      = useRef(newStopIds)
+
+  // Ref so the newStopIds useEffect below can call renderStopMarkers before the
+  // useCallback declaration is evaluated (avoids temporal-dead-zone error).
+  const renderStopMarkersRef = useRef(null)
 
   // Turn-by-turn state
-  const stepsRef           = useRef([])   // steps for current active leg
-  // Index of the *next* upcoming step (the one we're heading toward)
-  // Tracked separately per active destination — reset on new leg fetch
+  const stepsRef           = useRef([])
   const nextStepIdxRef     = useRef(0)
-  // Last step index for which we spoke — prevents repeating the same announcement
   const lastSpokenStepRef  = useRef(-1)
 
-  // Active leg route corridor coords [[lng,lat],...] for off-route detection
+  // Active leg corridor coords [[lng,lat],...] for off-route detection
   const corridorCoordsRef  = useRef([])
-  // In-flight active-leg fetch — aborted when a newer request supersedes it
   const legAbortRef        = useRef(null)
 
   // Off-route tracking
-  const offRouteSinceRef   = useRef(null)  // timestamp when we first went off-route; null = on-route
-  const reroutingRef       = useRef(false) // prevent concurrent reroute calls
+  const offRouteSinceRef   = useRef(null)
+  const reroutingRef       = useRef(false)
 
-  // Arrival tracking — fires onArrival once per stop index, resets when active stop changes
-  const onArrivalRef       = useRef(onArrival)
-  const arrivedStopRef     = useRef(-1)    // stopIndex for which arrival was already announced
+  // Arrival tracking
+  const arrivedStopRef     = useRef(-1)
+
+  // watchPosition watch ID — cleaned up on unmount
+  const watchIdRef         = useRef(null)
 
   // ── Sync refs ─────────────────────────────────────────────────────────────
   useEffect(() => {
     activeStopIndexRef.current = activeStopIndex
-    // New destination — allow arrival to fire again for the new stop
     if (arrivedStopRef.current !== -1 && arrivedStopRef.current !== activeStopIndex) {
       arrivedStopRef.current = -1
     }
@@ -184,22 +207,16 @@ export default function DriverMap({
   useEffect(() => { driverIdRef.current = driverId }, [driverId])
   useEffect(() => { newStopIdsRef.current = newStopIds }, [newStopIds])
 
-  // Re-render markers when the set of new stops changes so pulse animation
-  // appears/disappears without requiring a route change.
-  // renderStopMarkersRef is used instead of the callback directly to avoid a
-  // temporal-dead-zone ReferenceError (useCallback is a const, declared later).
+  // Re-render markers when new stop pulse set changes
   useEffect(() => {
-    const map      = mapRef.current
-    const mapboxgl = mapboxglRef.current
-    if (!map || !mapboxgl || !map.isStyleLoaded()) return
+    const map = mapRef.current
+    if (!map || !markerLibRef.current) return
     if (!renderStopMarkersRef.current) return
     const stops = routeRef.current?.optimizedStops ?? []
-    renderStopMarkersRef.current(map, stops, mapboxgl, activeStopIndexRef.current, newStopIds)
+    renderStopMarkersRef.current(map, stops, activeStopIndexRef.current, newStopIds)
   }, [newStopIds])
 
   // ── Camera follow state ───────────────────────────────────────────────────
-  // true = map auto-pans to keep driver centered (default, like Google Maps)
-  // false = driver manually panned away; tap the re-center button to re-lock
   const [followDriver, setFollowDriver] = useState(true)
   const followDriverRef = useRef(true)
 
@@ -208,42 +225,33 @@ export default function DriverMap({
   const [offRoute, setOffRoute] = useState(false)
   const [locating, setLocating] = useState(false)
 
-  // ── Gray full route ───────────────────────────────────────────────────────
+  // ── Full route gray polyline ──────────────────────────────────────────────
   const renderFullRouteGray = useCallback((map, enc) => {
-    if (!map || !enc) return
-    const coords = polyline.decode(enc, 6).map(([lat, lng]) => [lng, lat])
-    if (map.getLayer('route-full')) map.removeLayer('route-full')
-    if (map.getSource('route-full')) map.removeSource('route-full')
-    map.addSource('route-full', {
-      type: 'geojson',
-      data: { type: 'Feature', geometry: { type: 'LineString', coordinates: coords } },
-    })
-    map.addLayer({
-      id: 'route-full', type: 'line', source: 'route-full',
-      layout: { 'line-join': 'round', 'line-cap': 'round' },
-      paint: { 'line-color': '#d1d5db', 'line-width': 4, 'line-opacity': 0.8 },
+    if (!map || !enc || !mapsLibRef.current) return
+    const path = decodePolyline5(enc).map(([lng, lat]) => ({ lat, lng }))
+
+    if (fullPolylineRef.current) fullPolylineRef.current.setMap(null)
+    fullPolylineRef.current = new mapsLibRef.current.Polyline({
+      path,
+      map,
+      strokeColor:   '#d1d5db',
+      strokeWeight:  4,
+      strokeOpacity: 0.8,
     })
   }, [])
 
   // ── Active leg in blue + extract steps ───────────────────────────────────
-  // Fires ONLY when:
-  //   - driver switches to a new destination (activeStopIndex changes),
-  //   - a reroute has returned (onReroute callback),
-  //   - map first mounts.
-  // No periodic GPS-tick refetch — we drive turn-by-turn entirely from the
-  // cached `stepsRef.current` + local Haversine in updateTurnBanner.
-  //
-  // resetStepTracking=true when switching to a new destination (clears spoken state)
+  // Fires only when driver switches destination, reroutes, or map first mounts.
+  // No periodic GPS-tick refetch — turn steps are advanced locally via Haversine.
   const renderActiveLeg = useCallback(async (map, fromLng, fromLat, toStop, resetStepTracking = false) => {
-    if (!toStop || !map) return
+    if (!toStop || !map || !mapsLibRef.current) return
 
-    // Abort any in-flight request so a slower response can't overwrite a newer corridor
     legAbortRef.current?.abort()
     const ctrl = new AbortController()
     legAbortRef.current = ctrl
 
     try {
-      const res = await fetch('/api/mapbox/directions', {
+      const res = await fetch('/api/google/directions', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({
@@ -257,19 +265,18 @@ export default function DriverMap({
       const data = await res.json()
       if (!data?.geometry) return
 
-      const coords = polyline.decode(data.geometry, 6).map(([lat, lng]) => [lng, lat])
-      corridorCoordsRef.current = coords
+      // Polyline5 decode → [{ lat, lng }] for Google Maps Polyline
+      const decoded = decodePolyline5(data.geometry)
+      corridorCoordsRef.current = decoded // [[lng, lat]] for off-route Haversine
+      const path = decoded.map(([lng, lat]) => ({ lat, lng }))
 
-      if (map.getLayer('route-active')) map.removeLayer('route-active')
-      if (map.getSource('route-active')) map.removeSource('route-active')
-      map.addSource('route-active', {
-        type: 'geojson',
-        data: { type: 'Feature', geometry: { type: 'LineString', coordinates: coords } },
-      })
-      map.addLayer({
-        id: 'route-active', type: 'line', source: 'route-active',
-        layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: { 'line-color': '#2563eb', 'line-width': 6, 'line-opacity': 0.95 },
+      if (activePolylineRef.current) activePolylineRef.current.setMap(null)
+      activePolylineRef.current = new mapsLibRef.current.Polyline({
+        path,
+        map,
+        strokeColor:   '#2563eb',
+        strokeWeight:  6,
+        strokeOpacity: 0.95,
       })
 
       const steps = data.steps ?? []
@@ -303,23 +310,17 @@ export default function DriverMap({
     const steps = stepsRef.current
     if (!steps.length) return
 
-    // Advance the pointer: if the driver has passed the current step's start
-    // location (within 30m), move to the next step.
     while (nextStepIdxRef.current < steps.length - 1) {
       const cur = steps[nextStepIdxRef.current]
       const [sLng, sLat] = cur.maneuver.location
       const distToStart = haversineM({ lng, lat }, { lng: sLng, lat: sLat })
-      // We've moved past this step's maneuver point — advance
       if (distToStart < 30) {
         nextStepIdxRef.current++
-        // When we advance past a step, clear its spoken record so the next step
-        // can be announced fresh
         if (lastSpokenStepRef.current === nextStepIdxRef.current - 1) {
           lastSpokenStepRef.current = nextStepIdxRef.current - 1
         }
         break
       }
-      // Not yet past this step's start — stop advancing
       break
     }
 
@@ -327,7 +328,6 @@ export default function DriverMap({
     const step = steps[idx]
     if (!step) return
 
-    // Distance from driver to this step's maneuver point
     const [sLng, sLat] = step.maneuver.location
     const distToTurn = haversineM({ lng, lat }, { lng: sLng, lat: sLat })
 
@@ -337,7 +337,6 @@ export default function DriverMap({
       distance:    formatDist(distToTurn),
     })
 
-    // Speak once when within SPEAK_AT_M of the next turn
     if (distToTurn <= SPEAK_AT_M && idx !== lastSpokenStepRef.current) {
       lastSpokenStepRef.current = idx
       onStepUpdateRef.current?.(step, distToTurn)
@@ -348,18 +347,19 @@ export default function DriverMap({
   const handleUseCurrentLocation = useCallback(() => {
     const pos = driverPosRef.current
     if (pos && mapRef.current) {
-      mapRef.current.easeTo({ center: [pos.lng, pos.lat], zoom: 15, duration: 600 })
+      mapRef.current.panTo({ lat: pos.lat, lng: pos.lng })
+      mapRef.current.setZoom(15)
       followDriverRef.current = true
       setFollowDriver(true)
       return
     }
-    // Fallback: no cached GPS yet — ask the browser directly
     if (!navigator.geolocation || !mapRef.current) return
     setLocating(true)
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const { longitude: lng, latitude: lat } = pos.coords
-        mapRef.current?.easeTo({ center: [lng, lat], zoom: 15, duration: 600 })
+      (p) => {
+        const { longitude: lng, latitude: lat } = p.coords
+        mapRef.current?.panTo({ lat, lng })
+        mapRef.current?.setZoom(15)
         followDriverRef.current = true
         setFollowDriver(true)
         setLocating(false)
@@ -368,7 +368,7 @@ export default function DriverMap({
         console.warn('Geolocation permission denied')
         setLocating(false)
       },
-      { enableHighAccuracy: true, timeout: 8000 }
+      { enableHighAccuracy: true, timeout: 8000 },
     )
   }, [])
 
@@ -384,7 +384,6 @@ export default function DriverMap({
         offRouteSinceRef.current = Date.now()
         setOffRoute(true)
       } else if (Date.now() - offRouteSinceRef.current >= OFF_ROUTE_DURATION_MS) {
-        // Driver has been off-route for too long — trigger server reroute
         reroutingRef.current = true
         offRouteSinceRef.current = null
         setOffRoute(false)
@@ -407,7 +406,6 @@ export default function DriverMap({
         }
       }
     } else {
-      // Back on route
       if (offRouteSinceRef.current !== null) {
         offRouteSinceRef.current = null
         setOffRoute(false)
@@ -415,14 +413,8 @@ export default function DriverMap({
     }
   }, [])
 
-  // ── Create/update driver car marker with heading ──────────────────────────
-  // IMPORTANT: Mapbox sets its own transform on the marker's root element to
-  // position it on screen. We must NOT touch that element's transform.
-  // Instead we rotate an inner wrapper div that holds only the SVG.
-  const carInnerRef = useRef(null)
-
-  const updateDriverMarker = useCallback((map, mapboxgl, lng, lat, gpsHeading) => {
-    // Use GPS heading if available; otherwise compute bearing from movement
+  // ── Driver car marker with heading ────────────────────────────────────────
+  const updateDriverMarker = useCallback((map, lng, lat, gpsHeading) => {
     let deg = headingRef.current
     if (gpsHeading != null && !isNaN(gpsHeading)) {
       deg = gpsHeading
@@ -437,21 +429,19 @@ export default function DriverMap({
     prevPosRef.current = { lng, lat }
 
     if (driverMarkerRef.current) {
-      driverMarkerRef.current.setLngLat([lng, lat])
-      // Rotate only the inner SVG wrapper — never the marker root element
+      driverMarkerRef.current.position = { lat, lng }
       if (carInnerRef.current) {
         carInnerRef.current.style.transform = `rotate(${deg}deg)`
       }
       return
     }
 
-    // Outer div: sized to marker. Mapbox sets 'translate' on this element to
-    // position the marker on screen. Adding a CSS transition here smooths the
-    // jump between GPS ticks without any extra API calls.
+    // AdvancedMarkerElement uses a DOM element as content.
+    // Outer div: the element Google positions on screen. Adding a CSS transition
+    // here smooths the jump between GPS ticks.
     const el = document.createElement('div')
-    el.style.cssText = 'width:36px;height:44px;cursor:pointer;transition:translate 0.4s linear;'
+    el.style.cssText = 'width:36px;height:44px;cursor:pointer;'
 
-    // Inner div: this is what we rotate
     const inner = document.createElement('div')
     inner.style.cssText = `
       width:36px;height:44px;
@@ -463,26 +453,35 @@ export default function DriverMap({
     el.appendChild(inner)
     carInnerRef.current = inner
 
-    driverMarkerRef.current = new mapboxgl.Marker({ element: el, anchor: 'center' })
-      .setLngLat([lng, lat])
-      .addTo(map)
+    const { AdvancedMarkerElement } = markerLibRef.current
+    driverMarkerRef.current = new AdvancedMarkerElement({
+      map,
+      position: { lat, lng },
+      content:  el,
+    })
   }, [])
 
   // ── Stop markers ─────────────────────────────────────────────────────────
-  const renderStopMarkers = useCallback((map, stops, mapboxgl, currentIndex, pulseIds) => {
-    markersRef.current.forEach((m) => m.remove())
+  const renderStopMarkers = useCallback((map, stops, currentIndex, pulseIds) => {
+    const { AdvancedMarkerElement } = markerLibRef.current ?? {}
+    if (!AdvancedMarkerElement) return
+
+    // Remove previous markers
+    markersRef.current.forEach((m) => { m.map = null })
     markersRef.current = []
 
+    if (!infoWindowRef.current && mapsLibRef.current) {
+      infoWindowRef.current = new mapsLibRef.current.InfoWindow()
+    }
+
     stops.forEach((stop, i) => {
-      const done   = i < currentIndex
-      const active = i === currentIndex
+      const done       = i < currentIndex
+      const active     = i === currentIndex
       const isEndpoint = stop.stopType === 'endpoint'
-      const isNew  = !done && !!pulseIds && stop.bookingId && pulseIds.has(String(stop.bookingId))
+      const isNew      = !done && !!pulseIds && stop.bookingId && pulseIds.has(String(stop.bookingId))
 
-      // Endpoint → "E", completed → checkmark, others → 1-based position
-      let label = done ? '✓' : isEndpoint ? 'E' : String(i + 1)
+      const label = done ? '✓' : isEndpoint ? 'E' : String(i + 1)
 
-      // Determine color: gray if done, blue if active, endpoint is purple, pickup is green, dropoff is red
       let bgColor
       if (done) bgColor = '#9ca3af'
       else if (active) bgColor = '#2563eb'
@@ -498,159 +497,182 @@ export default function DriverMap({
         display:flex;align-items:center;justify-content:center;
         box-shadow:${baseShadow};
         border:2px solid #fff;opacity:${done ? 0.5 : 1};
+        cursor:pointer;
         ${isNew ? 'animation:driverMapPulse 1s ease-out infinite;' : ''}
       `
       el.textContent = label
 
-      const stopTypeLabel = stop.stopType === 'endpoint' ? '🟣 End Point' : stop.stopType === 'pickup' ? '🟢 Pickup' : '🔴 Drop-off'
+      const marker = new AdvancedMarkerElement({
+        map,
+        position: { lat: stop.coordinates.lat, lng: stop.coordinates.lng },
+        content:  el,
+      })
 
-      const marker = new mapboxgl.Marker({ element: el })
-        .setLngLat([stop.coordinates.lng, stop.coordinates.lat])
-        .setPopup(new mapboxgl.Popup({ offset: 20, closeButton: false }).setHTML(
+      // Show popup on click via shared InfoWindow
+      const stopTypeLabel = stop.stopType === 'endpoint' ? '🟣 End Point'
+        : stop.stopType === 'pickup' ? '🟢 Pickup' : '🔴 Drop-off'
+      marker.addListener('click', () => {
+        infoWindowRef.current.setContent(
           `<div style="font-size:12px;font-weight:600">${stopTypeLabel}${isNew ? ' <span style="color:#d97706">• NEW</span>' : ''}</div>
            <div style="font-size:11px;color:#555;margin-top:2px">${stop.address}</div>`
-        ))
-        .addTo(map)
+        )
+        infoWindowRef.current.open({ anchor: marker, map })
+      })
+
       markersRef.current.push(marker)
     })
   }, [])
-  // Keep the ref in sync so the early useEffect (above the declaration) can
-  // call through the ref without hitting a temporal dead zone.
   renderStopMarkersRef.current = renderStopMarkers
 
   // ── Map init ──────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!route) return
-    let map
+    let destroyed = false
 
-    import('mapbox-gl').then((mod) => {
-      const mapboxgl = mod.default
-      mapboxglRef.current = mapboxgl
-      const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN
-      if (!token || !containerRef.current) return
+    ;(async () => {
+      try {
+        const { Loader } = await import('@googlemaps/js-api-loader')
+        const loader = new Loader({
+          apiKey:    process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY,
+          version:   'weekly',
+          libraries: ['maps', 'marker'],
+        })
 
-      mapboxgl.accessToken = token
+        const mapsLib   = await loader.importLibrary('maps')
+        const markerLib = await loader.importLibrary('marker')
+        if (destroyed || !containerRef.current) return
 
-      const idx        = activeStopIndexRef.current
-      const stops      = route.optimizedStops ?? []
-      const activeStop = stops[idx] ?? stops[0]
+        mapsLibRef.current  = mapsLib
+        markerLibRef.current = markerLib
 
-      // Centre on driver GPS first — fall back to first stop if GPS not yet resolved
-      const initPos = driverPosRef.current
-      const initCenter = initPos
-        ? [initPos.lng, initPos.lat]
-        : activeStop
-          ? [activeStop.coordinates.lng, activeStop.coordinates.lat]
-          : [74.2010, 32.6420]
+        const { Map } = mapsLib
 
-      map = new mapboxgl.Map({
-        container: containerRef.current,
-        style: 'mapbox://styles/mapbox/streets-v12',
-        center: initCenter,
-        zoom: 15,
-      })
-      mapRef.current = map
+        const idx        = activeStopIndexRef.current
+        const stops      = route.optimizedStops ?? []
+        const activeStop = stops[idx] ?? stops[0]
+        const initPos    = driverPosRef.current
+        const initCenter = initPos
+          ? { lat: initPos.lat, lng: initPos.lng }
+          : activeStop
+            ? { lat: activeStop.coordinates.lat, lng: activeStop.coordinates.lng }
+            : { lat: 32.6420, lng: 74.2010 }
 
-      const geolocate = new mapboxgl.GeolocateControl({
-        positionOptions: { enableHighAccuracy: true },
-        trackUserLocation: true,
-        showUserHeading: true,   // shows the blue heading arc
-        showUserLocation: true,  // shows the native blue dot (we keep our car marker too)
-      })
-      // Place above the bottom sheet — bottom-right with CSS offset via mapboxgl-ctrl-bottom-right
-      map.addControl(geolocate, 'top-right')
-      map.addControl(new mapboxgl.NavigationControl({ showCompass: true }), 'top-right')
+        const map = new Map(containerRef.current, {
+          center:           initCenter,
+          zoom:             15,
+          mapId:            process.env.NEXT_PUBLIC_GOOGLE_MAPS_ID ?? 'DEMO_MAP_ID',
+          disableDefaultUI: true,
+          zoomControl:      false, // driver doesn't need zoom controls
+          gestureHandling:  'greedy', // single-finger pan on mobile
+        })
+        mapRef.current = map
 
-      map.on('load', () => {
-        const i    = activeStopIndexRef.current
-        const stps = routeRef.current?.optimizedStops ?? []
-        renderStopMarkers(map, stps, mapboxgl, i, newStopIdsRef.current)
-        renderFullRouteGray(map, routeRef.current?.encodedPolyline)
+        // Unlock follow mode when driver manually drags the map
+        map.addListener('dragstart', () => {
+          if (followDriverRef.current) {
+            followDriverRef.current = false
+            setFollowDriver(false)
+          }
+        })
 
-        const pos      = driverPosRef.current
-        const nextStop = stps[i]
+        // Render initial state
+        renderStopMarkers(map, stops, idx, newStopIdsRef.current)
+        renderFullRouteGray(map, route.encodedPolyline)
+
+        const nextStop = stops[idx]
         if (nextStop) {
+          const pos     = initPos
           const fromLng = pos?.lng ?? nextStop.coordinates.lng
           const fromLat = pos?.lat ?? nextStop.coordinates.lat
-          if (pos) updateDriverMarker(map, mapboxgl, fromLng, fromLat, null)
+          if (pos) updateDriverMarker(map, fromLng, fromLat, null)
           renderActiveLeg(map, fromLng, fromLat, nextStop, true)
         }
 
-        geolocate.trigger()
-      })
+        // Direct watchPosition — fires at the raw browser GPS tick rate with no wrapper.
+        // This fixes the three GeolocateControl issues: delayed turns, drifting marker,
+        // failed auto-centering.
+        watchIdRef.current = navigator.geolocation.watchPosition(
+          (pos) => {
+            if (destroyed) return
+            const { longitude: lng, latitude: lat, heading } = pos.coords
+            driverPosRef.current = { lng, lat }
 
-      // Unlock follow mode when the driver manually drags the map
-      map.on('dragstart', () => {
-        if (followDriverRef.current) {
-          followDriverRef.current = false
-          setFollowDriver(false)
-        }
-      })
+            updateDriverMarker(map, lng, lat, heading)
+            updateTurnBanner(lng, lat)
+            checkOffRoute(lng, lat)
 
-      // GPS tick handler: purely LOCAL updates (car marker + turn banner + off-route timer).
-      // No Mapbox Directions refetch here — the step list cached on the first render
-      // is authoritative; updateTurnBanner advances through it using Haversine.
-      // The off-route detector will trigger a full /reroute when the driver genuinely
-      // leaves the corridor, which is the only path that produces a new Directions call.
-      geolocate.on('geolocate', (e) => {
-        const { longitude: lng, latitude: lat, heading } = e.coords
-        driverPosRef.current = { lng, lat }
+            // Arrival detection
+            const aidx       = activeStopIndexRef.current
+            const activeStop = routeRef.current?.optimizedStops?.[aidx]
+            if (
+              activeStop &&
+              activeStop.stopType !== 'endpoint' &&
+              !activeStop.completedAt &&
+              arrivedStopRef.current !== aidx
+            ) {
+              const dist = haversineM({ lat, lng }, {
+                lat: activeStop.coordinates.lat,
+                lng: activeStop.coordinates.lng,
+              })
+              if (dist <= ARRIVAL_RADIUS_M) {
+                arrivedStopRef.current = aidx
+                onArrivalRef.current?.(aidx)
+              }
+            }
 
-        updateDriverMarker(map, mapboxgl, lng, lat, heading)
-        updateTurnBanner(lng, lat)
-        checkOffRoute(lng, lat)
-
-        // Arrival detection — announce once when driver enters ARRIVAL_RADIUS_M of the active stop
-        const idx         = activeStopIndexRef.current
-        const activeStop  = routeRef.current?.optimizedStops?.[idx]
-        if (
-          activeStop &&
-          activeStop.stopType !== 'endpoint' &&
-          !activeStop.completedAt &&
-          arrivedStopRef.current !== idx
-        ) {
-          const dist = haversineM({ lat, lng }, { lat: activeStop.coordinates.lat, lng: activeStop.coordinates.lng })
-          if (dist <= ARRIVAL_RADIUS_M) {
-            arrivedStopRef.current = idx
-            onArrivalRef.current?.(idx)
-          }
-        }
-
-        // Auto-pan to keep driver centered when follow is locked
-        if (followDriverRef.current) {
-          map.easeTo({ center: [lng, lat], duration: 300, easing: (t) => t })
-        }
-      })
-    })
+            // Auto-pan to keep driver centered when follow is locked
+            if (followDriverRef.current) {
+              map.panTo({ lat, lng })
+            }
+          },
+          (err) => {
+            console.warn('[DriverMap] watchPosition error:', err)
+          },
+          { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 },
+        )
+      } catch (err) {
+        console.error('[DriverMap] Google Maps init failed:', err)
+      }
+    })()
 
     return () => {
+      destroyed = true
       legAbortRef.current?.abort()
+      if (watchIdRef.current != null) {
+        navigator.geolocation.clearWatch(watchIdRef.current)
+        watchIdRef.current = null
+      }
+      if (fullPolylineRef.current)  { fullPolylineRef.current.setMap(null);  fullPolylineRef.current = null }
+      if (activePolylineRef.current){ activePolylineRef.current.setMap(null); activePolylineRef.current = null }
+      markersRef.current.forEach((m) => { m.map = null })
+      markersRef.current = []
       driverMarkerRef.current = null
-      map?.remove()
+      mapRef.current = null
     }
   }, []) // mount once
 
   // ── Active stop changed ───────────────────────────────────────────────────
   useEffect(() => {
-    const map      = mapRef.current
-    const mapboxgl = mapboxglRef.current
-    if (!map || !mapboxgl || !map.isStyleLoaded()) return
+    const map = mapRef.current
+    if (!map || !markerLibRef.current) return
 
-    const stops    = routeRef.current?.optimizedStops ?? []
-    renderStopMarkers(map, stops, mapboxgl, activeStopIndex, newStopIdsRef.current)
+    const stops = routeRef.current?.optimizedStops ?? []
+    renderStopMarkers(map, stops, activeStopIndex, newStopIdsRef.current)
 
     const nextStop = stops[activeStopIndex]
     if (nextStop) {
-      map.flyTo({ center: [nextStop.coordinates.lng, nextStop.coordinates.lat], zoom: 15, duration: 900 })
+      map.panTo({ lat: nextStop.coordinates.lat, lng: nextStop.coordinates.lng })
+      map.setZoom(15)
       const pos     = driverPosRef.current
       const fromLng = pos?.lng ?? nextStop.coordinates.lng
       const fromLat = pos?.lat ?? nextStop.coordinates.lat
-      // New destination — reset step tracking
       renderActiveLeg(map, fromLng, fromLat, nextStop, true)
     } else {
       setBanner(null)
-      if (map.getLayer('route-active')) map.removeLayer('route-active')
-      if (map.getSource('route-active')) map.removeSource('route-active')
+      if (activePolylineRef.current) {
+        activePolylineRef.current.setMap(null)
+        activePolylineRef.current = null
+      }
     }
   }, [activeStopIndex])
 
@@ -697,17 +719,17 @@ export default function DriverMap({
       )}
 
       {/* ── Re-centre / follow-lock button ─────────────────────────────────
-           Blue filled  = following (locked)  — tap to snap back to driver
-           White        = unlocked (driver panned away) — tap to re-lock     */}
+           Blue filled = following — tap to snap back
+           White       = unlocked — tap to re-lock                          */}
       <button
         onClick={handleUseCurrentLocation}
         disabled={locating}
         title={followDriver ? 'Following your location' : 'Re-centre on my location'}
         className="absolute bottom-4 left-3 z-30 w-11 h-11 rounded-full shadow-lg border flex items-center justify-center transition disabled:opacity-50 disabled:cursor-not-allowed"
         style={{
-          background:   followDriver ? '#2563eb' : '#ffffff',
-          borderColor:  followDriver ? '#1d4ed8' : '#d1d5db',
-          color:        followDriver ? '#ffffff'  : '#2563eb',
+          background:  followDriver ? '#2563eb' : '#ffffff',
+          borderColor: followDriver ? '#1d4ed8' : '#d1d5db',
+          color:       followDriver ? '#ffffff'  : '#2563eb',
         }}
       >
         {locating ? (

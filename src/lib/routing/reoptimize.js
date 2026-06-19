@@ -1,16 +1,16 @@
 import { findActiveRoute, updateRoute } from '@/lib/db/drivers'
 import { pushRouteUpdate } from '@/lib/pusher'
 import redis from '@/lib/redis'
-import { checkBudget, MapboxBudgetError } from '@/lib/mapbox-budget'
+import { checkBudget, GoogleBudgetError } from '@/lib/google-budget'
 import { hydrateRouteItems } from './hydrate'
 
-const MAPBOX_API = 'https://api.mapbox.com'
+const ROUTES_API = 'https://routes.googleapis.com/directions/v2:computeRoutes'
 const ORS_API    = 'https://api.openrouteservice.org/optimization'
 
-function getToken() {
-  const token = process.env.MAPBOX_SECRET_TOKEN
-  if (!token) throw new Error('MAPBOX_SECRET_TOKEN not set')
-  return token
+function getGoogleKey() {
+  const key = process.env.GOOGLE_MAPS_SERVER_KEY
+  if (!key) throw new Error('GOOGLE_MAPS_SERVER_KEY not set')
+  return key
 }
 
 function getOrsKey() {
@@ -126,25 +126,62 @@ async function orsOptimizeOrder(driverLat, driverLng, stops, endPoint = null) {
 
 async function getDirectionsPolyline(coords) {
   await checkBudget('directions')
-  const token = getToken()
-  const coordStr = coords.map((c) => `${c.lng},${c.lat}`).join(';')
-  const url = new URL(`${MAPBOX_API}/directions/v5/mapbox/driving/${coordStr}`)
-  url.searchParams.set('access_token', token)
-  url.searchParams.set('geometries', 'polyline6')
-  url.searchParams.set('overview', 'full')
-  const res = await fetch(url.toString(), { cache: 'no-store' })
-  if (!res.ok) throw new Error(`Mapbox Directions error ${res.status}`)
+  const key = getGoogleKey()
+
+  // Google Routes API (New) only supports one origin + one destination per call.
+  // For multi-stop routes (driver + N stops + optional endpoint), we use
+  // intermediates[] to thread all stops through a single request.
+  const [origin, ...rest] = coords
+  const destination = rest[rest.length - 1]
+  const intermediates = rest.slice(0, -1)
+
+  const body = {
+    origin:      { location: { latLng: { latitude: origin.lat, longitude: origin.lng } } },
+    destination: { location: { latLng: { latitude: destination.lat, longitude: destination.lng } } },
+    ...(intermediates.length > 0 ? {
+      intermediates: intermediates.map((c) => ({
+        location: { latLng: { latitude: c.lat, longitude: c.lng } },
+      })),
+    } : {}),
+    travelMode:               'DRIVE',
+    computeAlternativeRoutes: false,
+  }
+
+  const res = await fetch(ROUTES_API, {
+    method:  'POST',
+    headers: {
+      'Content-Type':     'application/json',
+      'X-Goog-Api-Key':   key,
+      // Request route-level polyline + per-leg distance/duration only.
+      // Steps are not needed here — DriverMap fetches its own per-leg directions.
+      'X-Goog-FieldMask': 'routes.polyline,routes.legs.distanceMeters,routes.legs.duration',
+    },
+    body:  JSON.stringify(body),
+    cache: 'no-store',
+  })
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    let detail = text
+    try { detail = JSON.parse(text)?.error?.message ?? text } catch { /* keep raw */ }
+    console.error('[reoptimize] Google Routes API error', res.status, detail)
+    throw new Error(`Google Routes API error ${res.status}`)
+  }
   const data = await res.json()
   if (!data.routes?.length) throw new Error('No route found')
+
   const route = data.routes[0]
-  // legs[i].duration = seconds to travel from coord[i] to coord[i+1]
-  // coords[0] is driver position, coords[1..n] are stops in order
-  // So legs[0] = driver→stop[0], legs[1] = stop[0]→stop[1], etc.
-  const legDurations = (route.legs ?? []).map((leg) => Math.round(leg.duration))
+  // Google Routes v2 returns the full route polyline at the route level (Polyline5).
+  // Per-leg duration is a string like "123s".
+  const legs = route.legs ?? []
+  const legDurations = legs.map((leg) => Math.round(parseInt(leg.duration ?? '0s', 10) || 0))
+  const distance = legs.reduce((sum, l) => sum + (l.distanceMeters ?? 0), 0)
+  const duration = legs.reduce((sum, l) => sum + (parseInt(l.duration ?? '0s', 10) || 0), 0)
+
   return {
-    encodedPolyline:  route.geometry,
-    distanceMeters:   Math.round(route.distance),
-    durationSeconds:  Math.round(route.duration),
+    encodedPolyline: route.polyline?.encodedPolyline ?? '',
+    distanceMeters:  Math.round(distance),
+    durationSeconds: Math.round(duration),
     legDurations,
   }
 }
@@ -232,10 +269,15 @@ export async function reoptimizeRoute({ driverId, currentLng, currentLat, endPoi
     durationSeconds  = dir.durationSeconds
     legDurations     = dir.legDurations ?? []
   } catch (err) {
-    if (err instanceof MapboxBudgetError) {
+    if (err instanceof GoogleBudgetError) {
       console.warn(`[reoptimize] directions budget tripped (${err.scope}) — keeping existing polyline`)
+    } else {
+      // Real API failure (denied key, API not enabled, billing). Without this
+      // log the route silently keeps a null/stale polyline and falls back to
+      // Haversine ETAs — looks "fine" but isn't. getDirectionsPolyline already
+      // logged the Google detail; this records that we degraded.
+      console.warn('[reoptimize] directions failed — keeping existing polyline, Haversine ETA fallback:', err.message)
     }
-    // Keep existing polyline on failure
   }
 
   // If Directions API failed or returned no leg durations, estimate from

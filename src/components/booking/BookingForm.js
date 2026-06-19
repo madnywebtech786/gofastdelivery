@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import Button from '@/components/ui/Button'
 import Select from '@/components/ui/Select'
 import { useToast } from '@/components/ui/Toast'
-import { forwardGeocode } from '@/lib/mapbox-geocode'
+import { placesAutocomplete, placeDetails } from '@/lib/google-geocode'
 
 const BookingMap = dynamic(() => import('@/components/map/BookingMap'), {
   ssr: false,
@@ -105,20 +105,19 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
         if (!user.buzzCode?.trim()) return
 
         // Show loading overlay as soon as the map ref is ready, then geocode
+        const sessionToken = crypto.randomUUID()
         let attempts = 0
         const tryShowThenGeocode = () => {
           if (mapRef.current?.setPlacing) {
             mapRef.current.setPlacing('pickup')
-            forwardGeocode(user.buzzCode)
-              .then((features) => {
-                if (!features.length) { mapRef.current?.setPlacing(null); return }
-                const [lng, lat] = features[0].center
-                const address = features[0].place_name ?? user.buzzCode
-                const cityCtx = features[0].context?.find(
-                  (c) => c.id?.startsWith('place.') || c.id?.startsWith('locality.')
-                )
-                const city = cityCtx?.text ?? ''
-                mapRef.current?.setPickupCoords(lng, lat, address, city)
+            placesAutocomplete(user.buzzCode, sessionToken)
+              .then((predictions) => {
+                if (!predictions.length) { mapRef.current?.setPlacing(null); return }
+                return placeDetails(predictions[0].placeId, sessionToken)
+              })
+              .then((result) => {
+                if (!result) return
+                mapRef.current?.setPickupCoords(result.lng, result.lat, result.address, '')
               })
               .catch(() => { mapRef.current?.setPlacing(null) })
           } else if (attempts < 20) {

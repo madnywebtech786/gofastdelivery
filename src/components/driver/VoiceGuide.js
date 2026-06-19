@@ -12,7 +12,7 @@ import { useImperativeHandle, forwardRef, useRef, useEffect } from 'react'
  * Exposed methods (via ref):
  *   unlock()          — call once from a user tap to unblock speech on mobile
  *   speak(text)       — speak a string; deduplicates consecutive identical strings
- *   speakStep(step)   — speak a Mapbox Directions step object (maneuver + distance)
+ *   speakStep(step)   — speak a normalized Directions step object (maneuver + distance)
  */
 const VoiceGuide = forwardRef(function VoiceGuide(_, ref) {
   const lastSpoken   = useRef(null)

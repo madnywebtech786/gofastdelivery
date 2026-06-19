@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { requireDriver, handleApiError } from '@/lib/dal'
-import { findActiveRoute, updateRoute, findDriverById } from '@/lib/db/drivers'
+import { findActiveRoute, updateRoute } from '@/lib/db/drivers'
 import { markBookingFailed } from '@/lib/db/bookings'
 import { pushBookingStatusChange, pushRouteUpdate } from '@/lib/pusher'
 import { hydrateRouteItems } from '@/lib/routing/hydrate'
@@ -109,25 +109,18 @@ export async function POST(request, { params }) {
     }
     await updateRoute(String(route._id), routeUpdateData)
 
-    // When a pickup_and_dropoff pickup fails we removed two stops at once.
-    // Re-optimize the remaining pending stops so the driver gets the shortest
-    // updated path. reoptimizeRoute reads the freshly-written route from DB,
-    // handles Redis caching, and pushes the updated route to the driver.
-    // Fall back to the normal hydrate+cache+push path if GPS is unavailable
-    // or the optimizer fails (budget exceeded, Mapbox error, etc.).
-    if (pairedDropoffCancelled && !allDone) {
-      try {
-        const driver = await findDriverById(driverId)
-        const gps = driver?.driverProfile?.currentLocation
-        if (gps && typeof gps.lat === 'number' && typeof gps.lng === 'number') {
-          const { reoptimizeRoute } = await import('@/lib/routing/reoptimize')
-          const reoptimized = await reoptimizeRoute({ driverId, currentLng: gps.lng, currentLat: gps.lat })
-          if (reoptimized) {
-            return NextResponse.json({ success: true, route: reoptimized })
-          }
-        }
-      } catch { /* non-fatal — fall through to standard path below */ }
-    }
+    // A pickup_and_dropoff pickup failure cancels two stops at once (the pickup
+    // and its paired dropoff). Both are marked completed/failed so the driver's
+    // queue skips them — no gap is left. We do NOT reoptimize server-side (no
+    // server-side GPS; driverProfile.currentLocation is always null). Instead we
+    // flag pairedDropoffCancelled so the client can reroute from its live GPS:
+    // the cancelled dropoff was a waypoint the optimizer ordered the whole route
+    // around, so its removal can make a *different* order optimal — not something
+    // off-route detection would ever catch. The client only reroutes when 2+
+    // pending stops remain (nothing to reorder otherwise).
+    const pendingCount = updatedStops.filter(
+      (s) => !s.completedAt && s.stopType !== 'endpoint',
+    ).length
 
     const finalRoute = { ...JSON.parse(JSON.stringify(route)), ...routeUpdateData }
     const hydrated = await hydrateRouteItems(finalRoute)
@@ -147,7 +140,12 @@ export async function POST(request, { params }) {
       try { await pushRouteUpdate(driverId, hydrated) } catch { /* non-fatal */ }
     }
 
-    return NextResponse.json({ success: true, route: hydrated })
+    return NextResponse.json({
+      success: true,
+      route: hydrated,
+      pairedDropoffCancelled,
+      pendingCount,
+    })
   } catch (err) {
     return handleApiError(err, '[POST /api/drivers/[driverId]/stop-failed]')
   }

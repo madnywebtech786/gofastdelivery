@@ -7,7 +7,7 @@ import Spinner from '@/components/ui/Spinner'
 import RouteUpdater from '@/components/realtime/RouteUpdater'
 import VoiceGuide from '@/components/driver/VoiceGuide'
 import { useToast } from '@/components/ui/Toast'
-import { reverseGeocode, forwardGeocode } from '@/lib/mapbox-geocode'
+import { reverseGeocode, placesAutocomplete, placeDetails } from '@/lib/google-geocode'
 import { enqueue as enqueueAction, subscribeQueue } from '@/lib/offline-queue'
 import { Search, X, MapPin, Navigation } from 'lucide-react'
 import OnlineIndicator from '@/components/ui/OnlineIndicator'
@@ -37,20 +37,37 @@ function formatETA(isoString) {
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
+// Google Maps getCenter().lng() can return an un-normalized longitude (e.g.
+// 246 instead of -114) after a large panTo that wraps across the antimeridian.
+// Every downstream consumer (Geocoding, ORS, Google Routes) rejects values
+// outside [-180, 180], so wrap it back into range at the point of capture.
+function normalizeLng(lng) {
+  let n = Number(lng)
+  if (!Number.isFinite(n)) return n
+  n = ((n + 180) % 360 + 360) % 360 - 180
+  return n
+}
+
 export default function DriverRoutePage() {
   const router = useRouter()
   const toast = useToast()
   const voiceRef    = useRef(null)
   const routeRef    = useRef(null)
   const mapRef      = useRef(null)
-  const markerRef   = useRef(null)
+  const markerRef      = useRef(null)
   const pendingRouteRef = useRef(null)
+  // Kept in a ref so handleRouteUpdate (useCallback) can always read the latest value
+  const driverIdRef    = useRef(null)
+  const driverPosRef   = useRef(null)
   const [newStopIds, setNewStopIds] = useState(new Set()) // bookingIds recently added — pulse briefly
   const [queueDepth, setQueueDepth] = useState(0)         // offline actions waiting to sync
 
   const [driverId, setDriverId] = useState(null)
   const [route, setRoute] = useState(null)
   const [driverPos, setDriverPos] = useState(null)
+  // Keep refs in sync so handleRouteUpdate closure always has fresh values
+  useEffect(() => { driverIdRef.current  = driverId  }, [driverId])
+  useEffect(() => { driverPosRef.current = driverPos }, [driverPos])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [sheetOpen, setSheetOpen] = useState(true)
@@ -76,7 +93,8 @@ export default function DriverRoutePage() {
   const searchDebounceRef  = useRef(null)
   const searchAbortRef     = useRef(null)
   const reverseAbortRef    = useRef(null)
-  const mapboxglRef = useRef(null)
+  // Session token groups autocomplete keystrokes + place details into one billing unit
+  const searchSessionRef   = useRef(crypto.randomUUID())
   async function loadRoute() {
     setLoading(true)
     setError('')
@@ -225,95 +243,90 @@ export default function DriverRoutePage() {
     }
   }, [driverId])
 
-  // Initialize Mapbox GL when modal opens.
+  // Initialize Google Maps when end-point modal opens.
   // Does NOT wait for driverPos — defaults to Calgary centre so the map always
-  // renders immediately. If GPS arrives later the map flies to the driver's position.
+  // renders immediately. If GPS is available, flies to driver position.
   useEffect(() => {
     if (endPointStep !== 'modal') return
 
-    const CALGARY = [-114.0719, 51.0447]
-    let map = null
+    const CALGARY = { lat: 51.0447, lng: -114.0719 }
     let destroyed = false
-    let moveTimeout = null
 
-    function doReverseGeocode(lng, lat, tok) {
-      reverseAbortRef.current?.abort()
-      const controller = new AbortController()
-      reverseAbortRef.current = controller
-      reverseGeocode(lng, lat, tok, controller.signal)
-        .then((result) => {
-          if (result?.address && reverseAbortRef.current === controller) {
-            setSelectedEndPoint({ lng, lat, address: result.address })
-          }
+    ;(async () => {
+      try {
+        const { Loader } = await import('@googlemaps/js-api-loader')
+        const loader = new Loader({
+          apiKey:    process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY,
+          version:   'weekly',
+          libraries: ['maps', 'marker'],
         })
-        .catch(() => {})
-    }
 
-    import('mapbox-gl').then((mod) => {
-      if (destroyed) return
-      const mapboxgl = mod.default
-      mapboxglRef.current = mapboxgl
-
-      const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN
-      if (!token) return
-
-      mapboxgl.accessToken = token
-
-      const mapContainer = document.getElementById('endpoint-map')
-      if (!mapContainer || destroyed) return
-
-      const initialCenter = driverPos
-        ? [driverPos.lng, driverPos.lat]
-        : CALGARY
-
-      map = new mapboxgl.Map({
-        container: mapContainer,
-        style: 'mapbox://styles/mapbox/streets-v12',
-        center: initialCenter,
-        zoom: 14,
-      })
-      mapRef.current = map
-
-      function initializeMapState() {
+        const mapsLib   = await loader.importLibrary('maps')
+        const markerLib = await loader.importLibrary('marker')
         if (destroyed) return
-        const { lng, lat } = map.getCenter()
-        setSelectedEndPoint({ lng, lat, address: `${lat.toFixed(4)}, ${lng.toFixed(4)}` })
-        doReverseGeocode(lng, lat, token)
 
-        map.on('move', () => {
-          clearTimeout(moveTimeout)
-          const { lng, lat } = map.getCenter()
+        const { Map } = mapsLib
+        const { AdvancedMarkerElement } = markerLib
+
+        const mapContainer = document.getElementById('endpoint-map')
+        if (!mapContainer || destroyed) return
+
+        const initialCenter = driverPos ? { lat: driverPos.lat, lng: driverPos.lng } : CALGARY
+
+        const map = new Map(mapContainer, {
+          center:           initialCenter,
+          zoom:             14,
+          mapId:            process.env.NEXT_PUBLIC_GOOGLE_MAPS_ID ?? 'DEMO_MAP_ID',
+          disableDefaultUI: true,
+          zoomControl:      true,
+          gestureHandling:  'greedy',
+        })
+        mapRef.current = map
+
+        // Seed the crosshair coordinate. We do NOT reverse-geocode here or while
+        // panning — the real street address is fetched once when the driver taps
+        // "Set End-Point" (handleConfirmEndPoint). The label shows coordinates
+        // until then. This avoids a burst of geocode calls on every pan-stop.
+        const c = map.getCenter()
+        const c0Lng = normalizeLng(c.lng())
+        const c0Lat = c.lat()
+        setSelectedEndPoint({ lng: c0Lng, lat: c0Lat, address: `${c0Lat.toFixed(4)}, ${c0Lng.toFixed(4)}` })
+
+        // Track the crosshair coordinate as the driver pans — coordinate label
+        // only, no geocode. The address is resolved on confirm.
+        map.addListener('center_changed', () => {
+          const center = map.getCenter()
+          const lng = normalizeLng(center.lng())
+          const lat = center.lat()
           setSelectedEndPoint((prev) =>
             prev?.lng === lng && prev?.lat === lat
               ? prev
               : { lng, lat, address: `${lat.toFixed(4)}, ${lng.toFixed(4)}` }
           )
-          moveTimeout = setTimeout(() => doReverseGeocode(lng, lat, token), 500)
         })
 
-        // Add driver marker if GPS is available
+        // Add blue dot at driver's GPS position if available
         if (driverPos) {
           const el = document.createElement('div')
-          el.style.cssText = 'width:24px;height:24px;background-size:contain;'
-          el.style.backgroundImage = `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%232563eb" stroke="white" stroke-width="2"><circle cx="12" cy="12" r="8"/></svg>')`
-          new mapboxgl.Marker({ element: el })
-            .setLngLat([driverPos.lng, driverPos.lat])
-            .addTo(map)
+          el.style.cssText = `
+            width:20px;height:20px;border-radius:50%;background:#2563eb;
+            border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35);
+          `
+          new AdvancedMarkerElement({
+            map,
+            position: { lat: driverPos.lat, lng: driverPos.lng },
+            content:  el,
+          })
         }
+      } catch (err) {
+        console.error('[endpoint-modal] Google Maps init failed:', err)
       }
-
-      if (map.isStyleLoaded()) {
-        initializeMapState()
-      } else {
-        map.on('load', initializeMapState)
-      }
-    })
+    })()
 
     return () => {
       destroyed = true
-      clearTimeout(moveTimeout)
       reverseAbortRef.current?.abort()
-      if (map) { map.remove(); mapRef.current = null }
+      mapRef.current = null
     }
   }, [endPointStep]) // driverPos intentionally excluded — map must render regardless of GPS
 
@@ -416,6 +429,23 @@ export default function DriverRoutePage() {
         : new Set(newlyAddedStops.map((s) => s.bookingId))
       setNewStopIds(pulseIds)
       setTimeout(() => setNewStopIds(new Set()), 3000)
+
+      // Trigger server reroute with live GPS so new stops are optimised immediately.
+      // DriverMap always has the latest GPS in driverPosRef; we mirror it here too.
+      // Non-fatal — driver already sees the new stops; natural off-route detection
+      // will reoptimise if this call fails.
+      if (mergeNotice) {
+        const pos = driverPosRef.current
+        const id  = driverIdRef.current
+        if (pos && id) {
+          fetch(`/api/drivers/${id}/reroute`, {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ currentLng: pos.lng, currentLat: pos.lat }),
+          }).catch(() => {})
+        }
+      }
+
       return
     }
 
@@ -432,7 +462,6 @@ export default function DriverRoutePage() {
   function handleSearchEndPoint(query) {
     setSearchQuery(query)
 
-    // Cancel any pending debounce and in-flight request immediately
     clearTimeout(searchDebounceRef.current)
     searchAbortRef.current?.abort()
     searchAbortRef.current = null
@@ -445,13 +474,13 @@ export default function DriverRoutePage() {
 
     setSearchLoading(true)
 
-    // Debounce: only fire after 350 ms of no typing
+    // Debounce: fire after 350ms of no typing
     searchDebounceRef.current = setTimeout(async () => {
       const controller = new AbortController()
       searchAbortRef.current = controller
       try {
-        const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN
-        const results = await forwardGeocode(query, token, controller.signal)
+        // placesAutocomplete returns [{ placeId, description }]
+        const results = await placesAutocomplete(query, searchSessionRef.current, controller.signal)
         setSearchResults(results.slice(0, 5))
       } catch (err) {
         if (err?.name !== 'AbortError') setSearchResults([])
@@ -468,49 +497,27 @@ export default function DriverRoutePage() {
     setSearchQuery('')
     setSearchResults([])
 
-    // Fly to the selected location - the crosshair will stay centered
-    if (mapRef.current) {
-      mapRef.current.flyTo({
-        center: [result.center[0], result.center[1]],
-        zoom: 16,
-        duration: 1000,
-      })
+    try {
+      // Resolve placeId → { lng, lat, address } and close the billing session
+      const place = await placeDetails(result.placeId, searchSessionRef.current)
+      // Rotate session token — next search is a new billing unit
+      searchSessionRef.current = crypto.randomUUID()
+
+      if (mapRef.current && place) {
+        mapRef.current.panTo({ lat: place.lat, lng: place.lng })
+        mapRef.current.setZoom(16)
+        // Crosshair center_changed will update selectedEndPoint automatically
+      }
+    } catch {
+      // Non-fatal — user can still pan manually
+      searchSessionRef.current = crypto.randomUUID()
     }
-  }
-
-  function makeEndPointMarkerEl() {
-    const el = document.createElement('div')
-    el.style.cssText = `
-      width:34px;height:34px;border-radius:50%;background:#7c3aed;
-      color:#fff;font-size:14px;font-weight:700;display:flex;
-      align-items:center;justify-content:center;
-      box-shadow:0 2px 6px rgba(0,0,0,.35);border:2px solid #fff;
-      cursor:pointer;user-select:none;
-    `
-    el.textContent = 'E'
-    return el
-  }
-
-  function updateMarker(lat, lng, mapboxgl) {
-    if (!mapRef.current) return
-
-    if (markerRef.current) markerRef.current.remove()
-
-    const el = makeEndPointMarkerEl()
-    const Marker = mapboxgl.Marker
-    markerRef.current = new Marker({ element: el })
-      .setLngLat([lng, lat])
-      .addTo(mapRef.current)
   }
 
   async function handleUseCurrentLocation() {
     if (driverPos && mapRef.current) {
-      // Fly to current location - the crosshair will stay centered
-      mapRef.current.flyTo({
-        center: [driverPos.lng, driverPos.lat],
-        zoom: 16,
-        duration: 1000,
-      })
+      mapRef.current.panTo({ lat: driverPos.lat, lng: driverPos.lng })
+      mapRef.current.setZoom(16)
     }
   }
 
@@ -522,16 +529,25 @@ export default function DriverRoutePage() {
     setConfirmingEndPoint(true)
     setEndPointError('')
     try {
+      // Resolve the real street address now (the only reverse geocode in this
+      // flow — we no longer geocode while panning). Fall back to the coordinate
+      // label if it fails; the endpoint is still usable either way.
+      let endPointToSave = selectedEndPoint
+      try {
+        const { address } = await reverseGeocode(selectedEndPoint.lng, selectedEndPoint.lat)
+        if (address) endPointToSave = { ...selectedEndPoint, address }
+      } catch { /* keep coordinate label */ }
+
       const res = await fetch(`/api/drivers/${driverId}/set-endpoint`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ endPoint: selectedEndPoint }),
+        body: JSON.stringify({ endPoint: endPointToSave }),
       })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
         throw new Error(data.error || 'Failed to set end-point')
       }
-      setEndPoint(selectedEndPoint)
+      setEndPoint(endPointToSave)
       setEndPointStep('ready')
     } catch (err) {
       setEndPointError(err.message || 'Failed to set end-point')
@@ -650,6 +666,33 @@ export default function DriverRoutePage() {
       setFailureReason('')
       // Return to timeline view
       setExpandedStopIndex(null)
+
+      // A failed pickup_and_dropoff pickup cancels its paired dropoff. That
+      // dropoff was a waypoint the optimizer ordered the whole route around, so
+      // removing it can make a different visit order optimal. Reroute from live
+      // GPS to re-minimise the remaining path. Only worth it with 2+ stops left.
+      // Non-fatal — the /reroute response is also pushed via Pusher, and the
+      // existing order is still valid if this fails.
+      if (data?.pairedDropoffCancelled && (data?.pendingCount ?? 0) >= 2) {
+        const pos = driverPosRef.current
+        if (pos) {
+          fetch(`/api/drivers/${driverId}/reroute`, {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ currentLng: pos.lng, currentLat: pos.lat }),
+          })
+            .then((r) => (r.ok ? r.json() : null))
+            .then((d) => {
+              const optimized = d?.route
+              if (!optimized?.optimizedStops) return
+              routeRef.current = optimized
+              setRoute(optimized)
+              const next = optimized.optimizedStops.findIndex((s) => !s.completedAt)
+              setActiveStopIndex(next === -1 ? optimized.optimizedStops.length : next)
+            })
+            .catch(() => {})
+        }
+      }
     } catch {
       toast?.error?.('Could not mark failed', 'Check your connection and try again.')
     } finally {
@@ -798,17 +841,16 @@ export default function DriverRoutePage() {
                   </svg>
                   Searching…
                 </div>
-              ) : searchResults.map((result, i) => (
+              ) : searchResults.map((result) => (
                 <button
-                  key={i}
+                  key={result.placeId}
                   onClick={() => selectSearchResult(result)}
                   className="w-full text-left px-3 py-2.5 hover:bg-gray-50 border-b border-border last:border-b-0 transition flex items-start gap-2.5"
                   style={{ color: 'var(--fg)' }}
                 >
                   <MapPin size={13} style={{ color: '#7c3aed', flexShrink: 0, marginTop: '2px' }} />
                   <div className="min-w-0">
-                    <div className="text-xs font-semibold truncate">{result.text}</div>
-                    <div className="text-[11px] mt-0.5 truncate" style={{ color: 'var(--fg-3)' }}>{result.place_name}</div>
+                    <div className="text-xs font-semibold truncate">{result.description}</div>
                   </div>
                 </button>
               ))}

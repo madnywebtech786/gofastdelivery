@@ -1,11 +1,27 @@
 'use client'
 
 import { useEffect, useRef, useState, useImperativeHandle, forwardRef } from 'react'
-import { reverseGeocode, forwardGeocode } from '@/lib/mapbox-geocode'
+import { reverseGeocode, placesAutocomplete, placeDetails } from '@/lib/google-geocode'
 import { MapPin } from 'lucide-react'
 
 const PICKUP_COLOR  = '#16a34a' // green
 const DROPOFF_COLOR = '#dc2626' // red
+
+// Generate a UUID v4 for Places session token billing grouping
+function newSessionToken() {
+  return crypto.randomUUID()
+}
+
+// Google Maps getCenter().lng() can return an un-normalized longitude (e.g. 246
+// instead of -114) after a large panTo that wraps across the antimeridian.
+// Downstream consumers (Geocoding, ORS, Routes) reject values outside
+// [-180, 180], so wrap it back into range at capture.
+function normalizeLng(lng) {
+  let n = Number(lng)
+  if (!Number.isFinite(n)) return n
+  n = ((n + 180) % 360 + 360) % 360 - 180
+  return n
+}
 
 function makeMarkerEl(color, label) {
   const el = document.createElement('div')
@@ -26,12 +42,14 @@ function makeMarkerEl(color, label) {
  * Ref handle:
  *   removeStop(index) — 0 = pickup, 1 = dropoff
  *   clearAll()        — remove both and reset search
+ *   setPickupCoords(lng, lat, address, city) — pre-seed pickup externally
+ *   setPlacing(val)   — externally control placing mode
  */
 const BookingMap = forwardRef(function BookingMap({ onStopsChange }, ref) {
   const containerRef  = useRef(null)
   const mapRef        = useRef(null)
-  const mapboxglRef   = useRef(null)
-  const tokenRef      = useRef(null)
+  const mapsLibRef    = useRef(null) // google.maps namespace
+  const markerLibRef  = useRef(null) // google.maps.marker namespace
   const pickupMarker  = useRef(null)
   const dropoffMarker = useRef(null)
 
@@ -40,13 +58,16 @@ const BookingMap = forwardRef(function BookingMap({ onStopsChange }, ref) {
   const [placing, setPlacing] = useState(null) // 'pickup' | 'dropoff' | null
 
   const [searchQuery,  setSearchQuery]  = useState('')
-  const [suggestions,  setSuggestions]  = useState([])
+  const [suggestions,  setSuggestions]  = useState([]) // [{ placeId, description }]
   const [searching,    setSearching]    = useState(false)
   const [locating,     setLocating]     = useState(false)
   const [mapActive,    setMapActive]    = useState(false) // scroll-zoom guard
 
-  const searchDebounceRef = useRef(null)
-  const searchAbortRef    = useRef(null)
+  const searchDebounceRef  = useRef(null)
+  const searchAbortRef     = useRef(null)
+  // Session token groups all autocomplete + one place-details call into 1 billing unit.
+  // A new token is generated after each confirmed selection.
+  const sessionTokenRef    = useRef(newSessionToken())
 
   // Notify parent whenever stops change
   useEffect(() => {
@@ -61,18 +82,18 @@ const BookingMap = forwardRef(function BookingMap({ onStopsChange }, ref) {
   useImperativeHandle(ref, () => ({
     removeStop(index) {
       if (index === 0) {
-        pickupMarker.current?.remove()
+        pickupMarker.current?.map && (pickupMarker.current.map = null)
         pickupMarker.current = null
         setPickup(null)
       } else {
-        dropoffMarker.current?.remove()
+        dropoffMarker.current?.map && (dropoffMarker.current.map = null)
         dropoffMarker.current = null
         setDropoff(null)
       }
     },
     clearAll() {
-      pickupMarker.current?.remove()
-      dropoffMarker.current?.remove()
+      if (pickupMarker.current)  pickupMarker.current.map  = null
+      if (dropoffMarker.current) dropoffMarker.current.map = null
       pickupMarker.current  = null
       dropoffMarker.current = null
       setPickup(null)
@@ -83,15 +104,14 @@ const BookingMap = forwardRef(function BookingMap({ onStopsChange }, ref) {
     },
     // Pre-seed pickup from an external coordinate (e.g. customer's saved address)
     setPickupCoords(lng, lat, address, city) {
-      const mapboxgl = mapboxglRef.current
       const map = mapRef.current
-      if (!mapboxgl || !map) return
-      pickupMarker.current?.remove()
+      const { AdvancedMarkerElement } = markerLibRef.current ?? {}
+      if (!map || !AdvancedMarkerElement) return
+      if (pickupMarker.current) pickupMarker.current.map = null
       const el = makeMarkerEl(PICKUP_COLOR, 'P')
-      pickupMarker.current = new mapboxgl.Marker({ element: el, draggable: false })
-        .setLngLat([lng, lat])
-        .addTo(map)
-      map.flyTo({ center: [lng, lat], zoom: 14, duration: 800 })
+      pickupMarker.current = new AdvancedMarkerElement({ map, position: { lat, lng }, content: el })
+      map.panTo({ lat, lng })
+      map.setZoom(14)
       setPickup({ lng, lat, address, city })
       setPlacing(null)
     },
@@ -102,56 +122,73 @@ const BookingMap = forwardRef(function BookingMap({ onStopsChange }, ref) {
 
   useEffect(() => {
     let map
-    import('mapbox-gl').then((mod) => {
-      const mapboxgl = mod.default
-      mapboxglRef.current = mapboxgl
+    let destroyed = false
 
-      const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN
-      if (!token) { console.error('NEXT_PUBLIC_MAPBOX_TOKEN not set'); return }
-      tokenRef.current = token
-      mapboxgl.accessToken = token
+    ;(async () => {
+      try {
+        const { Loader } = await import('@googlemaps/js-api-loader')
+        const loader = new Loader({
+          apiKey:    process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY,
+          version:   'weekly',
+          libraries: ['maps', 'marker'],
+        })
 
-      map = new mapboxgl.Map({
-        container: containerRef.current,
-        style: 'mapbox://styles/mapbox/streets-v12',
-        center: [-114.0719, 51.0447], // Calgary, AB
-        zoom: 12,
-        scrollZoom: false, // disabled until user explicitly activates the map
-      })
-      mapRef.current = map
+        const mapsLib   = await loader.importLibrary('maps')
+        const markerLib = await loader.importLibrary('marker')
+        if (destroyed) return
 
-    })
+        mapsLibRef.current  = mapsLib
+        markerLibRef.current = markerLib
 
-    return () => map?.remove()
+        const { Map } = mapsLib
+
+        map = new Map(containerRef.current, {
+          center:            { lat: 51.0447, lng: -114.0719 }, // Calgary, AB
+          zoom:              12,
+          mapId:             process.env.NEXT_PUBLIC_GOOGLE_MAPS_ID ?? 'DEMO_MAP_ID',
+          // Disable default UI except zoom — we provide our own controls
+          disableDefaultUI:  true,
+          zoomControl:       true,
+          scrollwheel:       false, // disabled until user explicitly activates
+          gestureHandling:   'none', // prevents accidental scroll-zoom
+        })
+        mapRef.current = map
+      } catch (err) {
+        console.error('[BookingMap] Google Maps init failed:', err)
+      }
+    })()
+
+    return () => {
+      destroyed = true
+      // Google Maps JS API has no map.remove() — set ref to null so stale handlers error cleanly
+      mapRef.current = null
+    }
   }, [])
 
   // ── Place a stop at the current map centre ────────────────────────────────
 
   async function handlePlace(type) {
-    const map   = mapRef.current
-    const token = tokenRef.current
-    const mapboxgl = mapboxglRef.current
-    if (!map || !token || !mapboxgl) return
+    const map = mapRef.current
+    const { AdvancedMarkerElement } = markerLibRef.current ?? {}
+    if (!map || !AdvancedMarkerElement) return
 
     setPlacing(type)
     try {
-      const { lng, lat } = map.getCenter()
-      const { address, city } = await reverseGeocode(lng, lat, token)
+      const center = map.getCenter()
+      const lng    = normalizeLng(center.lng())
+      const lat    = center.lat()
+      const { address, city } = await reverseGeocode(lng, lat)
       const stop = { lng, lat, address, city }
 
       if (type === 'pickup') {
-        pickupMarker.current?.remove()
+        if (pickupMarker.current) pickupMarker.current.map = null
         const el = makeMarkerEl(PICKUP_COLOR, 'P')
-        pickupMarker.current = new mapboxgl.Marker({ element: el, draggable: false })
-          .setLngLat([lng, lat])
-          .addTo(map)
+        pickupMarker.current = new AdvancedMarkerElement({ map, position: { lat, lng }, content: el })
         setPickup(stop)
       } else {
-        dropoffMarker.current?.remove()
+        if (dropoffMarker.current) dropoffMarker.current.map = null
         const el = makeMarkerEl(DROPOFF_COLOR, 'D')
-        dropoffMarker.current = new mapboxgl.Marker({ element: el, draggable: false })
-          .setLngLat([lng, lat])
-          .addTo(map)
+        dropoffMarker.current = new AdvancedMarkerElement({ map, position: { lat, lng }, content: el })
         setDropoff(stop)
       }
     } finally {
@@ -159,7 +196,7 @@ const BookingMap = forwardRef(function BookingMap({ onStopsChange }, ref) {
     }
   }
 
-  // ── Address search ────────────────────────────────────────────────────────
+  // ── Address search (Places Autocomplete) ──────────────────────────────────
 
   function handleSearchChange(value) {
     setSearchQuery(value)
@@ -176,12 +213,11 @@ const BookingMap = forwardRef(function BookingMap({ onStopsChange }, ref) {
 
     setSearching(true)
     searchDebounceRef.current = setTimeout(async () => {
-      const token = tokenRef.current
-      if (!token) { setSearching(false); return }
       const controller = new AbortController()
       searchAbortRef.current = controller
       try {
-        setSuggestions(await forwardGeocode(value, token, controller.signal))
+        const results = await placesAutocomplete(value, sessionTokenRef.current, controller.signal)
+        setSuggestions(results)
       } catch (err) {
         if (err?.name !== 'AbortError') setSuggestions([])
       } finally {
@@ -190,14 +226,25 @@ const BookingMap = forwardRef(function BookingMap({ onStopsChange }, ref) {
           searchAbortRef.current = null
         }
       }
-    }, 500)
+    }, 400)
   }
 
-  function pickSuggestion(feature) {
-    const [lng, lat] = feature.center
+  async function pickSuggestion(prediction) {
     setSuggestions([])
-    setSearchQuery('')
-    mapRef.current?.flyTo({ center: [lng, lat], zoom: 15, duration: 700 })
+    setSearchQuery(prediction.description)
+
+    try {
+      // Pass the same session token so Google bills ac + details as one session
+      const { lng, lat } = await placeDetails(prediction.placeId, sessionTokenRef.current)
+      // Rotate session token — next search session is a new billing unit
+      sessionTokenRef.current = newSessionToken()
+      setSearchQuery('')
+      mapRef.current?.panTo({ lat, lng })
+      mapRef.current?.setZoom(15)
+    } catch {
+      // Non-fatal — user can still pan manually
+      sessionTokenRef.current = newSessionToken()
+    }
   }
 
   function handleUseCurrentLocation() {
@@ -213,14 +260,12 @@ const BookingMap = forwardRef(function BookingMap({ onStopsChange }, ref) {
     const watchId = navigator.geolocation.watchPosition(
       (pos) => {
         const { longitude: lng, latitude: lat, accuracy } = pos.coords
-        // Keep the most accurate fix seen so far
         if (!bestPos || accuracy < bestPos.accuracy) {
           bestPos = { lng, lat, accuracy }
-          // Zoom tighter when the fix is more accurate
           const zoom = accuracy < 50 ? 17 : accuracy < 200 ? 15 : accuracy < 2000 ? 13 : 11
-          mapRef.current?.flyTo({ center: [lng, lat], zoom, duration: 600 })
+          mapRef.current?.panTo({ lat, lng })
+          mapRef.current?.setZoom(zoom)
         }
-        // Settle once we've got a reasonable fix (<100 m)
         if (accuracy <= 100 && !settled) {
           settled = true
           navigator.geolocation.clearWatch(watchId)
@@ -232,7 +277,7 @@ const BookingMap = forwardRef(function BookingMap({ onStopsChange }, ref) {
         navigator.geolocation.clearWatch(watchId)
         setLocating(false)
       },
-      { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 },
     )
 
     // Hard timeout fallback — stop spinning even if no accurate fix arrived
@@ -292,14 +337,14 @@ const BookingMap = forwardRef(function BookingMap({ onStopsChange }, ref) {
                   </svg>
                   Searching…
                 </li>
-              ) : suggestions.map((f) => (
-                <li key={f.id}>
+              ) : suggestions.map((p) => (
+                <li key={p.placeId}>
                   <button
                     type="button"
-                    onClick={() => pickSuggestion(f)}
+                    onClick={() => pickSuggestion(p)}
                     className="w-full text-left px-3.5 py-2.5 text-sm text-foreground hover:bg-surface dark:hover:bg-white/5 transition"
                   >
-                    {f.place_name}
+                    {p.description}
                   </button>
                 </li>
               ))}
@@ -327,7 +372,9 @@ const BookingMap = forwardRef(function BookingMap({ onStopsChange }, ref) {
         style={{ minHeight: 340 }}
         onMouseLeave={() => {
           // Re-disable scroll zoom when mouse leaves the map area
-          if (mapRef.current) mapRef.current.scrollZoom.disable()
+          if (mapRef.current) {
+            mapRef.current.setOptions({ scrollwheel: false, gestureHandling: 'none' })
+          }
           setMapActive(false)
         }}
       >
@@ -348,7 +395,9 @@ const BookingMap = forwardRef(function BookingMap({ onStopsChange }, ref) {
             className="absolute inset-0 rounded-xl z-10 flex items-end justify-center pb-5 cursor-pointer"
             style={{ background: 'transparent' }}
             onClick={() => {
-              if (mapRef.current) mapRef.current.scrollZoom.enable()
+              if (mapRef.current) {
+                mapRef.current.setOptions({ scrollwheel: true, gestureHandling: 'greedy' })
+              }
               setMapActive(true)
             }}
           >

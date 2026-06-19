@@ -18,18 +18,17 @@ const nextConfig = {
   // Security headers applied to all routes
   async headers() {
     const csp = [
-      // Only load scripts from our own origin.
-      // unsafe-inline is required by Next.js for its inline hydration scripts.
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline'",
-      // Inline styles required by Tailwind utilities and Mapbox GL.
-      "style-src 'self' 'unsafe-inline'",
-      // Mapbox GL renders to a canvas and uses blob: workers; data: for map sprites.
-      "img-src 'self' data: blob: https://*.mapbox.com",
-      // Mapbox GL JS spins up a Web Worker from a blob: URL.
+      // unsafe-inline required by Next.js for inline hydration scripts; Google Maps loader also needs it.
+      "script-src 'self' 'unsafe-inline' https://maps.googleapis.com",
+      // Inline styles required by Tailwind utilities and Google Maps.
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      // Google Maps renders to a canvas; data: for map sprites.
+      "img-src 'self' data: blob: https://maps.googleapis.com https://maps.gstatic.com",
+      // Google Maps JS API spins up a Web Worker from a blob: URL.
       "worker-src blob:",
-      // API calls: own origin + Mapbox tile/API + Pusher WebSocket channels.
-      "connect-src 'self' https://*.mapbox.com https://api.mapbox.com wss://*.pusher.com https://sockjs-mt1.pusher.com https://soketi.app",
+      // API calls: own origin + Google Maps/Places/Routes APIs + Pusher WebSocket channels.
+      "connect-src 'self' https://maps.googleapis.com https://places.googleapis.com https://routes.googleapis.com wss://*.pusher.com https://sockjs-mt1.pusher.com https://soketi.app",
       // No frames allowed anywhere.
       "frame-src 'none'",
       // Fonts are self-hosted by next/font — no external font CDN needed.
