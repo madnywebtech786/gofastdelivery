@@ -19,16 +19,21 @@ const nextConfig = {
   async headers() {
     const csp = [
       "default-src 'self'",
-      // unsafe-inline required by Next.js for inline hydration scripts; Google Maps loader also needs it.
-      "script-src 'self' 'unsafe-inline' https://maps.googleapis.com",
+      // unsafe-inline: Next.js inline hydration scripts + Google Maps loader.
+      // wasm-unsafe-eval: the Google Maps VECTOR renderer compiles WebAssembly;
+      // without it the map crashes on vector/tilt rendering. This is the narrow,
+      // safe grant for WASM only — NOT full 'unsafe-eval'.
+      "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://maps.googleapis.com",
       // Inline styles required by Tailwind utilities and Google Maps.
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       // Google Maps renders to a canvas; data: for map sprites.
-      "img-src 'self' data: blob: https://maps.googleapis.com https://maps.gstatic.com",
-      // Google Maps JS API spins up a Web Worker from a blob: URL.
-      "worker-src blob:",
-      // API calls: own origin + Google Maps/Places/Routes APIs + Pusher WebSocket channels.
-      "connect-src 'self' https://maps.googleapis.com https://places.googleapis.com https://routes.googleapis.com wss://*.pusher.com https://sockjs-mt1.pusher.com https://soketi.app",
+      "img-src 'self' data: blob: https://maps.googleapis.com https://maps.gstatic.com https://www.gstatic.com",
+      // Google Maps JS API spins up Web Workers from blob: and same-origin URLs.
+      "worker-src 'self' blob:",
+      // API calls: own origin + Google Maps/Places/Routes APIs + Pusher channels.
+      // www.gstatic.com + data: are needed by the vector renderer for style sets
+      // and base64 sprite atlases (the shared-label-worker fetches).
+      "connect-src 'self' data: https://maps.googleapis.com https://maps.gstatic.com https://www.gstatic.com https://places.googleapis.com https://routes.googleapis.com wss://*.pusher.com https://sockjs-mt1.pusher.com https://soketi.app",
       // No frames allowed anywhere.
       "frame-src 'none'",
       // Fonts are self-hosted by next/font — no external font CDN needed.

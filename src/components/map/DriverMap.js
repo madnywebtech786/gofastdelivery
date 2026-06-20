@@ -5,11 +5,26 @@ import { useEffect, useRef, useCallback, useState } from 'react'
 // How far off-corridor (metres) before we consider the driver off-route
 const OFF_ROUTE_THRESHOLD_M  = 300
 // How long (ms) the driver must stay off-route before we trigger a reroute
-const OFF_ROUTE_DURATION_MS  = 15000
+const OFF_ROUTE_DURATION_MS  = 5000
 // Speak when this close to the next turn (metres)
 const SPEAK_AT_M             = 150
 // Trigger arrival when driver is within this radius of the stop (metres)
 const ARRIVAL_RADIUS_M       = 30
+
+// ── Google-Maps-app-style follow camera + gliding marker ───────────────────
+// Camera tilt (degrees) applied in heading-up follow mode. Needs a vector Map
+// ID; ignored on raster maps. 0 = flat top-down, ~45 = the app's 3D nav view.
+const FOLLOW_TILT_DEG        = 45
+// Zoom used when locked into follow/navigation mode.
+const FOLLOW_ZOOM            = 17
+// How long (ms) to glide the car marker between GPS fixes. GPS arrives ~1/sec;
+// tweening across ~900ms makes the dot move continuously like the Maps blue dot
+// instead of teleporting each tick.
+const GLIDE_MS               = 900
+// Heading-up camera mode is only enabled when a real vector Map ID is set.
+// On DEMO_MAP_ID / raster maps, heading + tilt are no-ops, so we stay north-up.
+const MAP_ID                 = process.env.NEXT_PUBLIC_GOOGLE_MAPS_ID ?? 'DEMO_MAP_ID'
+const HEADING_UP_SUPPORTED   = MAP_ID !== 'DEMO_MAP_ID'
 
 // Turn type → arrow emoji
 const MANEUVER_ICON = {
@@ -199,7 +214,19 @@ export default function DriverMap({
       arrivedStopRef.current = -1
     }
   }, [activeStopIndex])
-  useEffect(() => { routeRef.current = route }, [route])
+  useEffect(() => {
+    routeRef.current = route
+    // A new route means the reroute/merge resolved — clear the off-route warning
+    // immediately rather than waiting for the next active-leg render. Pure state,
+    // no side effects. Skip the first mount (nothing to clear yet).
+    if (routeSyncedOnceRef.current) {
+      offRouteSinceRef.current = null
+      reroutingRef.current = false
+      setOffRoute(false)
+    } else {
+      routeSyncedOnceRef.current = true
+    }
+  }, [route])
   useEffect(() => { if (driverPos) driverPosRef.current = driverPos }, [driverPos])
   useEffect(() => { onStepUpdateRef.current = onStepUpdate }, [onStepUpdate])
   useEffect(() => { onRerouteRef.current = onReroute }, [onReroute])
@@ -217,12 +244,39 @@ export default function DriverMap({
   }, [newStopIds])
 
   // ── Camera follow state ───────────────────────────────────────────────────
-  const [followDriver, setFollowDriver] = useState(true)
-  const followDriverRef = useRef(true)
+  // followDriver: camera tracks the driver (auto-pan). Broken by manual drag.
+  // Starts OFF — when the route first loads the driver sees the full optimised
+  // route overview (north-up). Follow/navigation engages only when they tap the
+  // recenter button.
+  const [followDriver, setFollowDriver] = useState(false)
+  const followDriverRef = useRef(false)
+  // headingUp: when following on a vector map, rotate + tilt the camera so the
+  // direction of travel points up (the Google Maps navigation view). Engaged by
+  // the recenter button. Starts off (we open in overview, not nav mode).
+  const [headingUp, setHeadingUp] = useState(false)
+  const headingUpRef = useRef(false)
+
+  // ── Gliding marker animation refs ─────────────────────────────────────────
+  // We tween the car between consecutive GPS fixes (position + heading) with
+  // requestAnimationFrame so it moves continuously like the Maps blue dot.
+  const glideRafRef        = useRef(null)   // active rAF id
+  const glideFromRef       = useRef(null)   // { lng, lat, heading } at tween start
+  const glideToRef         = useRef(null)   // { lng, lat, heading } target
+  const glideStartRef      = useRef(0)      // performance.now() at tween start
+  const renderedPosRef     = useRef(null)   // last on-screen { lng, lat } of the car
+  // True until the active-stop effect has run once. Lets us keep the initial
+  // route-overview fitBounds instead of immediately snapping to the active stop.
+  const activeStopInitRef  = useRef(true)
+  // False until the first route prop sync, so we don't clear the off-route
+  // banner on mount (there's nothing to clear and no banner shown yet).
+  const routeSyncedOnceRef = useRef(false)
 
   // ── Banner state ──────────────────────────────────────────────────────────
   const [banner, setBanner] = useState(null) // { icon, instruction, distance }
   const [offRoute, setOffRoute] = useState(false)
+  // Seconds left before the off-route reroute fires. Counts 15→0 for clear UX
+  // (GPS ticks alone are too sparse / pause when stationary, so we tick locally).
+  const [offRouteCountdown, setOffRouteCountdown] = useState(OFF_ROUTE_DURATION_MS / 1000)
   const [locating, setLocating] = useState(false)
 
   // ── Full route gray polyline ──────────────────────────────────────────────
@@ -343,25 +397,56 @@ export default function DriverMap({
     }
   }, [])
 
-  // ── Re-centre + re-lock follow mode ──────────────────────────────────────
+  // Lock follow on a known position with the chosen orientation, like the
+  // Maps app snapping back to your location.
+  const lockFollow = useCallback((lng, lat, useHeadingUp) => {
+    const map = mapRef.current
+    if (!map) return
+    followDriverRef.current = true
+    setFollowDriver(true)
+    headingUpRef.current = useHeadingUp
+    setHeadingUp(useHeadingUp)
+    const deg = headingRef.current ?? 0
+    if (map.moveCamera) {
+      map.moveCamera({
+        center: { lat, lng },
+        zoom:   FOLLOW_ZOOM,
+        ...(useHeadingUp && HEADING_UP_SUPPORTED
+          ? { heading: deg, tilt: FOLLOW_TILT_DEG }
+          : { heading: 0, tilt: 0 }),
+      })
+    } else {
+      map.panTo({ lat, lng })
+      map.setZoom(FOLLOW_ZOOM)
+    }
+  }, [])
+
+  // ── Re-centre button: cycles like Google Maps ─────────────────────────────
+  // not following → follow (heading-up nav view)
+  // following north-up → heading-up
+  // following heading-up → north-up
   const handleUseCurrentLocation = useCallback(() => {
+    const map = mapRef.current
+    if (!map) return
+
+    const decideMode = () => {
+      if (!followDriverRef.current) return true // re-lock into nav view
+      if (!HEADING_UP_SUPPORTED) return false   // raster map: stay north-up
+      return !headingUpRef.current              // toggle orientation
+    }
+
     const pos = driverPosRef.current
-    if (pos && mapRef.current) {
-      mapRef.current.panTo({ lat: pos.lat, lng: pos.lng })
-      mapRef.current.setZoom(15)
-      followDriverRef.current = true
-      setFollowDriver(true)
+    if (pos) {
+      lockFollow(pos.lng, pos.lat, decideMode())
       return
     }
-    if (!navigator.geolocation || !mapRef.current) return
+    if (!navigator.geolocation) return
     setLocating(true)
     navigator.geolocation.getCurrentPosition(
       (p) => {
         const { longitude: lng, latitude: lat } = p.coords
-        mapRef.current?.panTo({ lat, lng })
-        mapRef.current?.setZoom(15)
-        followDriverRef.current = true
-        setFollowDriver(true)
+        driverPosRef.current = { lng, lat }
+        lockFollow(lng, lat, decideMode())
         setLocating(false)
       },
       () => {
@@ -370,7 +455,7 @@ export default function DriverMap({
       },
       { enableHighAccuracy: true, timeout: 8000 },
     )
-  }, [])
+  }, [lockFollow])
 
   // ── Off-route detection + server-side reroute trigger ─────────────────────
   const checkOffRoute = useCallback(async (lng, lat) => {
@@ -413,42 +498,40 @@ export default function DriverMap({
     }
   }, [])
 
-  // ── Driver car marker with heading ────────────────────────────────────────
-  const updateDriverMarker = useCallback((map, lng, lat, gpsHeading) => {
-    let deg = headingRef.current
-    if (gpsHeading != null && !isNaN(gpsHeading)) {
-      deg = gpsHeading
-      headingRef.current = gpsHeading
-    } else if (prevPosRef.current) {
-      const moved = haversineM(prevPosRef.current, { lng, lat })
-      if (moved > 3) {
-        deg = bearingDeg(prevPosRef.current, { lng, lat })
-        headingRef.current = deg
-      }
-    }
-    prevPosRef.current = { lng, lat }
-
-    if (driverMarkerRef.current) {
-      driverMarkerRef.current.position = { lat, lng }
-      if (carInnerRef.current) {
-        carInnerRef.current.style.transform = `rotate(${deg}deg)`
-      }
+  // ── Off-route countdown ticker ─────────────────────────────────────────────
+  // While off-route, tick the displayed seconds-remaining down to 0 once a
+  // second, derived from when the deviation started. Independent of GPS cadence
+  // so the number always moves smoothly even if the driver is stationary.
+  useEffect(() => {
+    if (!offRoute) {
+      setOffRouteCountdown(OFF_ROUTE_DURATION_MS / 1000)
       return
     }
+    const tick = () => {
+      const since = offRouteSinceRef.current
+      if (since == null) return
+      const remainingMs = OFF_ROUTE_DURATION_MS - (Date.now() - since)
+      setOffRouteCountdown(Math.max(0, Math.ceil(remainingMs / 1000)))
+    }
+    tick() // immediate, so it doesn't show the stale full value for the first second
+    const id = setInterval(tick, 1000)
+    return () => clearInterval(id)
+  }, [offRoute])
 
-    // AdvancedMarkerElement uses a DOM element as content.
-    // Outer div: the element Google positions on screen. Adding a CSS transition
-    // here smooths the jump between GPS ticks.
+  // ── Ensure the car marker DOM exists (created once) ────────────────────────
+  const ensureDriverMarker = useCallback((map, lng, lat, deg) => {
+    if (driverMarkerRef.current) return
     const el = document.createElement('div')
-    el.style.cssText = 'width:36px;height:44px;cursor:pointer;'
-
+    // AdvancedMarkerElement anchors content by its BOTTOM-centre, which would put
+    // the GPS point at the bottom of the car and draw the car ~44px north of the
+    // real location (the "marker far up the road" bug). translateY(50%) shifts the
+    // element down by half its height so its CENTRE sits on the coordinate.
+    el.style.cssText = 'width:36px;height:44px;cursor:pointer;transform:translateY(50%);'
     const inner = document.createElement('div')
-    inner.style.cssText = `
-      width:36px;height:44px;
-      transform:rotate(${deg}deg);
-      transform-origin:center center;
-      transition:transform 0.35s ease-out;
-    `
+    // No CSS transition on rotation — we drive heading frame-by-frame in the
+    // glide loop so it stays in sync with the gliding position.
+    inner.style.cssText = 'width:36px;height:44px;transform-origin:center center;'
+    inner.style.transform = `rotate(${deg}deg)`
     inner.innerHTML = CAR_SVG
     el.appendChild(inner)
     carInnerRef.current = inner
@@ -459,7 +542,83 @@ export default function DriverMap({
       position: { lat, lng },
       content:  el,
     })
+    renderedPosRef.current = { lng, lat }
   }, [])
+
+  // Shortest angular interpolation between two bearings (handles 350°→10° wrap).
+  const lerpAngle = (a, b, t) => {
+    let d = ((b - a + 540) % 360) - 180
+    return (a + d * t + 360) % 360
+  }
+
+  // ── Apply a rendered frame: move marker, rotate car, drive follow camera ───
+  const applyFrame = useCallback((map, lng, lat, deg) => {
+    if (driverMarkerRef.current) {
+      driverMarkerRef.current.position = { lat, lng }
+    }
+    if (carInnerRef.current) {
+      // In heading-up mode the MAP rotates to the heading, so the car must point
+      // straight up (its rotation is cancelled by the map's). In north-up mode
+      // the car itself rotates to show heading.
+      const carDeg = (followDriverRef.current && headingUpRef.current && HEADING_UP_SUPPORTED) ? 0 : deg
+      carInnerRef.current.style.transform = `rotate(${carDeg}deg)`
+    }
+    renderedPosRef.current = { lng, lat }
+
+    if (followDriverRef.current) {
+      map.moveCamera
+        ? map.moveCamera({
+            center: { lat, lng },
+            ...(headingUpRef.current && HEADING_UP_SUPPORTED
+              ? { heading: deg, tilt: FOLLOW_TILT_DEG }
+              : {}),
+          })
+        : map.panTo({ lat, lng })
+    }
+  }, [])
+
+  // ── GPS tick → set a glide target; rAF interpolates toward it ──────────────
+  const updateDriverMarker = useCallback((map, lng, lat, gpsHeading) => {
+    // Resolve heading: prefer GPS heading, else bearing from last fix.
+    let deg = headingRef.current
+    if (gpsHeading != null && !isNaN(gpsHeading)) {
+      deg = gpsHeading
+    } else if (prevPosRef.current) {
+      const moved = haversineM(prevPosRef.current, { lng, lat })
+      if (moved > 3) deg = bearingDeg(prevPosRef.current, { lng, lat })
+    }
+    headingRef.current = deg
+    prevPosRef.current = { lng, lat }
+
+    ensureDriverMarker(map, lng, lat, deg)
+
+    // Glide from where the car is currently drawn to the new fix.
+    const from = renderedPosRef.current ?? { lng, lat }
+    const fromHeading = glideToRef.current?.heading ?? deg
+    glideFromRef.current  = { lng: from.lng, lat: from.lat, heading: fromHeading }
+    glideToRef.current    = { lng, lat, heading: deg }
+    glideStartRef.current = performance.now()
+
+    if (glideRafRef.current) cancelAnimationFrame(glideRafRef.current)
+    const step = (now) => {
+      const t = Math.min(1, (now - glideStartRef.current) / GLIDE_MS)
+      // ease-out for a natural decel into each fix
+      const e = 1 - (1 - t) * (1 - t)
+      const f = glideFromRef.current
+      const g = glideToRef.current
+      if (!f || !g) return
+      const curLng = f.lng + (g.lng - f.lng) * e
+      const curLat = f.lat + (g.lat - f.lat) * e
+      const curDeg = lerpAngle(f.heading, g.heading, e)
+      applyFrame(map, curLng, curLat, curDeg)
+      if (t < 1) {
+        glideRafRef.current = requestAnimationFrame(step)
+      } else {
+        glideRafRef.current = null
+      }
+    }
+    glideRafRef.current = requestAnimationFrame(step)
+  }, [ensureDriverMarker, applyFrame])
 
   // ── Stop markers ─────────────────────────────────────────────────────────
   const renderStopMarkers = useCallback((map, stops, currentIndex, pulseIds) => {
@@ -490,6 +649,8 @@ export default function DriverMap({
 
       const el = document.createElement('div')
       const baseShadow = active ? '0 0 0 4px rgba(37,99,235,0.35)' : '0 2px 6px rgba(0,0,0,.3)'
+      // translateY(50%) centres the round pin on its coordinate (AdvancedMarker
+      // anchors content bottom-centre, which would draw it north of the point).
       el.style.cssText = `
         width:34px;height:34px;border-radius:50%;
         background:${bgColor};
@@ -497,7 +658,7 @@ export default function DriverMap({
         display:flex;align-items:center;justify-content:center;
         box-shadow:${baseShadow};
         border:2px solid #fff;opacity:${done ? 0.5 : 1};
-        cursor:pointer;
+        cursor:pointer;transform:translateY(50%);
         ${isNew ? 'animation:driverMapPulse 1s ease-out infinite;' : ''}
       `
       el.textContent = label
@@ -557,21 +718,46 @@ export default function DriverMap({
             ? { lat: activeStop.coordinates.lat, lng: activeStop.coordinates.lng }
             : { lat: 32.6420, lng: 74.2010 }
 
+        // Open in OVERVIEW: north-up, no tilt. Follow/nav engages only when the
+        // driver taps the recenter button.
         const map = new Map(containerRef.current, {
           center:           initCenter,
-          zoom:             15,
-          mapId:            process.env.NEXT_PUBLIC_GOOGLE_MAPS_ID ?? 'DEMO_MAP_ID',
+          zoom:             13,
+          mapId:            MAP_ID,
           disableDefaultUI: true,
           zoomControl:      false, // driver doesn't need zoom controls
           gestureHandling:  'greedy', // single-finger pan on mobile
+          ...(HEADING_UP_SUPPORTED ? { headingInteractionEnabled: true } : {}),
         })
         mapRef.current = map
 
-        // Unlock follow mode when driver manually drags the map
+        // Show live traffic, like the Maps app. (Layer is harmless on raster.)
+        try { new mapsLib.TrafficLayer().setMap(map) } catch { /* non-fatal */ }
+
+        // Fit the whole optimised route in view so the driver sees all stops
+        // (+ their own position) on first load, instead of being zoomed onto one.
+        try {
+          const pts = (stops ?? [])
+            .filter((s) => s?.coordinates)
+            .map((s) => ({ lat: s.coordinates.lat, lng: s.coordinates.lng }))
+          if (initPos) pts.push({ lat: initPos.lat, lng: initPos.lng })
+          if (pts.length >= 2) {
+            const bounds = new mapsLib.LatLngBounds()
+            pts.forEach((p) => bounds.extend(p))
+            map.fitBounds(bounds, 64)
+          }
+        } catch { /* non-fatal — keep the default center/zoom */ }
+
+        // Unlock follow mode when driver manually drags the map. Drop the
+        // heading-up tilt so the free-pan view is the easy-to-read north-up map
+        // (the Maps app does the same when you pan away from navigation).
         map.addListener('dragstart', () => {
           if (followDriverRef.current) {
             followDriverRef.current = false
             setFollowDriver(false)
+            if (HEADING_UP_SUPPORTED && map.moveCamera) {
+              map.moveCamera({ heading: 0, tilt: 0 })
+            }
           }
         })
 
@@ -620,10 +806,8 @@ export default function DriverMap({
               }
             }
 
-            // Auto-pan to keep driver centered when follow is locked
-            if (followDriverRef.current) {
-              map.panTo({ lat, lng })
-            }
+            // Camera follow is driven by the glide loop (applyFrame), so no
+            // panTo here — that would fight the smooth interpolation.
           },
           (err) => {
             console.warn('[DriverMap] watchPosition error:', err)
@@ -638,6 +822,7 @@ export default function DriverMap({
     return () => {
       destroyed = true
       legAbortRef.current?.abort()
+      if (glideRafRef.current) { cancelAnimationFrame(glideRafRef.current); glideRafRef.current = null }
       if (watchIdRef.current != null) {
         navigator.geolocation.clearWatch(watchIdRef.current)
         watchIdRef.current = null
@@ -661,8 +846,16 @@ export default function DriverMap({
 
     const nextStop = stops[activeStopIndex]
     if (nextStop) {
-      map.panTo({ lat: nextStop.coordinates.lat, lng: nextStop.coordinates.lng })
-      map.setZoom(15)
+      // Skip the camera move on the very first run so the initial route-overview
+      // fitBounds (set in map init) survives. After that: only jump the camera to
+      // the new stop when NOT following — in follow/nav mode the camera stays
+      // glued to the driver, like advancing legs in the Google Maps app.
+      const firstRun = activeStopInitRef.current
+      activeStopInitRef.current = false
+      if (!firstRun && !followDriverRef.current) {
+        map.panTo({ lat: nextStop.coordinates.lat, lng: nextStop.coordinates.lng })
+        map.setZoom(15)
+      }
       const pos     = driverPosRef.current
       const fromLng = pos?.lng ?? nextStop.coordinates.lng
       const fromLat = pos?.lat ?? nextStop.coordinates.lat
@@ -714,38 +907,62 @@ export default function DriverMap({
           style={{ background: 'rgba(220,38,38,0.9)', backdropFilter: 'blur(8px)' }}
         >
           <span className="text-white text-lg">⚠️</span>
-          <p className="text-white text-xs font-semibold">Off route — recalculating in {OFF_ROUTE_DURATION_MS / 1000}s…</p>
+          <p className="text-white text-xs font-semibold">Off route — recalculating in {offRouteCountdown}s…</p>
         </div>
       )}
 
-      {/* ── Re-centre / follow-lock button ─────────────────────────────────
-           Blue filled = following — tap to snap back
-           White       = unlocked — tap to re-lock                          */}
-      <button
-        onClick={handleUseCurrentLocation}
-        disabled={locating}
-        title={followDriver ? 'Following your location' : 'Re-centre on my location'}
-        className="absolute bottom-4 left-3 z-30 w-11 h-11 rounded-full shadow-lg border flex items-center justify-center transition disabled:opacity-50 disabled:cursor-not-allowed"
-        style={{
-          background:  followDriver ? '#2563eb' : '#ffffff',
-          borderColor: followDriver ? '#1d4ed8' : '#d1d5db',
-          color:       followDriver ? '#ffffff'  : '#2563eb',
-        }}
-      >
-        {locating ? (
-          <svg width="16" height="16" viewBox="0 0 16 16" style={{ animation: 'spin 0.8s linear infinite' }}>
-            <circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="25 10" />
-          </svg>
-        ) : (
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="4" />
-            <line x1="12" y1="2"  x2="12" y2="6"  />
-            <line x1="12" y1="18" x2="12" y2="22" />
-            <line x1="2"  y1="12" x2="6"  y2="12" />
-            <line x1="18" y1="12" x2="22" y2="12" />
-          </svg>
-        )}
-      </button>
+      {/* ── Re-centre / follow control — mirrors the Google Maps app ────────
+           free (not following)      → hollow location crosshair, white bg
+           following, north-up       → filled crosshair, blue bg
+           following, heading-up nav → filled navigation arrow, blue bg
+           Tap cycles: free → nav, north-up ↔ heading-up                    */}
+      {(() => {
+        const navMode = followDriver && headingUp && HEADING_UP_SUPPORTED
+        const active  = followDriver
+        const title = !followDriver
+          ? 'Re-centre on my location'
+          : navMode
+            ? 'Navigation view — tap for north-up'
+            : 'Following — tap for navigation view'
+        return (
+          <button
+            onClick={handleUseCurrentLocation}
+            disabled={locating}
+            title={title}
+            aria-label={title}
+            className="absolute right-3 z-30 w-12 h-12 rounded-full shadow-lg border flex items-center justify-center transition disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{
+              // Sit above the bottom sheet's collapsed peek (~64px) + safe area,
+              // on the right like the Google Maps app's recenter button.
+              bottom:      'calc(84px + env(safe-area-inset-bottom))',
+              background:  active ? '#2563eb' : '#ffffff',
+              borderColor: active ? '#1d4ed8' : '#d1d5db',
+              color:       active ? '#ffffff' : '#5f6368',
+            }}
+          >
+            {locating ? (
+              <svg width="16" height="16" viewBox="0 0 16 16" style={{ animation: 'spin 0.8s linear infinite' }}>
+                <circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="25 10" />
+              </svg>
+            ) : navMode ? (
+              // Filled navigation arrow (the Google Maps "navigation mode" glyph)
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M12 2 L19 21 L12 17 L5 21 Z" />
+              </svg>
+            ) : (
+              // Location crosshair (Google Maps "my location" glyph); filled dot
+              // when following north-up, hollow ring when free.
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="3.5" fill={active ? 'currentColor' : 'none'} />
+                <line x1="12" y1="2"  x2="12" y2="5"  />
+                <line x1="12" y1="19" x2="12" y2="22" />
+                <line x1="2"  y1="12" x2="5"  y2="12" />
+                <line x1="19" y1="12" x2="22" y2="12" />
+              </svg>
+            )}
+          </button>
+        )
+      })()}
     </div>
   )
 }
