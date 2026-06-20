@@ -23,6 +23,36 @@ function normalizeLng(lng) {
   return n
 }
 
+// The crosshair is a teardrop pin whose POINTED TIP — not its centre — is what
+// the user aims at a location. The SVG (height 44) is centred in the map
+// container with marginBottom:22, which places the tip 11px BELOW the container's
+// geometric centre. map.getCenter() returns the coordinate at that geometric
+// centre, so naively using it stores a point ~11px north of where the user
+// pointed (the reported "pin lands slightly above the tip" bug).
+//
+// PIN_TIP_OFFSET_Y_PX is how far (in CSS px, +down) the tip sits below centre.
+const PIN_TIP_OFFSET_Y_PX = 11
+
+// Convert the pin-tip screen position to a LatLng using the map's projection.
+// Returns { lng, lat } at the tip, or null if the projection isn't ready yet.
+function tipLatLng(map, mapsLib) {
+  const proj = map.getProjection?.()
+  if (!proj || !mapsLib) return null
+  const zoom  = map.getZoom()
+  const scale = 2 ** zoom
+  // Centre coordinate → world point → shift down by the tip offset (in world
+  // units = px / scale) → back to LatLng.
+  const centerWorld = proj.fromLatLngToPoint(map.getCenter())
+  if (!centerWorld) return null
+  const tipPoint = new mapsLib.Point(
+    centerWorld.x,
+    centerWorld.y + PIN_TIP_OFFSET_Y_PX / scale,
+  )
+  const tipLatLngObj = proj.fromPointToLatLng(tipPoint)
+  if (!tipLatLngObj) return null
+  return { lng: normalizeLng(tipLatLngObj.lng()), lat: tipLatLngObj.lat() }
+}
+
 function makeMarkerEl(color, label) {
   const el = document.createElement('div')
   el.style.cssText = `
@@ -174,9 +204,11 @@ const BookingMap = forwardRef(function BookingMap({ onStopsChange }, ref) {
 
     setPlacing(type)
     try {
-      const center = map.getCenter()
-      const lng    = normalizeLng(center.lng())
-      const lat    = center.lat()
+      // Use the pin TIP coordinate, not the map centre — the tip is what the
+      // user aims. Falls back to centre if the projection isn't ready.
+      const tip = tipLatLng(map, mapsLibRef.current)
+      const lng = tip ? tip.lng : normalizeLng(map.getCenter().lng())
+      const lat = tip ? tip.lat : map.getCenter().lat()
       const { address, city } = await reverseGeocode(lng, lat)
       const stop = { lng, lat, address, city }
 

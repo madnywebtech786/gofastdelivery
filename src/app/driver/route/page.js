@@ -48,6 +48,25 @@ function normalizeLng(lng) {
   return n
 }
 
+// The end-point crosshair is a teardrop pin whose pointed TIP is what the driver
+// aims. The SVG (height 44) is centred with marginBottom:22, placing the tip
+// 11px below the container's geometric centre. map.getCenter() returns the
+// centre coordinate, so we shift it down by the tip offset via the projection
+// so the stored end-point matches where the tip points (not ~11px north of it).
+const PIN_TIP_OFFSET_Y_PX = 11
+
+function tipLatLng(map, mapsLib) {
+  const proj = map?.getProjection?.()
+  if (!proj || !mapsLib) return null
+  const scale = 2 ** map.getZoom()
+  const centerWorld = proj.fromLatLngToPoint(map.getCenter())
+  if (!centerWorld) return null
+  const tipPoint = new mapsLib.Point(centerWorld.x, centerWorld.y + PIN_TIP_OFFSET_Y_PX / scale)
+  const obj = proj.fromPointToLatLng(tipPoint)
+  if (!obj) return null
+  return { lng: normalizeLng(obj.lng()), lat: obj.lat() }
+}
+
 export default function DriverRoutePage() {
   const router = useRouter()
   const toast = useToast()
@@ -55,6 +74,7 @@ export default function DriverRoutePage() {
   const routeRef    = useRef(null)
   const mapRef      = useRef(null)
   const markerRef      = useRef(null)
+  const mapsLibRef     = useRef(null)   // google.maps namespace for the end-point modal projection
   const pendingRouteRef = useRef(null)
   // Kept in a ref so handleRouteUpdate (useCallback) can always read the latest value
   const driverIdRef    = useRef(null)
@@ -282,28 +302,27 @@ export default function DriverRoutePage() {
           gestureHandling:  'greedy',
         })
         mapRef.current = map
+        mapsLibRef.current = mapsLib
 
-        // Seed the crosshair coordinate. We do NOT reverse-geocode here or while
-        // panning — the real street address is fetched once when the driver taps
-        // "Set End-Point" (handleConfirmEndPoint). The label shows coordinates
-        // until then. This avoids a burst of geocode calls on every pan-stop.
-        const c = map.getCenter()
-        const c0Lng = normalizeLng(c.lng())
-        const c0Lat = c.lat()
-        setSelectedEndPoint({ lng: c0Lng, lat: c0Lat, address: `${c0Lat.toFixed(4)}, ${c0Lng.toFixed(4)}` })
-
-        // Track the crosshair coordinate as the driver pans — coordinate label
-        // only, no geocode. The address is resolved on confirm.
-        map.addListener('center_changed', () => {
-          const center = map.getCenter()
-          const lng = normalizeLng(center.lng())
-          const lat = center.lat()
+        // Captures the pin-TIP coordinate (falls back to centre if projection
+        // isn't ready). We do NOT reverse-geocode here or while panning — the
+        // street address is fetched once when the driver taps "Set End-Point".
+        const capture = () => {
+          const tip = tipLatLng(map, mapsLib)
+          const lng = tip ? tip.lng : normalizeLng(map.getCenter().lng())
+          const lat = tip ? tip.lat : map.getCenter().lat()
           setSelectedEndPoint((prev) =>
             prev?.lng === lng && prev?.lat === lat
               ? prev
               : { lng, lat, address: `${lat.toFixed(4)}, ${lng.toFixed(4)}` }
           )
-        })
+        }
+
+        // Seed once the projection is ready so the first reading uses the tip.
+        mapsLib.event.addListenerOnce(map, 'idle', capture)
+
+        // Track the crosshair tip as the driver pans — coordinate label only.
+        map.addListener('center_changed', capture)
 
         // Add blue dot at driver's GPS position if available
         if (driverPos) {
@@ -529,13 +548,18 @@ export default function DriverRoutePage() {
     setConfirmingEndPoint(true)
     setEndPointError('')
     try {
+      // Recompute the tip coordinate from the live map so a never-panned map
+      // (no center_changed) still stores the tip, not stale state.
+      const tip = mapRef.current ? tipLatLng(mapRef.current, mapsLibRef.current) : null
+      const base = tip ? { ...selectedEndPoint, lng: tip.lng, lat: tip.lat } : selectedEndPoint
+
       // Resolve the real street address now (the only reverse geocode in this
       // flow — we no longer geocode while panning). Fall back to the coordinate
       // label if it fails; the endpoint is still usable either way.
-      let endPointToSave = selectedEndPoint
+      let endPointToSave = base
       try {
-        const { address } = await reverseGeocode(selectedEndPoint.lng, selectedEndPoint.lat)
-        if (address) endPointToSave = { ...selectedEndPoint, address }
+        const { address } = await reverseGeocode(base.lng, base.lat)
+        if (address) endPointToSave = { ...base, address }
       } catch { /* keep coordinate label */ }
 
       const res = await fetch(`/api/drivers/${driverId}/set-endpoint`, {
