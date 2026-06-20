@@ -5,7 +5,12 @@ import redis from '@/lib/redis'
 import { checkBudget, GoogleBudgetError } from '@/lib/google-budget'
 import { checkRateLimit } from '@/lib/redis'
 
-const PLACES_LIMIT  = 60  // per caller per hour (autocomplete is chatty)
+// Autocomplete fires ~6 calls per address search (one per debounced keystroke
+// + 1 details). 800/hr ≈ ~85 searches/hour per caller — effectively unlimited
+// for a real customer, while still capping a leaked key or bot. The global
+// daily soft cap in google-budget.js ('places-autocomplete') is the budget
+// backstop on top of this per-caller limit.
+const PLACES_LIMIT  = 800  // per caller per hour
 const PLACES_WINDOW = 3600
 
 const AUTOCOMPLETE_API = 'https://places.googleapis.com/v1/places:autocomplete'
