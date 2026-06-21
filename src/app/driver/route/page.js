@@ -55,13 +55,16 @@ function normalizeLng(lng) {
 // so the stored end-point matches where the tip points (not ~11px north of it).
 const PIN_TIP_OFFSET_Y_PX = 11
 
-function tipLatLng(map, mapsLib) {
+// google.maps.Point lives in the CORE namespace (window.google.maps), not the
+// 'maps' library import — read it from the global.
+function tipLatLng(map) {
   const proj = map?.getProjection?.()
-  if (!proj || !mapsLib) return null
+  const PointCtor = window.google?.maps?.Point
+  if (!proj || !PointCtor) return null
   const scale = 2 ** map.getZoom()
   const centerWorld = proj.fromLatLngToPoint(map.getCenter())
   if (!centerWorld) return null
-  const tipPoint = new mapsLib.Point(centerWorld.x, centerWorld.y + PIN_TIP_OFFSET_Y_PX / scale)
+  const tipPoint = new PointCtor(centerWorld.x, centerWorld.y + PIN_TIP_OFFSET_Y_PX / scale)
   const obj = proj.fromPointToLatLng(tipPoint)
   if (!obj) return null
   return { lng: normalizeLng(obj.lng()), lat: obj.lat() }
@@ -308,7 +311,7 @@ export default function DriverRoutePage() {
         // isn't ready). We do NOT reverse-geocode here or while panning — the
         // street address is fetched once when the driver taps "Set End-Point".
         const capture = () => {
-          const tip = tipLatLng(map, mapsLib)
+          const tip = tipLatLng(map)
           const lng = tip ? tip.lng : normalizeLng(map.getCenter().lng())
           const lat = tip ? tip.lat : map.getCenter().lat()
           setSelectedEndPoint((prev) =>
@@ -319,7 +322,8 @@ export default function DriverRoutePage() {
         }
 
         // Seed once the projection is ready so the first reading uses the tip.
-        mapsLib.event.addListenerOnce(map, 'idle', capture)
+        // event lives in the CORE namespace (window.google.maps), not mapsLib.
+        window.google.maps.event.addListenerOnce(map, 'idle', capture)
 
         // Track the crosshair tip as the driver pans — coordinate label only.
         map.addListener('center_changed', capture)
@@ -550,7 +554,7 @@ export default function DriverRoutePage() {
     try {
       // Recompute the tip coordinate from the live map so a never-panned map
       // (no center_changed) still stores the tip, not stale state.
-      const tip = mapRef.current ? tipLatLng(mapRef.current, mapsLibRef.current) : null
+      const tip = mapRef.current ? tipLatLng(mapRef.current) : null
       const base = tip ? { ...selectedEndPoint, lng: tip.lng, lat: tip.lat } : selectedEndPoint
 
       // Resolve the real street address now (the only reverse geocode in this
@@ -762,6 +766,22 @@ export default function DriverRoutePage() {
         <div className="h-16 bg-white border-b border-border flex items-center justify-between px-4 shadow-sm">
           <h1 className="text-lg font-bold" style={{ color: 'var(--fg)' }}>Set Your End-Point</h1>
           <p className="text-xs" style={{ color: 'var(--fg-3)' }}>Pan map, then place</p>
+        </div>
+
+        {/* Accuracy tip — zoom in for a precise pin (lower zoom reads as "off"). */}
+        <div
+          className="flex items-start gap-2 px-4 py-2 text-xs"
+          style={{ background: 'rgba(124,58,237,0.08)', borderBottom: '1px solid rgba(124,58,237,0.2)', color: '#6d28d9' }}
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 1 }}>
+            <circle cx="11" cy="11" r="7" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            <line x1="11" y1="8" x2="11" y2="14" />
+            <line x1="8" y1="11" x2="14" y2="11" />
+          </svg>
+          <span className="leading-snug">
+            <strong className="font-semibold">Tip:</strong> Zoom in close and place the pin on the exact spot for accuracy.
+          </span>
         </div>
 
         {/* Map Container */}

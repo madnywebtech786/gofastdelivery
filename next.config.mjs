@@ -36,8 +36,9 @@ const nextConfig = {
       "connect-src 'self' data: https://maps.googleapis.com https://maps.gstatic.com https://www.gstatic.com https://places.googleapis.com https://routes.googleapis.com wss://*.pusher.com https://sockjs-mt1.pusher.com https://soketi.app",
       // No frames allowed anywhere.
       "frame-src 'none'",
-      // Fonts are self-hosted by next/font — no external font CDN needed.
-      "font-src 'self'",
+      // App fonts are self-hosted by next/font; the Google Maps vector renderer
+      // additionally loads label fonts from fonts.gstatic.com.
+      "font-src 'self' https://fonts.gstatic.com",
       // Prevent embedding this site in any frame.
       "frame-ancestors 'none'",
     ].join('; ')

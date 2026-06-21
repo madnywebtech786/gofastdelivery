@@ -35,16 +35,19 @@ const PIN_TIP_OFFSET_Y_PX = 11
 
 // Convert the pin-tip screen position to a LatLng using the map's projection.
 // Returns { lng, lat } at the tip, or null if the projection isn't ready yet.
-function tipLatLng(map, mapsLib) {
+// Note: google.maps.Point lives in the CORE namespace (window.google.maps),
+// NOT in the 'maps' library import — so we read it from the global.
+function tipLatLng(map) {
   const proj = map.getProjection?.()
-  if (!proj || !mapsLib) return null
+  const PointCtor = window.google?.maps?.Point
+  if (!proj || !PointCtor) return null
   const zoom  = map.getZoom()
   const scale = 2 ** zoom
   // Centre coordinate → world point → shift down by the tip offset (in world
   // units = px / scale) → back to LatLng.
   const centerWorld = proj.fromLatLngToPoint(map.getCenter())
   if (!centerWorld) return null
-  const tipPoint = new mapsLib.Point(
+  const tipPoint = new PointCtor(
     centerWorld.x,
     centerWorld.y + PIN_TIP_OFFSET_Y_PX / scale,
   )
@@ -206,7 +209,7 @@ const BookingMap = forwardRef(function BookingMap({ onStopsChange }, ref) {
     try {
       // Use the pin TIP coordinate, not the map centre — the tip is what the
       // user aims. Falls back to centre if the projection isn't ready.
-      const tip = tipLatLng(map, mapsLibRef.current)
+      const tip = tipLatLng(map)
       const lng = tip ? tip.lng : normalizeLng(map.getCenter().lng())
       const lat = tip ? tip.lat : map.getCenter().lat()
       const { address, city } = await reverseGeocode(lng, lat)
@@ -336,6 +339,23 @@ const BookingMap = forwardRef(function BookingMap({ onStopsChange }, ref) {
 
   return (
     <div className="flex flex-col gap-2 w-full h-full">
+
+      {/* Accuracy tip — zoom in for a precise pin. Lower zoom = each pixel covers
+          more ground, so the pin reads as "slightly off" even when correct. */}
+      <div
+        className="flex items-start gap-2 rounded-lg px-3 py-2 text-xs"
+        style={{ background: 'rgba(37,99,235,0.08)', border: '1px solid rgba(37,99,235,0.25)', color: '#1d4ed8' }}
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 1 }}>
+          <circle cx="11" cy="11" r="7" />
+          <line x1="21" y1="21" x2="16.65" y2="16.65" />
+          <line x1="11" y1="8" x2="11" y2="14" />
+          <line x1="8" y1="11" x2="14" y2="11" />
+        </svg>
+        <span className="leading-snug">
+          <strong className="font-semibold">Tip:</strong> Zoom in close and place the pin right on the exact spot for accurate pickup &amp; drop-off.
+        </span>
+      </div>
 
       {/* Search bar */}
       <div className="flex gap-2">
