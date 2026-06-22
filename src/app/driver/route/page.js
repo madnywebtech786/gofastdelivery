@@ -528,7 +528,8 @@ export default function DriverRoutePage() {
 
       if (mapRef.current && place) {
         mapRef.current.panTo({ lat: place.lat, lng: place.lng })
-        mapRef.current.setZoom(16)
+        // Tight zoom (20) so the crosshair lands precisely on the searched spot.
+        mapRef.current.setZoom(20)
         // Crosshair center_changed will update selectedEndPoint automatically
       }
     } catch {

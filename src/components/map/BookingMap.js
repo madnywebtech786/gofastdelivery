@@ -275,7 +275,10 @@ const BookingMap = forwardRef(function BookingMap({ onStopsChange }, ref) {
       sessionTokenRef.current = newSessionToken()
       setSearchQuery('')
       mapRef.current?.panTo({ lat, lng })
-      mapRef.current?.setZoom(15)
+      // Zoom in tight (20) on the searched result so individual rooftops are
+      // clearly distinguishable. At lower zoom the crosshair tip is hard to aim
+      // and the reverse geocode snaps to the nearest neighbour (e.g. 50 → 46).
+      mapRef.current?.setZoom(20)
     } catch {
       // Non-fatal — user can still pan manually
       sessionTokenRef.current = newSessionToken()
@@ -353,7 +356,7 @@ const BookingMap = forwardRef(function BookingMap({ onStopsChange }, ref) {
           <line x1="8" y1="11" x2="14" y2="11" />
         </svg>
         <span className="leading-snug">
-          <strong className="font-semibold">Tip:</strong> Zoom in close and place the pin right on the exact spot for accurate pickup &amp; drop-off.
+          <strong className="font-semibold">Tip:</strong> Search an address or zoom in close, then place the pin right on the exact spot before setting pickup &amp; drop-off.
         </span>
       </div>
 

@@ -2,8 +2,11 @@
 
 import { useEffect, useRef, useCallback, useState } from 'react'
 
-// How far off-corridor (metres) before we consider the driver off-route
-const OFF_ROUTE_THRESHOLD_M  = 300
+// How far off-corridor (metres) before we consider the driver off-route.
+// 50m: tight enough to catch a wrong turn (a block over), loose enough to absorb
+// GPS jitter and wide roads. (Was 300m — so loose a real wrong turn often never
+// exceeded it, since the nearest point on a long corridor stayed within range.)
+const OFF_ROUTE_THRESHOLD_M  = 50
 // How long (ms) the driver must stay off-route before we trigger a reroute
 const OFF_ROUTE_DURATION_MS  = 5000
 // Speak when this close to the next turn (metres)
@@ -469,25 +472,34 @@ export default function DriverMap({
         offRouteSinceRef.current = Date.now()
         setOffRoute(true)
       } else if (Date.now() - offRouteSinceRef.current >= OFF_ROUTE_DURATION_MS) {
+        const id = driverIdRef.current
+        // Guard the EARLY-OUT before taking the lock — previously `if (!id) return`
+        // sat after the lock was set, and an awaited fetch with no timeout could
+        // hang on a flaky mobile connection, leaving reroutingRef stuck `true`
+        // forever — which permanently kills off-route detection for the session.
+        if (!id) return
         reroutingRef.current = true
         offRouteSinceRef.current = null
         setOffRoute(false)
+        // Hard timeout so a hung request can never deadlock detection.
+        const ctrl = new AbortController()
+        const timer = setTimeout(() => ctrl.abort(), 12000)
         try {
-          const id = driverIdRef.current
-          if (!id) return
           const res = await fetch(`/api/drivers/${id}/reroute`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ currentLng: lng, currentLat: lat }),
+            signal: ctrl.signal,
           })
           if (res.ok) {
             const { route: newRoute } = await res.json()
             if (newRoute) onRerouteRef.current?.(newRoute)
           }
         } catch (err) {
-          console.warn('[DriverMap] reroute request failed:', err)
+          console.warn('[DriverMap] reroute request failed:', err?.name === 'AbortError' ? 'timeout' : err)
         } finally {
-          reroutingRef.current = false
+          clearTimeout(timer)
+          reroutingRef.current = false  // ALWAYS released — never stuck
         }
       }
     } else {
@@ -835,6 +847,30 @@ export default function DriverMap({
       mapRef.current = null
     }
   }, []) // mount once
+
+  // ── Re-check off-route when the app returns to the foreground ──────────────
+  // Drivers commonly turn follow on and switch away. Browsers throttle/suspend
+  // watchPosition while the tab is backgrounded (wake-lock keeps the SCREEN on
+  // but does NOT keep geolocation running), so checkOffRoute stops firing. On
+  // return we grab a fresh fix and evaluate immediately, so a driver who drove
+  // off-route while the app was backgrounded is caught at once instead of
+  // waiting for the watch to spin back up.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.hidden || !navigator.geolocation) return
+      navigator.geolocation.getCurrentPosition(
+        (p) => {
+          const { longitude: lng, latitude: lat } = p.coords
+          driverPosRef.current = { lng, lat }
+          checkOffRoute(lng, lat)
+        },
+        () => {},
+        { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 },
+      )
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [checkOffRoute])
 
   // ── Active stop changed ───────────────────────────────────────────────────
   useEffect(() => {
