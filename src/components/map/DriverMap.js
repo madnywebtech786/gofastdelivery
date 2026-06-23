@@ -9,6 +9,9 @@ import { useEffect, useRef, useCallback, useState } from 'react'
 const OFF_ROUTE_THRESHOLD_M  = 50
 // How long (ms) the driver must stay off-route before we trigger a reroute
 const OFF_ROUTE_DURATION_MS  = 5000
+// After a reroute fires, pause detection this long so the driver can rejoin the
+// new path before we re-evaluate — prevents a reroute→still-off→reroute loop.
+const REROUTE_COOLDOWN_MS    = 20000
 // Speak when this close to the next turn (metres)
 const SPEAK_AT_M             = 150
 // Trigger arrival when driver is within this radius of the stop (metres)
@@ -203,6 +206,11 @@ export default function DriverMap({
   // Off-route tracking
   const offRouteSinceRef   = useRef(null)
   const reroutingRef       = useRef(false)
+  // Timestamp until which off-route detection is paused after a reroute fires,
+  // giving the driver time to rejoin the new path before we re-evaluate. Without
+  // this, a reroute that can't get the driver within the threshold (e.g. parked
+  // off-road, or optimizer returns a near-identical path) re-triggers every 5s.
+  const rerouteCooldownUntilRef = useRef(0)
 
   // Arrival tracking
   const arrivedStopRef     = useRef(-1)
@@ -220,16 +228,40 @@ export default function DriverMap({
   useEffect(() => {
     routeRef.current = route
     // A new route means the reroute/merge resolved — clear the off-route warning
-    // immediately rather than waiting for the next active-leg render. Pure state,
-    // no side effects. Skip the first mount (nothing to clear yet).
+    // immediately rather than waiting for the next active-leg render.
     if (routeSyncedOnceRef.current) {
       offRouteSinceRef.current = null
       reroutingRef.current = false
       setOffRoute(false)
+
+      // CRITICAL: refresh the active-leg corridor against the NEW route geometry.
+      // A reroute almost never changes activeStopIndex (the driver hasn't completed
+      // a stop, just deviated), so the [activeStopIndex] effect won't fire and
+      // corridorCoordsRef would keep the STALE polyline — leaving the driver still
+      // "off" the old corridor and re-triggering reroute forever (the 5s loop).
+      // Re-rendering the active leg here updates corridorCoordsRef to the new path.
+      const map = mapRef.current
+      if (map && markerLibRef.current) {
+        const stops = route?.optimizedStops ?? []
+        const idx   = activeStopIndexRef.current
+        const nextStop = stops[idx]
+        renderStopMarkers(map, stops, idx, newStopIdsRef.current)
+        renderFullRouteGray(map, route?.encodedPolyline)
+        if (nextStop) {
+          const pos = driverPosRef.current
+          renderActiveLeg(
+            map,
+            pos?.lng ?? nextStop.coordinates.lng,
+            pos?.lat ?? nextStop.coordinates.lat,
+            nextStop,
+            true,
+          )
+        }
+      }
     } else {
       routeSyncedOnceRef.current = true
     }
-  }, [route])
+  }, [route, renderStopMarkers, renderFullRouteGray, renderActiveLeg])
   useEffect(() => { if (driverPos) driverPosRef.current = driverPos }, [driverPos])
   useEffect(() => { onStepUpdateRef.current = onStepUpdate }, [onStepUpdate])
   useEffect(() => { onRerouteRef.current = onReroute }, [onReroute])
@@ -464,6 +496,12 @@ export default function DriverMap({
   const checkOffRoute = useCallback(async (lng, lat) => {
     const corridor = corridorCoordsRef.current
     if (!corridor.length || reroutingRef.current) return
+    // Respect the post-reroute cooldown — gives the driver time to rejoin the
+    // new path before we evaluate again (prevents the reroute loop).
+    if (Date.now() < rerouteCooldownUntilRef.current) {
+      if (offRouteSinceRef.current !== null) { offRouteSinceRef.current = null; setOffRoute(false) }
+      return
+    }
 
     const dist = distToPolylineM({ lng, lat }, corridor)
 
@@ -500,6 +538,9 @@ export default function DriverMap({
         } finally {
           clearTimeout(timer)
           reroutingRef.current = false  // ALWAYS released — never stuck
+          // Start the cooldown so we don't immediately re-detect against the new
+          // path before the driver has had a chance to rejoin it.
+          rerouteCooldownUntilRef.current = Date.now() + REROUTE_COOLDOWN_MS
         }
       }
     } else {
