@@ -19,6 +19,17 @@ function getOrsKey() {
   return key
 }
 
+// Wrap a longitude into [-180, 180]. getCenter().lng() (and any value persisted
+// before the client-side fix) can be un-normalized (e.g. 246 = -114 + 360) after
+// a panTo across the antimeridian. ORS and Google reject out-of-range longitudes,
+// so we sanitize EVERY coordinate fed to them here — this is the server-side
+// backstop that also repairs already-stored bad data (driver GPS, stops, endpoint).
+function normalizeLng(lng) {
+  const n = Number(lng)
+  if (!Number.isFinite(n)) return n
+  return ((n + 180) % 360 + 360) % 360 - 180
+}
+
 function haversine(lat1, lng1, lat2, lng2) {
   const R = 6371
   const dLat = ((lat2 - lat1) * Math.PI) / 180
@@ -199,17 +210,33 @@ export async function reoptimizeRoute({ driverId, currentLng, currentLat, endPoi
   const route = await findActiveRoute(driverId)
   if (!route) return null
 
-  const allStops = route.optimizedStops ?? []
+  // Sanitize the incoming driver GPS up front — every downstream consumer
+  // (ORS start, Google origin, Haversine) depends on it being in range.
+  currentLng = normalizeLng(currentLng)
+
+  // Normalize every stored stop coordinate. Routes created before the
+  // client-side antimeridian fix can carry a wrapped longitude (e.g. 246),
+  // which ORS/Google reject — repair them here so old routes still optimise.
+  const allStops = (route.optimizedStops ?? []).map((s) =>
+    s?.coordinates
+      ? { ...s, coordinates: { lat: s.coordinates.lat, lng: normalizeLng(s.coordinates.lng) } }
+      : s,
+  )
   const completedStops    = allStops.filter((s) => s.completedAt)
   const pendingStops      = allStops.filter((s) => !s.completedAt && s.stopType !== 'endpoint')
   const existingEndpoint  = allStops.find((s) => s.stopType === 'endpoint' && !s.completedAt)
 
   if (pendingStops.length < 1) return null
 
-  const endPoint = endPointOverride
+  const rawEndPoint = endPointOverride
     ?? (existingEndpoint
       ? { lng: existingEndpoint.coordinates.lng, lat: existingEndpoint.coordinates.lat, address: existingEndpoint.address }
       : route.endPoint ?? null)
+  // Normalize the endpoint longitude too (override may come from a client path,
+  // and route.endPoint may be old persisted data).
+  const endPoint = rawEndPoint
+    ? { ...rawEndPoint, lng: normalizeLng(rawEndPoint.lng) }
+    : null
 
   // 1 stop: nothing to reorder
   let stopOrder

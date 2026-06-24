@@ -9,6 +9,22 @@ import { ObjectId } from 'mongodb'
 
 const MAX_STOPS_PER_ROUTE = 23
 
+// Wrap a longitude into [-180, 180]. Booking docs created before the antimeridian
+// fix can carry a wrapped value (e.g. 246 = -114 + 360); copying it straight into
+// the route would re-seed bad data that ORS/Google reject. Sanitize on copy.
+function normalizeLng(lng) {
+  const n = Number(lng)
+  if (!Number.isFinite(n)) return n
+  return ((n + 180) % 360 + 360) % 360 - 180
+}
+
+// Return a coordinates object with the longitude normalized, preserving lat and
+// guarding against a missing coordinates field (don't fabricate one).
+function safeCoords(coordinates) {
+  if (!coordinates) return coordinates
+  return { ...coordinates, lng: normalizeLng(coordinates.lng) }
+}
+
 // kind → { allowedFromStatuses[], newBookingStatus, stopTypes[] }
 // `failed_pickup` is re-assignable the same as `pending`; `failed_dropoff`
 // the same as `picked_up` — the admin just picks the kind again.
@@ -120,7 +136,7 @@ export async function POST(request) {
           bookingId:       String(booking._id),
           stopType,
           assignmentKind:  a.kind, // ← authoritative for status transitions
-          coordinates:     stop.coordinates,
+          coordinates:     safeCoords(stop.coordinates),
           address:         stop.address,
           contactName:     stop.contactName  ?? null,
           contactPhone:    stop.contactPhone ?? null,

@@ -27,6 +27,16 @@ function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
 }
 
+// Wrap a longitude into [-180, 180]. A stale/cached client can send an
+// un-normalized value (e.g. 246 = -114 + 360) after a map pan across the
+// antimeridian; without this it would fail the service-area check below for an
+// address that is actually in range. We repair it in place before validating.
+function normalizeLng(lng) {
+  const n = Number(lng)
+  if (!Number.isFinite(n)) return n
+  return ((n + 180) % 360 + 360) % 360 - 180
+}
+
 function validateStop(stop, label) {
   if (typeof stop.lat !== 'number' || typeof stop.lng !== 'number' || !isFinite(stop.lat) || !isFinite(stop.lng)) {
     return `${label}: coordinates must be numbers`
@@ -100,6 +110,11 @@ export async function POST(request) {
         { status: 400 }
       )
     }
+
+    // Repair any antimeridian-wrapped longitude before validating/storing, so a
+    // valid in-range address sent by a stale client isn't wrongly rejected.
+    pickup.lng  = normalizeLng(pickup.lng)
+    dropoff.lng = normalizeLng(dropoff.lng)
 
     const pickupErr = validateStop(pickup, 'Pickup')
     if (pickupErr) return NextResponse.json({ error: pickupErr }, { status: 400 })

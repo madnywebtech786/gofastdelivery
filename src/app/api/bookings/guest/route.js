@@ -29,6 +29,14 @@ function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
 }
 
+// Wrap a longitude into [-180, 180] — a stale client can send a wrapped value
+// (e.g. 246 = -114 + 360) which would otherwise fail the service-area check.
+function normalizeLng(lng) {
+  const n = Number(lng)
+  if (!Number.isFinite(n)) return n
+  return ((n + 180) % 360 + 360) % 360 - 180
+}
+
 function validateStop(stop, label) {
   if (typeof stop.lat !== 'number' || typeof stop.lng !== 'number' || !isFinite(stop.lat) || !isFinite(stop.lng)) {
     return `${label}: coordinates must be numbers`
@@ -82,6 +90,10 @@ export async function POST(request) {
     }
 
     // ── Per-stop validation ───────────────────────────────────────────────────
+    // Repair antimeridian-wrapped longitude before validating/storing.
+    pickup.lng  = normalizeLng(pickup.lng)
+    dropoff.lng = normalizeLng(dropoff.lng)
+
     const pickupErr  = validateStop(pickup,  'Pickup')
     if (pickupErr)  return NextResponse.json({ error: pickupErr  }, { status: 400 })
     const dropoffErr = validateStop(dropoff, 'Drop-off')
