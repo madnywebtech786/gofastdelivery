@@ -25,9 +25,12 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Email and password are required' }, { status: 400 })
     }
 
-    // Rate limit: max 10 login attempts per IP per 15 minutes
+    // Rate limit: login attempts per IP.
+    // TEMPORARY (client request): raised for pre-production testing/onboarding.
+    // REVERT to the secure value before/after going live:
+    //   const { allowed } = await checkRateLimit(`rate:login:${ip}`, 10, 900)  // 10 / 15 min
     const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown'
-    const { allowed } = await checkRateLimit(`rate:login:${ip}`, 10, 900)
+    const { allowed } = await checkRateLimit(`rate:login:${ip}`, 100, 900)  // 100 / 15 min
     if (!allowed) {
       return NextResponse.json(
         { error: 'Too many login attempts. Please try again in 15 minutes.' },
