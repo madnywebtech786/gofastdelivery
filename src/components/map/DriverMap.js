@@ -190,9 +190,11 @@ export default function DriverMap({
   const driverIdRef        = useRef(driverId)
   const newStopIdsRef      = useRef(newStopIds)
 
-  // Ref so the newStopIds useEffect below can call renderStopMarkers before the
-  // useCallback declaration is evaluated (avoids temporal-dead-zone error).
-  const renderStopMarkersRef = useRef(null)
+  // Refs so effects declared ABOVE the useCallback definitions can call them
+  // without referencing the bindings directly (avoids temporal-dead-zone error).
+  const renderStopMarkersRef   = useRef(null)
+  const renderActiveLegRef     = useRef(null)
+  const renderFullRouteGrayRef = useRef(null)
 
   // Turn-by-turn state
   const stepsRef           = useRef([])
@@ -240,16 +242,18 @@ export default function DriverMap({
       // corridorCoordsRef would keep the STALE polyline — leaving the driver still
       // "off" the old corridor and re-triggering reroute forever (the 5s loop).
       // Re-rendering the active leg here updates corridorCoordsRef to the new path.
+      // Call through refs — these callbacks are defined BELOW this effect, so
+      // referencing them directly (or in the dep array) would throw a TDZ error.
       const map = mapRef.current
-      if (map && markerLibRef.current) {
+      if (map && markerLibRef.current && renderStopMarkersRef.current) {
         const stops = route?.optimizedStops ?? []
         const idx   = activeStopIndexRef.current
         const nextStop = stops[idx]
-        renderStopMarkers(map, stops, idx, newStopIdsRef.current)
-        renderFullRouteGray(map, route?.encodedPolyline)
+        renderStopMarkersRef.current(map, stops, idx, newStopIdsRef.current)
+        renderFullRouteGrayRef.current?.(map, route?.encodedPolyline)
         if (nextStop) {
           const pos = driverPosRef.current
-          renderActiveLeg(
+          renderActiveLegRef.current?.(
             map,
             pos?.lng ?? nextStop.coordinates.lng,
             pos?.lat ?? nextStop.coordinates.lat,
@@ -261,7 +265,7 @@ export default function DriverMap({
     } else {
       routeSyncedOnceRef.current = true
     }
-  }, [route, renderStopMarkers, renderFullRouteGray, renderActiveLeg])
+  }, [route])
   useEffect(() => { if (driverPos) driverPosRef.current = driverPos }, [driverPos])
   useEffect(() => { onStepUpdateRef.current = onStepUpdate }, [onStepUpdate])
   useEffect(() => { onRerouteRef.current = onReroute }, [onReroute])
@@ -328,6 +332,7 @@ export default function DriverMap({
       strokeOpacity: 0.8,
     })
   }, [])
+  renderFullRouteGrayRef.current = renderFullRouteGray
 
   // ── Active leg in blue + extract steps ───────────────────────────────────
   // Fires only when driver switches destination, reroutes, or map first mounts.
@@ -393,6 +398,7 @@ export default function DriverMap({
       console.warn('[DriverMap] active leg fetch failed:', err)
     }
   }, [])
+  renderActiveLegRef.current = renderActiveLeg
 
   // ── Update turn banner: advance nextStepIdx as driver passes each step ────
   const updateTurnBanner = useCallback((lng, lat) => {
