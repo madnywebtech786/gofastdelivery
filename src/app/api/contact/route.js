@@ -36,13 +36,6 @@ export async function POST(request) {
       return Response.json({ error: 'Invalid email address' }, { status: 400 })
     }
 
-    console.log('[Contact Form]', {
-      name,
-      email,
-      phone: phone || 'not provided',
-      message,
-    })
-
     return Response.json({ success: true })
   } catch {
     return Response.json({ error: 'Internal server error' }, { status: 500 })

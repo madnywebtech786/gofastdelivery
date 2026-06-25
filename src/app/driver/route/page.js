@@ -1002,7 +1002,7 @@ export default function DriverRoutePage() {
           activeStopIndex={activeStopIndex}
           driverPos={driverPos}
           driverId={driverId}
-          onStepUpdate={(step) => voiceRef.current?.speakStep(step)}
+          onStepUpdate={(step, distM, stage) => voiceRef.current?.speakStep(step, distM, stage)}
           onReroute={handleRouteUpdate}
           onArrival={(stopIdx) => {
             voiceRef.current?.speak('Arrived at destination')

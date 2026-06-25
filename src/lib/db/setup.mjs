@@ -28,6 +28,10 @@ async function setup() {
     { key: { customerId: 1, createdAt: -1 }, name: 'customer_bookings' },
     { key: { assignedDriverId: 1, status: 1 }, name: 'driver_status' },
     { key: { status: 1, createdAt: -1 }, name: 'status_date' },
+    // Covers delivered_today filter (findAllBookings/countAllBookings sinceDate on updatedAt)
+    { key: { status: 1, updatedAt: -1 }, name: 'status_updated' },
+    // Covers getDriverStats delivered-today count (assignedDriverId + status + updatedAt)
+    { key: { assignedDriverId: 1, status: 1, updatedAt: -1 }, name: 'driver_status_updated' },
   ])
   console.log('✓ bookings indexes')
 

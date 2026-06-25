@@ -53,16 +53,29 @@ const VoiceGuide = forwardRef(function VoiceGuide(_, ref) {
       window.speechSynthesis.speak(u)
     },
 
-    speakStep(step) {
+    // stage: 'early' | 'main' | 'final'
+    // distM: live metres to the turn (from GPS, not step.distance)
+    speakStep(step, distM, stage) {
       if (!step) return
       const instruction = step.maneuver?.instruction
       if (!instruction) return
-      // Build "In 200 metres, turn right onto Main Street"
-      const dist = step.distance
-      let distText = ''
-      if (dist >= 1000) distText = `In ${(dist / 1000).toFixed(1)} kilometres, `
-      else if (dist >= 50) distText = `In ${Math.round(dist / 10) * 10} metres, `
-      this.speak(`${distText}${instruction}`)
+
+      let text
+      if (stage === 'final') {
+        // "Turn right now"
+        text = `${instruction} now`
+      } else if (stage === 'main') {
+        // "Turn right"
+        text = instruction
+      } else {
+        // 'early' — "In 500 metres, turn right onto Main Street"
+        const d = distM ?? step.distance
+        let distText = ''
+        if (d >= 1000) distText = `In ${(d / 1000).toFixed(1)} kilometres, `
+        else if (d >= 50) distText = `In ${Math.round(d / 10) * 10} metres, `
+        text = `${distText}${instruction}`
+      }
+      this.speak(text)
     },
   }))
 

@@ -12,10 +12,34 @@ const OFF_ROUTE_DURATION_MS  = 5000
 // After a reroute fires, pause detection this long so the driver can rejoin the
 // new path before we re-evaluate — prevents a reroute→still-off→reroute loop.
 const REROUTE_COOLDOWN_MS    = 20000
-// Speak when this close to the next turn (metres)
-const SPEAK_AT_M             = 150
 // Trigger arrival when driver is within this radius of the stop (metres)
 const ARRIVAL_RADIUS_M       = 30
+// How close (metres) to a turn point before we consider it passed and advance
+// to the next step. 45m: wide enough to survive GPS jitter at driving speed
+// (phone GPS can be ±15m; at 60 km/h the driver covers 17m per 1-sec tick).
+const STEP_ADVANCE_M         = 45
+
+// ── Banner visibility window (mirrors Google Maps Navigation) ─────────────
+// Google Maps only shows the turn banner when the driver is CLOSE enough to
+// the next turn to need it. Far away → clean map, no clutter.
+// These thresholds define when the banner appears and when voice fires:
+//
+//   > BANNER_HIDE_M   : banner hidden entirely (turn is too far, not relevant yet)
+//   > VOICE_EARLY_M   : banner visible, no voice yet
+//   ≤ VOICE_EARLY_M   : first voice cue ("In 500 metres, turn right")
+//   ≤ VOICE_MAIN_M    : main voice cue ("Turn right")
+//   ≤ VOICE_FINAL_M   : final voice cue ("Turn right now")
+//
+// Urban / suburban: hide beyond 500m (one city block of warning is plenty).
+// Highway: hide beyond 2km (exits need earlier warning at speed).
+// The code picks the threshold based on the current step's distance —
+// a long step (> 1km) is treated as highway-speed, short as urban.
+const BANNER_HIDE_URBAN_M    = 500    // hide when turn > 500m away (urban)
+const BANNER_HIDE_HIGHWAY_M  = 2000   // hide when turn > 2km away (highway)
+const THEN_CUE_M             = 150    // show "then" secondary icon within 150m
+const VOICE_EARLY_M          = 500    // first announcement (~"In 500m, turn X")
+const VOICE_MAIN_M           = 150    // main announcement (~"Turn X")
+const VOICE_FINAL_M          = 30     // final nudge (~"Turn X now")
 
 // ── Google-Maps-app-style follow camera + gliding marker ───────────────────
 // Camera tilt (degrees) applied in heading-up follow mode. Needs a vector Map
@@ -65,7 +89,11 @@ function getManeuverIcon(step) {
 function formatDist(m) {
   if (m == null) return ''
   if (m >= 1000) return `${(m / 1000).toFixed(1)} km`
-  return `${Math.round(m / 10) * 10} m`
+  // Below 50m show exact metres so the driver sees the turn coming precisely.
+  // 50–200m round to nearest 10m. Above 200m round to nearest 50m.
+  if (m < 50)  return `${Math.round(m)} m`
+  if (m < 200) return `${Math.round(m / 10) * 10} m`
+  return `${Math.round(m / 50) * 50} m`
 }
 
 function haversineM(a, b) {
@@ -192,14 +220,19 @@ export default function DriverMap({
 
   // Refs so effects declared ABOVE the useCallback definitions can call them
   // without referencing the bindings directly (avoids temporal-dead-zone error).
-  const renderStopMarkersRef   = useRef(null)
-  const renderActiveLegRef     = useRef(null)
-  const renderFullRouteGrayRef = useRef(null)
+  const renderStopMarkersRef       = useRef(null)
+  const renderActiveLegRef         = useRef(null)
+  const renderFullRouteGrayRef     = useRef(null)
+  const updateTurnBannerInternalRef = useRef(null)
 
   // Turn-by-turn state
   const stepsRef           = useRef([])
   const nextStepIdxRef     = useRef(0)
-  const lastSpokenStepRef  = useRef(-1)
+  // Tracks the highest voice stage already spoken for the current step index,
+  // so each stage fires at most once per step.
+  // 0 = nothing spoken, 1 = early spoken, 2 = main spoken, 3 = final spoken
+  const lastSpokenStepRef  = useRef(-1)  // last step index that got any voice
+  const voiceStageRef      = useRef(0)   // stage reached for lastSpokenStepRef's step
 
   // Active leg corridor coords [[lng,lat],...] for off-route detection
   const corridorCoordsRef  = useRef([])
@@ -385,13 +418,30 @@ export default function DriverMap({
       setOffRoute(false)
 
       if (steps.length > 0) {
-        const first = steps[nextStepIdxRef.current] ?? steps[0]
-        setBanner({
-          icon:        getManeuverIcon(first),
-          instruction: first.maneuver?.instruction ?? '',
-          distance:    formatDist(first.distance),
-        })
-        if (resetStepTracking) onStepUpdateRef.current?.(first)
+        // Seed the banner immediately with live distance so it's accurate the
+        // moment the leg loads — don't wait for the next GPS tick to correct it.
+        // We call updateTurnBanner with the current driver position if known;
+        // fall back to the destination coords so something is always shown.
+        const pos = driverPosRef.current
+        if (pos) {
+          updateTurnBannerInternalRef.current?.(steps, 0, pos.lng, pos.lat)
+        } else {
+          const first = steps[0]
+          const nextS = steps[1]
+          let dist = first.distance
+          if (nextS) {
+            const [nLng, nLat] = nextS.maneuver.location
+            const [fLng, fLat] = first.maneuver.location
+            dist = haversineM({ lng: fLng, lat: fLat }, { lng: nLng, lat: nLat })
+          }
+          setBanner({
+            icon:        getManeuverIcon(first),
+            instruction: first.maneuver?.instruction ?? '',
+            distance:    formatDist(dist),
+            then:        steps[1] ? getManeuverIcon(steps[1]) : null,
+          })
+        }
+        if (resetStepTracking) onStepUpdateRef.current?.(steps[nextStepIdxRef.current] ?? steps[0])
       }
     } catch (err) {
       if (err?.name === 'AbortError') return
@@ -400,42 +450,113 @@ export default function DriverMap({
   }, [])
   renderActiveLegRef.current = renderActiveLeg
 
-  // ── Update turn banner: advance nextStepIdx as driver passes each step ────
-  const updateTurnBanner = useCallback((lng, lat) => {
-    const steps = stepsRef.current
+  // ── Core banner logic ────────────────────────────────────────────────────
+  //
+  // Mirrors the exact Google Maps Navigation UX:
+  //
+  //  BANNER VISIBILITY — hide when the turn is far away (clean map):
+  //   - Urban step  (step.distance < 1km): show only within 500m of the turn
+  //   - Highway step (step.distance ≥ 1km): show only within 2km of the turn
+  //   When hidden, setBanner(null) → the map is uncluttered.
+  //
+  //  STEP ADVANCEMENT:
+  //   Each step's "turn point" is steps[idx+1].maneuver.location (the START
+  //   of the NEXT step). We advance when the driver is within STEP_ADVANCE_M.
+  //   Full while-loop so a GPS gap never leaves the index stranded.
+  //
+  //  THREE-STAGE VOICE (fires once per stage per step, never repeats):
+  //   Stage 1 — early:  ≤ VOICE_EARLY_M  (~500m) "In 500 metres, turn right"
+  //   Stage 2 — main:   ≤ VOICE_MAIN_M   (~150m) "Turn right"
+  //   Stage 3 — final:  ≤ VOICE_FINAL_M  (~30m)  "Turn right now"
+  //
+  //  "THEN" CUE — secondary icon only within THEN_CUE_M (150m) of a turn.
+  //
+  // `startIdx` non-null = called from leg-load seed (don't write back refs,
+  // don't fire voice). null = live GPS tick.
+  const updateTurnBannerInternal = useCallback((steps, startIdx, lng, lat) => {
     if (!steps.length) return
 
-    while (nextStepIdxRef.current < steps.length - 1) {
-      const cur = steps[nextStepIdxRef.current]
-      const [sLng, sLat] = cur.maneuver.location
-      const distToStart = haversineM({ lng, lat }, { lng: sLng, lat: sLat })
-      if (distToStart < 30) {
-        nextStepIdxRef.current++
-        if (lastSpokenStepRef.current === nextStepIdxRef.current - 1) {
-          lastSpokenStepRef.current = nextStepIdxRef.current - 1
-        }
+    let idx = startIdx ?? nextStepIdxRef.current
+
+    // Advance past every turn the driver has already passed
+    while (idx < steps.length - 1) {
+      const [nLng, nLat] = steps[idx + 1].maneuver.location
+      if (haversineM({ lng, lat }, { lng: nLng, lat: nLat }) < STEP_ADVANCE_M) {
+        idx++
+      } else {
         break
       }
-      break
     }
 
-    const idx  = nextStepIdxRef.current
-    const step = steps[idx]
+    const isLiveGps = startIdx == null
+    if (isLiveGps) nextStepIdxRef.current = idx
+
+    const step     = steps[idx]
+    const nextStep = steps[idx + 1]
     if (!step) return
 
-    const [sLng, sLat] = step.maneuver.location
-    const distToTurn = haversineM({ lng, lat }, { lng: sLng, lat: sLat })
+    // Distance to the upcoming turn point (start of next step) or last-step fallback
+    let distToTurn
+    if (nextStep) {
+      const [nLng, nLat] = nextStep.maneuver.location
+      distToTurn = haversineM({ lng, lat }, { lng: nLng, lat: nLat })
+    } else {
+      // Last step: measure back to this step's own start as a proxy for destination
+      const [sLng, sLat] = step.maneuver.location
+      distToTurn = haversineM({ lng, lat }, { lng: sLng, lat: sLat })
+    }
+
+    // ── Decide whether to show the banner at all ──────────────────────────
+    // Use the current step's own distance to classify urban vs highway.
+    // A step distance ≥ 1000m means the driver is on a fast road and needs
+    // earlier warning; urban streets need only 500m of heads-up.
+    const isHighway  = step.distance >= 1000
+    const hideThresh = isHighway ? BANNER_HIDE_HIGHWAY_M : BANNER_HIDE_URBAN_M
+
+    if (distToTurn > hideThresh) {
+      // Too far — hide the banner entirely. Clean map, no clutter.
+      if (isLiveGps) setBanner(null)
+      return
+    }
+
+    // ── Build banner ──────────────────────────────────────────────────────
+    // "Then" cue only within THEN_CUE_M of the current turn
+    const thenStep = nextStep && distToTurn <= THEN_CUE_M ? steps[idx + 2] ?? null : null
 
     setBanner({
       icon:        getManeuverIcon(step),
       instruction: step.maneuver?.instruction ?? '',
       distance:    formatDist(distToTurn),
+      then:        thenStep ? getManeuverIcon(thenStep) : null,
     })
 
-    if (distToTurn <= SPEAK_AT_M && idx !== lastSpokenStepRef.current) {
+    // ── Three-stage voice — each stage fires once per step ────────────────
+    if (!isLiveGps) return
+
+    // Reset stage tracker when we advance to a new step
+    if (idx !== lastSpokenStepRef.current) {
       lastSpokenStepRef.current = idx
-      onStepUpdateRef.current?.(step, distToTurn)
+      voiceStageRef.current     = 0
     }
+
+    if (distToTurn <= VOICE_FINAL_M && voiceStageRef.current < 3) {
+      voiceStageRef.current = 3
+      onStepUpdateRef.current?.(step, distToTurn, 'final')
+    } else if (distToTurn <= VOICE_MAIN_M && voiceStageRef.current < 2) {
+      voiceStageRef.current = 2
+      onStepUpdateRef.current?.(step, distToTurn, 'main')
+    } else if (distToTurn <= VOICE_EARLY_M && voiceStageRef.current < 1) {
+      voiceStageRef.current = 1
+      onStepUpdateRef.current?.(step, distToTurn, 'early')
+    }
+  }, [])
+  updateTurnBannerInternalRef.current = updateTurnBannerInternal
+
+  // ── GPS-tick entry point ──────────────────────────────────────────────────
+  const updateTurnBanner = useCallback((lng, lat) => {
+    const steps = stepsRef.current
+    if (!steps.length) return
+    updateTurnBannerInternalRef.current?.(steps, null, lng, lat)
   }, [])
 
   // Lock follow on a known position with the chosen orientation, like the
@@ -965,20 +1086,49 @@ export default function DriverMap({
 
       {/* ── Turn-by-turn banner ─────────────────────────────────────────── */}
       {banner && (
-        <div className="absolute top-16 left-0 right-0 z-30 flex justify-center pointer-events-none px-3">
+        <div className="absolute top-3 left-0 right-0 z-30 flex justify-center pointer-events-none px-3">
           <div
-            className="flex items-center gap-2.5 rounded-2xl px-3 py-2.5"
-            style={{ background: 'rgba(15,23,42,0.88)', backdropFilter: 'blur(8px)', width: '62%', minWidth: '200px', maxWidth: '340px' }}
+            className="flex items-center gap-3 rounded-2xl px-4 py-3 w-full"
+            style={{
+              background: 'rgba(10,15,30,0.93)',
+              backdropFilter: 'blur(10px)',
+              maxWidth: '420px',
+              boxShadow: '0 4px 24px rgba(0,0,0,0.45)',
+            }}
           >
-            <div className="shrink-0 w-9 h-9 rounded-lg bg-blue-600 flex items-center justify-center text-lg font-bold text-white">
+            {/* Maneuver arrow — large, like Google Maps */}
+            <div
+              className="shrink-0 flex items-center justify-center rounded-xl"
+              style={{ width: 52, height: 52, background: '#1d4ed8', fontSize: 28 }}
+            >
               {banner.icon}
             </div>
+
+            {/* Distance + instruction */}
             <div className="flex-1 min-w-0">
-              <p className="text-white font-bold text-xs leading-snug">{banner.instruction}</p>
-              {banner.distance && (
-                <p className="text-blue-300 text-[11px] font-semibold mt-0.5">{banner.distance}</p>
-              )}
+              <p
+                className="text-white font-black leading-none tracking-tight"
+                style={{ fontSize: 26, letterSpacing: '-0.5px' }}
+              >
+                {banner.distance}
+              </p>
+              <p className="text-gray-200 font-semibold leading-snug mt-0.5" style={{ fontSize: 13 }}>
+                {banner.instruction}
+              </p>
             </div>
+
+            {/* "Then" cue — next maneuver icon, small, right side */}
+            {banner.then && (
+              <div className="shrink-0 flex flex-col items-center gap-0.5">
+                <span className="text-gray-400" style={{ fontSize: 10, fontWeight: 600 }}>then</span>
+                <div
+                  className="flex items-center justify-center rounded-lg"
+                  style={{ width: 32, height: 32, background: 'rgba(255,255,255,0.12)', fontSize: 18 }}
+                >
+                  {banner.then}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
