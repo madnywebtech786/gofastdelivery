@@ -13,21 +13,32 @@ const options = {
   socketTimeoutMS: 45000,
 }
 
-// Reuse the MongoClient across hot reloads in development
-// In production (serverless), each invocation may get a new instance
-let client
+// In development: reuse across HMR reloads via a global.
+// In production (Vercel serverless): connect lazily so a transient Atlas
+// blip at cold-start doesn't permanently poison the module-level promise.
+// A failed connect() is not retried — the rejected promise would be cached
+// forever on the Lambda instance. Lazy init lets the next request retry.
 let clientPromise
 
-if (process.env.NODE_ENV === 'development') {
-  // Use a global variable in dev to preserve across HMR reloads
-  if (!global._mongoClientPromise) {
-    client = new MongoClient(uri, options)
-    global._mongoClientPromise = client.connect()
+function getClientPromise() {
+  if (process.env.NODE_ENV === 'development') {
+    if (!global._mongoClientPromise) {
+      const c = new MongoClient(uri, options)
+      global._mongoClientPromise = c.connect()
+    }
+    return global._mongoClientPromise
   }
-  clientPromise = global._mongoClientPromise
-} else {
-  client = new MongoClient(uri, options)
-  clientPromise = client.connect()
+
+  // Production: create a fresh promise each time the module-level cache is
+  // empty. The cache is cleared on connect failure so the next request retries.
+  if (!clientPromise) {
+    const c = new MongoClient(uri, options)
+    clientPromise = c.connect().catch((err) => {
+      clientPromise = null  // allow retry on next request
+      return Promise.reject(err)
+    })
+  }
+  return clientPromise
 }
 
 /**
@@ -35,8 +46,8 @@ if (process.env.NODE_ENV === 'development') {
  * Reuses the existing connection if already established.
  */
 export async function getDb() {
-  const client = await clientPromise
+  const client = await getClientPromise()
   return client.db(DB_NAME)
 }
 
-export default clientPromise
+export default getClientPromise
