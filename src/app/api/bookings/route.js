@@ -77,8 +77,8 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Only customers can create bookings' }, { status: 403 })
     }
 
-    // Per-user rate limit: 10 bookings per hour
-    const { allowed } = await checkRateLimit(`rate:booking-create:${userId}`, 10, 3600)
+    // Per-user rate limit: 60 bookings per hour
+    const { allowed } = await checkRateLimit(`rate:booking-create:${userId}`, 60, 3600)
     if (!allowed) {
       return NextResponse.json(
         { error: 'Too many bookings created. Please try again later.' },

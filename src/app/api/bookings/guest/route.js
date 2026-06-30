@@ -6,8 +6,8 @@ import { checkRateLimit } from '@/lib/redis'
 import { createBooking } from '@/lib/db/bookings'
 import { sendBookingConfirmed } from '@/lib/mailer'
 
-// 5 guest bookings per IP per hour
-const GUEST_RATE_LIMIT   = 5
+// 20 guest bookings per IP per hour
+const GUEST_RATE_LIMIT   = 20
 const GUEST_RATE_WINDOW  = 3600 // seconds
 
 // Coordinate bounding box — Greater Alberta / Western Canada.
