@@ -1,7 +1,5 @@
 import { MongoClient } from 'mongodb'
 
-const DB_NAME = 'courier'
-
 if (!process.env.MONGODB_URI) {
   throw new Error('MONGODB_URI environment variable is not set')
 }
@@ -42,12 +40,13 @@ function getClientPromise() {
 }
 
 /**
- * Returns a handle to the 'courier' database.
+ * Returns a handle to the database named in MONGODB_URI's path segment
+ * (client.db() with no argument uses that name automatically).
  * Reuses the existing connection if already established.
  */
 export async function getDb() {
   const client = await getClientPromise()
-  return client.db(DB_NAME)
+  return client.db()
 }
 
 export default getClientPromise

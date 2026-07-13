@@ -19,7 +19,7 @@ export async function PATCH(request) {
     const body = await request.json()
 
     // Fields allowed per role
-    const customerFields = ['name', 'phone', 'contactName', 'companyName', 'buzzCode']
+    const customerFields = ['name', 'phone', 'contactName', 'companyName', 'address']
     const adminFields    = ['name', 'phone', 'address']
     const allowed = role === 'admin' ? adminFields : customerFields
 

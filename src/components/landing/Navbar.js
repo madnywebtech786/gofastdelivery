@@ -352,7 +352,7 @@ export default function Navbar() {
         </div>
 
         {/* Nav links */}
-        <nav className="relative flex-1 flex flex-col justify-center px-7 gap-0 overflow-y-auto">
+        <nav className="relative flex flex-col pt-6 px-7 gap-0 overflow-y-auto">
           {NAV_LINKS.map((link, i) => (
             <div key={link.label}>
               {link.dropdown ? (
@@ -428,14 +428,9 @@ export default function Navbar() {
           ))}
         </nav>
 
-        {/* Bottom CTAs */}
+        {/* CTAs — directly under the links, no flex-push to the bottom */}
         <div className="relative px-7 pb-8 flex flex-col gap-3 shrink-0" style={{ borderTop: '1px solid rgba(255,255,255,0.07)', paddingTop: '1.25rem' }}>
-          <div className="flex items-center gap-2 mb-1">
-            <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#1bb908', boxShadow: '0 0 6px #1bb908' }} />
-            <span className="text-[10px] font-semibold" style={{ color: 'rgba(255,255,255,0.3)' }}>
-              8000+ deliveries · 99.2% on-time · Calgary-based
-            </span>
-          </div>
+    
           <Link
             href="/register"
             onClick={closeDrawer}

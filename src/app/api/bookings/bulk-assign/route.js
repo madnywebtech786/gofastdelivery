@@ -7,11 +7,11 @@ import { revalidateTag } from 'next/cache'
 import redis from '@/lib/redis'
 import { ObjectId } from 'mongodb'
 
-// Google Routes API caps intermediates at 25 waypoints per request.
-// Layout: 1 (driver origin) + 25 (intermediates) + 1 (destination) = 27 coords → 26 stop slots.
-// Endpoint is mandatory and always occupies 1 slot, leaving 25 usable delivery stops.
-// At 2 stops per pickup+dropoff booking that is 12 full bookings max per route.
-const MAX_STOPS_PER_ROUTE = 25
+// Full-route polyline now goes through ORS Directions V2 (no documented
+// waypoint cap), not Google Routes (which capped intermediates at 25) — see
+// ORS_GOOGLE_HYBRID_ROUTING.md. This is a bounded sanity ceiling against
+// accidental fat-finger admin input, not an API constraint.
+const MAX_STOPS_PER_ROUTE = 200
 
 // Wrap a longitude into [-180, 180]. Booking docs created before the antimeridian
 // fix can carry a wrapped value (e.g. 246 = -114 + 360); copying it straight into
@@ -142,6 +142,7 @@ export async function POST(request) {
           assignmentKind:  a.kind, // ← authoritative for status transitions
           coordinates:     safeCoords(stop.coordinates),
           address:         stop.address,
+          buzzCode:        stop.buzzCode     ?? null,
           contactName:     stop.contactName  ?? null,
           contactPhone:    stop.contactPhone ?? null,
           notes:           stop.notes        ?? null,

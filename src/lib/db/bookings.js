@@ -1,8 +1,57 @@
 import { ObjectId } from 'mongodb'
+import { nanoid } from 'nanoid'
 import { getDb } from './client.js'
 
+// Ranked lightest → heaviest. Used to pick the heaviest slab across multiple
+// packages in one booking ("highest slab wins" — conservative, matches how
+// physical shipping consolidation is priced; the `pricing` collection only
+// has a flat rate per slab, no per-kg rate to sum against).
+const WEIGHT_SLAB_ORDER = ['up_to_10', '10_to_25', '25_to_50', '50_plus']
+const MAX_PACKAGES = 20
+
+function normalizeOnePackage(p) {
+  return {
+    itemId:     String(p?.itemId ?? '').trim().slice(0, 60) || nanoid(10),
+    kind:       String(p?.kind       ?? '').trim().slice(0, 120),
+    weightSlab: String(p?.weightSlab ?? '').trim().slice(0, 60),
+    quantity:   Number.isFinite(Number(p?.quantity)) && Number(p?.quantity) > 0 ? Math.floor(Number(p.quantity)) : 1,
+    pickedUpAt:  null,
+    deliveredAt: null,
+  }
+}
+
+// Picks the heaviest weightSlab among a set of packages. Unknown/empty slabs
+// sort before all known slabs so they never win over a real selection.
+function heaviestWeightSlab(slabs) {
+  return slabs.reduce((heaviest, slab) => {
+    const rank = WEIGHT_SLAB_ORDER.indexOf(slab)
+    const heaviestRank = WEIGHT_SLAB_ORDER.indexOf(heaviest)
+    return rank > heaviestRank ? slab : heaviest
+  }, slabs[0] ?? '')
+}
+
+/**
+ * Normalizes packageDetails for storage.
+ *
+ * Accepts either the legacy single-package shape ({kind, weightSlab}) or the
+ * multi-package shape ({packages: [{kind, weightSlab, quantity}, ...]}).
+ * When `packages` is present, the top-level kind/weightSlab are DERIVED
+ * (first package's kind for display back-compat; heaviest slab across all
+ * packages for pricing) so every existing reader of packageDetails.kind /
+ * packageDetails.weightSlab keeps working unchanged for both shapes.
+ */
 function normalizePackageDetails(pkg) {
   if (!pkg) return null
+
+  if (Array.isArray(pkg.packages) && pkg.packages.length > 0) {
+    const packages = pkg.packages.slice(0, MAX_PACKAGES).map(normalizeOnePackage)
+    return {
+      kind:       packages[0].kind,
+      weightSlab: heaviestWeightSlab(packages.map((p) => p.weightSlab)),
+      packages,
+    }
+  }
+
   return {
     kind:      String(pkg.kind      ?? '').trim().slice(0, 120),
     weightSlab: String(pkg.weightSlab ?? '').trim().slice(0, 60),
@@ -126,11 +175,20 @@ export async function findBookingsByCustomer(customerId, { limit = 20, skip = 0,
     .toArray()
 }
 
+function escapeRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
 /**
  * List all bookings (admin), optionally filtered by status.
  * `status` may be a single status string or an array of statuses.
+ * `pickupDate` ('YYYY-MM-DD') restricts to bookings whose pickup stop's
+ * pickupTime falls on that calendar day — pickupTime is stored as a raw
+ * datetime-local string ("YYYY-MM-DDTHH:mm", not a Date), so this is a
+ * string-prefix match, not a Date range query. Only the pickup stop ever has
+ * pickupTime, so this can't accidentally match a dropoff stop.
  */
-function buildAdminFilter({ status, hasDriver, sinceDate, untilDate, search }) {
+function buildAdminFilter({ status, hasDriver, sinceDate, untilDate, pickupDate, search }) {
   const filter = Array.isArray(status)
     ? (status.length > 0 ? { status: { $in: status } } : {})
     : (status ? { status } : {})
@@ -141,8 +199,11 @@ function buildAdminFilter({ status, hasDriver, sinceDate, untilDate, search }) {
     if (sinceDate) filter.createdAt.$gte = sinceDate
     if (untilDate) filter.createdAt.$lte = untilDate
   }
+  if (pickupDate) {
+    filter['stops.pickupTime'] = { $regex: '^' + escapeRegex(pickupDate) }
+  }
   if (search) {
-    const re = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')
+    const re = new RegExp(escapeRegex(search), 'i')
     filter.$or = [
       { senderEmail:          re },
       { 'stops.contactName':  re },
@@ -152,22 +213,61 @@ function buildAdminFilter({ status, hasDriver, sinceDate, untilDate, search }) {
   return filter
 }
 
-export async function findAllBookings({ status, hasDriver, sinceDate, untilDate, search, limit = 50, skip = 0 } = {}) {
+// Builds the Mongo filter for either a flat query object or a `{ combine:
+// [queryObj, ...] }` shape (used by the "Today's Work" filter, which unions
+// several status groups that each need their own independent hasDriver/
+// pickupDate scoping — impossible to express as one flat filter since only
+// one of the sub-groups (pending) is ever date-restricted). `search` is
+// re-applied inside every branch of the $or so it still ANDs correctly
+// against each branch's own status/date constraints.
+function buildAdminQuery(params) {
+  const { combine, ...flat } = params
+  if (!Array.isArray(combine)) return buildAdminFilter(flat)
+  return { $or: combine.map((sub) => buildAdminFilter({ ...sub, search: flat.search })) }
+}
+
+export async function findAllBookings({ status, hasDriver, sinceDate, untilDate, pickupDate, search, combine, limit = 50, skip = 0 } = {}) {
   const db = await getDb()
   return db
     .collection('bookings')
-    .find(buildAdminFilter({ status, hasDriver, sinceDate, untilDate, search }))
+    .find(buildAdminQuery({ status, hasDriver, sinceDate, untilDate, pickupDate, search, combine }))
     .sort({ createdAt: -1 })
     .skip(skip)
     .limit(limit)
     .toArray()
 }
 
-export async function countAllBookings({ status, hasDriver, sinceDate, untilDate, search } = {}) {
+export async function countAllBookings({ status, hasDriver, sinceDate, untilDate, pickupDate, search, combine } = {}) {
   const db = await getDb()
   return db.collection('bookings').countDocuments(
-    buildAdminFilter({ status, hasDriver, sinceDate, untilDate, search })
+    buildAdminQuery({ status, hasDriver, sinceDate, untilDate, pickupDate, search, combine })
   )
+}
+
+// Sanity ceiling for "select all matching this filter" — a bounded guard
+// against an unbounded query, not a real business limit. Mirrors the
+// reasoning behind MAX_STOPS_PER_ROUTE in bulk-assign/route.js: this is a
+// safety cap on accidental scale, not an expected real-world count.
+const SELECT_ALL_MAX_RESULTS = 500
+
+/**
+ * Same admin filter as findAllBookings, but returns only the fields the
+ * "select all matching this filter" UI action needs (not full documents) and
+ * has no pagination — up to SELECT_ALL_MAX_RESULTS matches, sorted the same
+ * way findAllBookings/the paginated list is, so "select all" always lines up
+ * with what the paginated view would show across all its pages.
+ */
+export async function findAllBookingsLean({ status, hasDriver, sinceDate, untilDate, pickupDate, search, combine } = {}) {
+  const db = await getDb()
+  return db
+    .collection('bookings')
+    .find(
+      buildAdminQuery({ status, hasDriver, sinceDate, untilDate, pickupDate, search, combine }),
+      { projection: { _id: 1, status: 1, assignedDriverId: 1, stops: 1, trackingToken: 1 } }
+    )
+    .sort({ createdAt: -1 })
+    .limit(SELECT_ALL_MAX_RESULTS)
+    .toArray()
 }
 
 /**

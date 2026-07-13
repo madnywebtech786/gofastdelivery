@@ -223,6 +223,26 @@ export default function BookingDetailClient({ booking: initial, origin }) {
                 <p className="text-sm" style={{ color: 'var(--fg-2)' }}>{b.packageDetails.specialInstructions}</p>
               </div>
             )}
+            {Array.isArray(b.packageDetails.packages) && b.packageDetails.packages.length > 1 && (
+              <div className="col-span-2">
+                <p className="text-xs font-medium uppercase tracking-wide mb-1.5" style={{ color: 'var(--fg-3)' }}>
+                  Packages ({b.packageDetails.packages.length})
+                </p>
+                <ul className="space-y-1">
+                  {b.packageDetails.packages.map((p, i) => (
+                    <li key={p.itemId ?? i} className="flex items-center gap-2 text-sm" style={{ color: 'var(--fg-2)' }}>
+                      <span className="shrink-0 inline-flex min-w-5.5 justify-center rounded-md bg-slate-100 text-slate-700 text-[11px] font-bold px-1.5 py-0.5">{i + 1}</span>
+                      <span className="truncate">{p.kind}</span>
+                      {p.weightSlab && (
+                        <span className="ml-auto text-xs" style={{ color: 'var(--fg-3)' }}>
+                          {WEIGHT_LABELS[p.weightSlab] ?? p.weightSlab}
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -269,6 +289,9 @@ export default function BookingDetailClient({ booking: initial, origin }) {
                   style={{ color: stop.completedAt ? 'var(--fg-3)' : 'var(--fg)' }}>
                   {stop.address}
                 </p>
+                {stop.buzzCode && (
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--fg-3)' }}>Unit/Buzz Code: {stop.buzzCode}</p>
+                )}
                 {(stop.contactName || stop.contactPhone) && (
                   <div className="flex items-center flex-wrap gap-3 mt-1.5">
                     {stop.contactName && (

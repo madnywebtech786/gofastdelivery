@@ -4,6 +4,8 @@ import { createUser, emailExists } from '@/lib/db/users'
 import { createSession } from '@/lib/session'
 import { checkRateLimit } from '@/lib/redis'
 
+const MAX_PW_BYTES = 72  // bcrypt truncates beyond this
+
 export async function POST(request) {
   try {
     const { name, email, password, phone } = await request.json()
@@ -19,6 +21,13 @@ export async function POST(request) {
     // Email format
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return NextResponse.json({ error: 'Invalid email address.' }, { status: 400 })
+    }
+
+    if (Buffer.byteLength(password, 'utf8') > MAX_PW_BYTES) {
+      return NextResponse.json(
+        { error: 'Password is too long (max 72 characters).' },
+        { status: 400 }
+      )
     }
 
     // Password strength: min 8 chars, 1 uppercase, 1 number

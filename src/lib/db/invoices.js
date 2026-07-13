@@ -119,17 +119,20 @@ export async function deleteInvoice(id) {
 
 export async function getNextInvoiceNumber() {
   const db = await getDb()
-  // Find the highest existing INV\d+ number
-  const last = await db.collection('invoices')
-    .find({ invoiceNumber: /^INV\d+$/ })
-    .sort({ invoiceNumber: -1 })
-    .limit(1)
+  // invoiceNumber is a zero-padded string ("INV003"), so a Mongo-side
+  // { invoiceNumber: -1 } sort is lexicographic, not numeric — it would pick
+  // "INV999" over "INV1000" once numbers cross a digit-width boundary.
+  // Numbers stay small (hundreds, not millions) and the field is indexed, so
+  // fetching just the numeric suffix for every INV\d+ doc and taking the max
+  // in JS is cheap and always correct regardless of digit width.
+  const docs = await db.collection('invoices')
+    .find({ invoiceNumber: /^INV\d+$/ }, { projection: { invoiceNumber: 1 } })
     .toArray()
 
   let next = 1
-  if (last.length > 0) {
-    const num = parseInt(last[0].invoiceNumber.replace('INV', ''), 10)
-    if (!isNaN(num)) next = num + 1
+  for (const doc of docs) {
+    const num = parseInt(doc.invoiceNumber.replace('INV', ''), 10)
+    if (!isNaN(num) && num + 1 > next) next = num + 1
   }
   return `INV${String(next).padStart(3, '0')}`
 }

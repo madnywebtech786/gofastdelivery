@@ -79,7 +79,10 @@ export default function BookingCard({ booking, href }) {
             {booking.packageDetails?.kind && (
               <div className="flex items-center gap-1.5">
                 <Package size={10} style={{ color: 'var(--fg-3)' }} />
-                <span className="text-xs" style={{ color: 'var(--fg-3)' }}>{booking.packageDetails.kind}</span>
+                <span className="text-xs" style={{ color: 'var(--fg-3)' }}>
+                  {booking.packageDetails.kind}
+                  {booking.packageDetails.packages?.length > 1 && ` · ×${booking.packageDetails.packages.length} packages`}
+                </span>
               </div>
             )}
           </div>

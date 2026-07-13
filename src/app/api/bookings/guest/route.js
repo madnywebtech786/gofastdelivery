@@ -5,6 +5,7 @@ const trackingId = customAlphabet('23456789ABCDEFGHJKLMNPQRSTUVWXYZ', 10)
 import { checkRateLimit } from '@/lib/redis'
 import { createBooking } from '@/lib/db/bookings'
 import { sendBookingConfirmed } from '@/lib/mailer'
+import { sendBookingConfirmedSms } from '@/lib/sms'
 
 // 20 guest bookings per IP per hour
 const GUEST_RATE_LIMIT   = 20
@@ -98,6 +99,9 @@ export async function POST(request) {
     if (pickupErr)  return NextResponse.json({ error: pickupErr  }, { status: 400 })
     const dropoffErr = validateStop(dropoff, 'Drop-off')
     if (dropoffErr) return NextResponse.json({ error: dropoffErr }, { status: 400 })
+    if (!sanitizeStr(pickup.pickupTime)) {
+      return NextResponse.json({ error: 'Pickup time is required' }, { status: 400 })
+    }
 
     // ── Same-location guard ───────────────────────────────────────────────────
     const R = 6_371_000
@@ -119,9 +123,6 @@ export async function POST(request) {
     const cleanReceiverEmail = sanitizeStr(receiverEmail)
     if (cleanSenderEmail   && !isValidEmail(cleanSenderEmail))   return NextResponse.json({ error: 'Invalid sender email'   }, { status: 400 })
     if (cleanReceiverEmail && !isValidEmail(cleanReceiverEmail)) return NextResponse.json({ error: 'Invalid receiver email' }, { status: 400 })
-
-    // ── Package details ───────────────────────────────────────────────────────
-    const pkg = packageDetails ?? {}
 
     // ── estimatedPrice sanity check ───────────────────────────────────────────
     const price = estimatedPrice != null ? Number(estimatedPrice) : null
@@ -162,21 +163,21 @@ export async function POST(request) {
           completedAt:  null,
         },
       ],
-      packageDetails: {
-        kind:       sanitizeStr(pkg.kind),
-        weightSlab: sanitizeStr(pkg.weightSlab),
-      },
+      packageDetails: packageDetails ?? null,
       senderEmail:    cleanSenderEmail   || null,
       receiverEmail:  cleanReceiverEmail || null,
       estimatedPrice: price,
     })
 
-    // ── Confirmation email — fire-and-forget ──────────────────────────────────
+    // ── Confirmation email + SMS — fire-and-forget ────────────────────────────
     try {
       const base = process.env.APP_BASE_URL ?? 'http://localhost:3000'
       const trackingUrl = `${base}/track/${trackingToken}`
-      sendBookingConfirmed({ booking: JSON.parse(JSON.stringify(booking)), trackingUrl })
+      const bookingCopy = JSON.parse(JSON.stringify(booking))
+      sendBookingConfirmed({ booking: bookingCopy, trackingUrl })
         .catch((e) => console.error('[mailer] guest booking confirmed:', e))
+      sendBookingConfirmedSms({ booking: bookingCopy, trackingUrl })
+        .catch((e) => console.error('[sms] guest booking confirmed:', e))
     } catch { /* non-fatal */ }
 
     // Return only tracking token — guest has no portal to redirect to

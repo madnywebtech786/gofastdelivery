@@ -8,15 +8,9 @@ function otpCollection(db) {
   return db.collection('password_reset_otps')
 }
 
-/**
- * Ensure a TTL index exists on the collection (safe to call repeatedly —
- * MongoDB is idempotent for identical index definitions).
- */
-export async function ensureOtpIndexes() {
-  const db = await getDb()
-  await otpCollection(db).createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 })
-  await otpCollection(db).createIndex({ email: 1 }, { unique: true })
-}
+// Indexes (TTL on expiresAt, unique on email) are created by
+// src/lib/db/setup.mjs — the single source of truth for all collection
+// indexes in this project, run via `npm run db:setup`.
 
 /**
  * Store (or replace) an OTP for the given email.

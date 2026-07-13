@@ -89,6 +89,9 @@ export default async function AdminBookingDetailPage({ params }) {
                     <p className="text-sm wrap-break-word" style={{ color: stop.completedAt ? 'var(--fg-3)' : 'var(--fg)' }}>
                       {stop.address}
                     </p>
+                    {stop.buzzCode && (
+                      <p className="text-xs mt-0.5" style={{ color: 'var(--fg-3)' }}>Unit/Buzz Code: {stop.buzzCode}</p>
+                    )}
                     {(stop.contactName || stop.contactPhone) && (
                       <div className="flex items-center gap-3 mt-1">
                         {stop.contactName && (
@@ -123,6 +126,35 @@ export default async function AdminBookingDetailPage({ params }) {
               <MetaRow label="Tracking Token" value={<span className="mono text-xs" style={{ color: 'var(--fg-2)' }}>{b.trackingToken}</span>} />
             </div>
           </div>
+
+          {/* Package(s) */}
+          {b.packageDetails?.kind && (
+            <div className={cardCls + ' anim-fade-up s2'}>
+              <div className={headerCls}>
+                <h2 className="text-sm font-bold" style={{ color: 'var(--fg)' }}>Package</h2>
+              </div>
+              <div className="px-5 py-4">
+                {Array.isArray(b.packageDetails.packages) && b.packageDetails.packages.length > 1 ? (
+                  <ul className="space-y-1.5">
+                    {b.packageDetails.packages.map((p, i) => (
+                      <li key={p.itemId ?? i} className="flex items-center gap-2 text-sm" style={{ color: 'var(--fg)' }}>
+                        <span className="shrink-0 inline-flex min-w-5.5 justify-center rounded-md bg-slate-100 text-slate-700 text-[11px] font-bold px-1.5 py-0.5">{i + 1}</span>
+                        <span className="truncate">{p.kind}</span>
+                        {p.weightSlab && <span className="ml-auto text-xs" style={{ color: 'var(--fg-3)' }}>{p.weightSlab.replace(/_/g, ' ')}</span>}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <>
+                    <p className="text-sm" style={{ color: 'var(--fg)' }}>{b.packageDetails.kind}</p>
+                    {b.packageDetails.weightSlab && (
+                      <p className="text-xs mt-0.5" style={{ color: 'var(--fg-3)' }}>{b.packageDetails.weightSlab.replace(/_/g, ' ')}</p>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* RIGHT */}

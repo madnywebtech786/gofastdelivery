@@ -9,6 +9,7 @@ import {
   findAllBookings,
 } from '@/lib/db/bookings'
 import { sendBookingConfirmed } from '@/lib/mailer'
+import { sendBookingConfirmedSms } from '@/lib/sms'
 import { checkRateLimit } from '@/lib/redis'
 
 // Service area bounding box — Greater Alberta / Western Canada
@@ -120,6 +121,9 @@ export async function POST(request) {
     if (pickupErr) return NextResponse.json({ error: pickupErr }, { status: 400 })
     const dropoffErr = validateStop(dropoff, 'Drop-off')
     if (dropoffErr) return NextResponse.json({ error: dropoffErr }, { status: 400 })
+    if (!sanitizeStr(pickup.pickupTime)) {
+      return NextResponse.json({ error: 'Pickup time is required' }, { status: 400 })
+    }
 
     // Same-location guard (25m minimum separation)
     const R = 6_371_000
@@ -172,12 +176,15 @@ export async function POST(request) {
       estimatedPrice: price,
     })
 
-    // Send confirmation emails — fire-and-forget, never block response
+    // Send confirmation email + SMS — fire-and-forget, never block response
     try {
       const base = process.env.APP_BASE_URL ?? 'http://localhost:3000'
       const trackingUrl = `${base}/track/${trackingToken}`
-      sendBookingConfirmed({ booking: JSON.parse(JSON.stringify(booking)), trackingUrl })
+      const bookingCopy = JSON.parse(JSON.stringify(booking))
+      sendBookingConfirmed({ booking: bookingCopy, trackingUrl })
         .catch((e) => console.error('[mailer] booking confirmed:', e))
+      sendBookingConfirmedSms({ booking: bookingCopy, trackingUrl })
+        .catch((e) => console.error('[sms] booking confirmed:', e))
     } catch { /* non-fatal */ }
 
     return NextResponse.json(JSON.parse(JSON.stringify(booking)), { status: 201 })

@@ -183,8 +183,7 @@ export default function SettingsClient({ role, initialUser }) {
     // customer-only
     contactName: initialUser?.contactName ?? '',
     companyName: initialUser?.companyName ?? '',
-    buzzCode:    initialUser?.buzzCode    ?? '',
-    // admin-only
+    // shared: customer's saved pickup address / admin's own address
     address:     initialUser?.address     ?? '',
   })
   const [infoSaving, setInfoSaving] = useState(false)
@@ -208,7 +207,7 @@ export default function SettingsClient({ role, initialUser }) {
     setInfoSaving(true)
     try {
       const body = isCustomer
-        ? { name: info.name, phone: info.phone, contactName: info.contactName, companyName: info.companyName, buzzCode: info.buzzCode }
+        ? { name: info.name, phone: info.phone, contactName: info.contactName, companyName: info.companyName, address: info.address }
         : { name: info.name, phone: info.phone, address: info.address }
 
       const res = await fetch('/api/user/profile', {
@@ -338,7 +337,7 @@ export default function SettingsClient({ role, initialUser }) {
                 </Field>
 
                 <Field label="Address">
-                  <TextInput value={info.buzzCode} onChange={(v) => setInfo((p) => ({ ...p, buzzCode: v }))} placeholder="#4B, buzz 1234" />
+                  <TextInput value={info.address} onChange={(v) => setInfo((p) => ({ ...p, address: v }))} placeholder="123 Main St, Calgary, AB" />
                 </Field>
               </>
             )}

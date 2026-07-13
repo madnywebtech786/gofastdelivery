@@ -206,9 +206,22 @@ export function buildInvoicePdf(invoice) {
        .text('Balance Due', totalsX, y, { width: totalsW * 0.55 })
        .text(fmt(balance, currency), totalsX + totalsW * 0.55, y, { width: totalsW * 0.45, align: 'right' })
 
+    // ── Payment instructions ─────────────────────────────────────────────────────
+    y += 36
+    doc.moveTo(L, y).lineTo(L + W, y).lineWidth(0.5).strokeColor(BORDER).stroke()
+    y += 12
+    doc.font('Helvetica-Bold').fontSize(8).fillColor(BRAND_GREEN).text('PAYMENT INSTRUCTIONS', L, y)
+    y += 13
+    doc.font('Helvetica').fontSize(9.5).fillColor(MID).text(
+      `We accept payment via Interac e-Transfer, sent to gofastdelivery2024@gmail.com. ` +
+      `Please include the invoice number ${invoice.invoiceNumber ?? ''} in the transfer message so we can match your payment quickly.`,
+      L, y, { width: W, lineGap: 2 }
+    )
+    y = doc.y
+
     // ── Notes ──────────────────────────────────────────────────────────────────
     if (invoice.notes?.trim()) {
-      y += 36
+      y += 20
       doc.moveTo(L, y).lineTo(L + W, y).lineWidth(0.5).strokeColor(BORDER).stroke()
       y += 12
       doc.font('Helvetica-Bold').fontSize(8).fillColor(LIGHT).text('NOTES', L, y)

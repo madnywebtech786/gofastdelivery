@@ -7,6 +7,7 @@ import Button from '@/components/ui/Button'
 import Select from '@/components/ui/Select'
 import { useToast } from '@/components/ui/Toast'
 import { placesAutocomplete, placeDetails } from '@/lib/google-geocode'
+import { Plus, Trash2 } from 'lucide-react'
 
 const BookingMap = dynamic(() => import('@/components/map/BookingMap'), {
   ssr: false,
@@ -35,6 +36,20 @@ const WEIGHT_SLABS = [
   { label: '25–50 kg (heavy)', value: '25_to_50' },
   { label: '50+ kg (freight)', value: '50_plus' },
 ]
+
+function emptyPackage() {
+  return { kind: '', weightSlab: 'up_to_10' }
+}
+
+// Heaviest slab across all packages ("highest slab wins") — WEIGHT_SLABS is
+// already ordered lightest → heaviest, so the array index is the rank.
+function heaviestWeightSlab(packages) {
+  return packages.reduce((heaviest, p) => {
+    const rank = WEIGHT_SLABS.findIndex((w) => w.value === p.weightSlab)
+    const heaviestRank = WEIGHT_SLABS.findIndex((w) => w.value === heaviest)
+    return rank > heaviestRank ? p.weightSlab : heaviest
+  }, packages[0]?.weightSlab ?? 'up_to_10')
+}
 
 function SectionHeading({ children }) {
   return (
@@ -71,6 +86,7 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
   const [pickup, setPickup] = useState({
     contactName: '',
     companyName: '',
+    address: '',
     buzzCode: '',
     pickupTime: '',
     contactPhone: '',
@@ -80,9 +96,25 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
   // Drop-off details (for the dropoff stop card)
   const [dropoff, setDropoff] = useState({
     contactName: '',
+    address: '',
     buzzCode: '',
     contactPhone: '',
   })
+  // Tracks whether the Address field currently holds an address auto-filled
+  // from a "Set Pickup"/"Set Drop-off" click (safe to overwrite on the NEXT
+  // click) vs. text the user typed themselves (must never be overwritten by
+  // a click). Both start true — field begins empty/un-typed. Buzz/Unit Code
+  // is a separate, always-manual, optional field — it has no auto-fill ref.
+  const dropoffAddressIsAutoFilledRef = useRef(true)
+  const pickupAddressIsAutoFilledRef  = useRef(true)
+  // The one-time profile-prefill effect below seeds the pickup pin via
+  // setPickupCoords, which fires the SAME onStopsChange callback a real
+  // "Set Pickup" click does — there's no way to tell them apart from the
+  // callback alone. This flag suppresses handleStopsChange's click-driven
+  // auto-fill ONLY while that seed is in flight, so it doesn't immediately
+  // overwrite the just-prefilled profile address. A real click always wins
+  // once the user makes one, before or after the seed finishes.
+  const profileSeedInFlightRef = useRef(false)
 
   // Prefill pickup details from customer profile if profileUpdated is true.
   // Also geocode the saved address and pre-seed the pickup pin on the map.
@@ -96,13 +128,19 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
           ...prev,
           contactName:  user.contactName || prev.contactName,
           companyName:  user.companyName || prev.companyName,
-          buzzCode:     user.buzzCode    || prev.buzzCode,
+          address:      user.address     || prev.address,
           contactPhone: user.phone       || prev.contactPhone,
         }))
         if (user.email) setSenderEmail(user.email)
 
         // Geocode the saved address and pre-seed the pickup pin
-        if (!user.buzzCode?.trim()) return
+        if (!user.address?.trim()) return
+
+        // Suppress click-driven address auto-fill for the duration of this
+        // seed — setPickupCoords below fires onStopsChange just like a real
+        // click, but pickup.address was already set to the profile address
+        // above and must not be immediately overwritten by that callback.
+        profileSeedInFlightRef.current = true
 
         // Show loading overlay as soon as the map ref is ready, then geocode
         const sessionToken = crypto.randomUUID()
@@ -110,7 +148,7 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
         const tryShowThenGeocode = () => {
           if (mapRef.current?.setPlacing) {
             mapRef.current.setPlacing('pickup')
-            placesAutocomplete(user.buzzCode, sessionToken)
+            placesAutocomplete(user.address, sessionToken)
               .then((predictions) => {
                 if (!predictions.length) { mapRef.current?.setPlacing(null); return }
                 return placeDetails(predictions[0].placeId, sessionToken)
@@ -120,9 +158,12 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
                 mapRef.current?.setPickupCoords(result.lng, result.lat, result.address, '')
               })
               .catch(() => { mapRef.current?.setPlacing(null) })
+              .finally(() => { profileSeedInFlightRef.current = false })
           } else if (attempts < 20) {
             attempts++
             setTimeout(tryShowThenGeocode, 300)
+          } else {
+            profileSeedInFlightRef.current = false
           }
         }
         tryShowThenGeocode()
@@ -130,11 +171,21 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
       .catch(() => {})
   }, [apiPath])
 
-  // Package details
-  const [pkg, setPkg] = useState({
-    kind: '',
-    weightSlab: 'up_to_10',
-  })
+  // Package details — one or more packages, each with its own kind + weight
+  // slab. The booking is priced off the heaviest slab across all packages.
+  const [packages, setPackages] = useState([emptyPackage()])
+
+  function handlePackageChange(index, field, value) {
+    setPackages((prev) => prev.map((p, i) => (i === index ? { ...p, [field]: value } : p)))
+  }
+
+  function handleAddPackage() {
+    setPackages((prev) => [...prev, emptyPackage()])
+  }
+
+  function handleRemovePackage(index) {
+    setPackages((prev) => (prev.length > 1 ? prev.filter((_, i) => i !== index) : prev))
+  }
 
   // Sender + receiver notification emails
   const [senderEmail,   setSenderEmail]   = useState('')
@@ -170,12 +221,19 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
 
   const handleStopsChange = useCallback((newStops) => {
     setStops(newStops)
+    const pickupStop  = newStops.find((s) => s.type === 'pickup')
     const dropoffStop = newStops.find((s) => s.type === 'dropoff')
-    if (dropoffStop?.address) {
-      setDropoff((prev) => ({
-        ...prev,
-        buzzCode: prev.buzzCode.trim() ? prev.buzzCode : dropoffStop.address,
-      }))
+    // Fires only when the user clicks "Set Pickup"/"Set Drop-off" (or re-
+    // clicks after moving the pin) — BookingMap's onStopsChange is driven
+    // exclusively by those clicks (and the one-time profile seed, suppressed
+    // below), never by panning alone. Auto-fill only while the field still
+    // holds an auto-filled value; once the user types into it directly, the
+    // onChange handlers below flip the ref and this stops touching it.
+    if (dropoffStop?.address && dropoffAddressIsAutoFilledRef.current) {
+      setDropoff((prev) => ({ ...prev, address: dropoffStop.address }))
+    }
+    if (pickupStop?.address && pickupAddressIsAutoFilledRef.current && !profileSeedInFlightRef.current) {
+      setPickup((prev) => ({ ...prev, address: pickupStop.address }))
     }
   }, [])
 
@@ -195,7 +253,7 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
 
     const fromCity = pickupStop.city.toLowerCase()
     const toCity   = dropoffStop.city.toLowerCase()
-    const slab     = pkg.weightSlab
+    const slab     = heaviestWeightSlab(packages)
 
     const key  = `${fromCity}|${toCity}|${slab}`
     const rule = pricingRulesRef.current.get(key)
@@ -217,7 +275,7 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
       routeLabel:  `${rule.fromCityDisplay} → ${rule.toCityDisplay}`,
       weightLabel: WEIGHT_LABELS[slab] ?? slab,
     })
-  }, [stops, pkg.weightSlab])
+  }, [stops, packages])
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -225,6 +283,10 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
 
     if (!hasPickup || !hasDropoff) {
       setError('Place a pickup point and a drop-off point on the map.')
+      return
+    }
+    if (!pickup.pickupTime.trim()) {
+      setError('Pickup time is required.')
       return
     }
     if (!pickup.contactPhone.trim()) {
@@ -272,7 +334,7 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
             order: 0,
             lat: pickupStop.lat,
             lng: pickupStop.lng,
-            address: pickupStop.address,
+            address: pickup.address || pickupStop.address,
             contactName: pickup.contactName,
             companyName: pickup.companyName,
             buzzCode: pickup.buzzCode,
@@ -285,15 +347,14 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
             order: 1,
             lat: dropoffStop.lat,
             lng: dropoffStop.lng,
-            address: dropoffStop.address,
+            address: dropoff.address || dropoffStop.address,
             contactName: dropoff.contactName,
             buzzCode: dropoff.buzzCode,
             contactPhone: dropoff.contactPhone,
           },
         ],
         packageDetails: {
-          kind:      pkg.kind,
-          weightSlab: pkg.weightSlab,
+          packages: packages.map((p) => ({ kind: p.kind, weightSlab: p.weightSlab, quantity: 1 })),
         },
         senderEmail:   senderEmail   || null,
         receiverEmail: receiverEmail || null,
@@ -317,9 +378,11 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
       // Reset all state
       mapRef.current?.clearAll()
       setStops([])
-      setPickup({ contactName: '', companyName: '', buzzCode: '', pickupTime: '', contactPhone: '', notes: '' })
-      setDropoff({ contactName: '', buzzCode: '', contactPhone: '' })
-      setPkg({ kind: '', weightSlab: 'up_to_10' })
+      setPickup({ contactName: '', companyName: '', address: '', buzzCode: '', pickupTime: '', contactPhone: '', notes: '' })
+      setDropoff({ contactName: '', address: '', buzzCode: '', contactPhone: '' })
+      dropoffAddressIsAutoFilledRef.current = true
+      pickupAddressIsAutoFilledRef.current = true
+      setPackages([emptyPackage()])
       setSenderEmail('')
       setReceiverEmail('')
       setPricingPreview(null)
@@ -390,11 +453,29 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
           <Field label="Company Name">
             <input type="text" value={pickup.companyName} onChange={(e) => setPickup((p) => ({ ...p, companyName: e.target.value }))} className={inputCls} placeholder="ABC Corp (optional)" />
           </Field>
-          <Field label="Buzz / Unit Code">
-            <input type="text" value={pickup.buzzCode} onChange={(e) => setPickup((p) => ({ ...p, buzzCode: e.target.value }))} className={inputCls} placeholder="#4B, buzz 1234" />
+          <Field label="Address">
+            <input
+              type="text"
+              value={pickup.address}
+              onChange={(e) => {
+                pickupAddressIsAutoFilledRef.current = false
+                setPickup((p) => ({ ...p, address: e.target.value }))
+              }}
+              className={inputCls}
+              placeholder="123 Main St, Calgary, AB"
+            />
           </Field>
-          <Field label="Pickup Time">
-            <input type="datetime-local" value={pickup.pickupTime} min={new Date(Date.now() + 60000).toISOString().slice(0, 16)} onChange={(e) => setPickup((p) => ({ ...p, pickupTime: e.target.value }))} className={inputCls} />
+          <Field label="Buzz / Unit Code">
+            <input
+              type="text"
+              value={pickup.buzzCode}
+              onChange={(e) => setPickup((p) => ({ ...p, buzzCode: e.target.value }))}
+              className={inputCls}
+              placeholder="#4B, buzz 1234 (optional)"
+            />
+          </Field>
+          <Field label="Pickup Time" required>
+            <input type="datetime-local" value={pickup.pickupTime} min={new Date(Date.now() + 60000).toISOString().slice(0, 16)} onChange={(e) => setPickup((p) => ({ ...p, pickupTime: e.target.value }))} className={inputCls} required />
           </Field>
           <Field label="Phone Number" required>
             <input type="tel" value={pickup.contactPhone} onChange={(e) => setPickup((p) => ({ ...p, contactPhone: e.target.value }))} className={inputCls} placeholder="+1 403-000-0000" required />
@@ -415,8 +496,26 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
           <Field label="Receiver Name">
             <input type="text" value={dropoff.contactName} onChange={(e) => setDropoff((p) => ({ ...p, contactName: e.target.value }))} className={inputCls} placeholder="Jane Doe" />
           </Field>
+          <Field label="Address">
+            <input
+              type="text"
+              value={dropoff.address}
+              onChange={(e) => {
+                dropoffAddressIsAutoFilledRef.current = false
+                setDropoff((p) => ({ ...p, address: e.target.value }))
+              }}
+              className={inputCls}
+              placeholder="123 Main St, Calgary, AB"
+            />
+          </Field>
           <Field label="Buzz / Unit Code">
-            <input type="text" value={dropoff.buzzCode} onChange={(e) => setDropoff((p) => ({ ...p, buzzCode: e.target.value }))} className={inputCls} placeholder="#2A, buzz 5678" />
+            <input
+              type="text"
+              value={dropoff.buzzCode}
+              onChange={(e) => setDropoff((p) => ({ ...p, buzzCode: e.target.value }))}
+              className={inputCls}
+              placeholder="#2A, buzz 5678 (optional)"
+            />
           </Field>
           <Field label="Phone Number (for status notifications)" required>
             <input type="tel" value={dropoff.contactPhone} onChange={(e) => setDropoff((p) => ({ ...p, contactPhone: e.target.value }))} className={inputCls} placeholder="+1 403-000-0000" required />
@@ -430,21 +529,47 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
       {/* ── Package Details ──────────────────────────────────────────────── */}
       <div className="rounded-xl border border-border bg-surface p-4 space-y-4">
         <SectionHeading>📋 Package Details</SectionHeading>
-        <div className="grid grid-cols-2 gap-3">
-          <Select
-            label="Kind of Package"
-            placeholder="Select type…"
-            value={pkg.kind}
-            onChange={(v) => setPkg((p) => ({ ...p, kind: v }))}
-            options={PACKAGE_KINDS.map((k) => ({ value: k, label: k }))}
-          />
-          <Select
-            label="Weight"
-            value={pkg.weightSlab}
-            onChange={(v) => setPkg((p) => ({ ...p, weightSlab: v }))}
-            options={WEIGHT_SLABS}
-          />
+        <div className="space-y-3">
+          {packages.map((p, i) => (
+            <div key={i} className="rounded-lg border border-border p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-muted">Package {i + 1}</span>
+                {packages.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => handleRemovePackage(i)}
+                    className="text-danger hover:text-red-700 shrink-0"
+                    aria-label={`Remove package ${i + 1}`}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Select
+                  label="Kind of Package"
+                  placeholder="Select type…"
+                  value={p.kind}
+                  onChange={(v) => handlePackageChange(i, 'kind', v)}
+                  options={PACKAGE_KINDS.map((k) => ({ value: k, label: k }))}
+                />
+                <Select
+                  label="Weight"
+                  value={p.weightSlab}
+                  onChange={(v) => handlePackageChange(i, 'weightSlab', v)}
+                  options={WEIGHT_SLABS}
+                />
+              </div>
+            </div>
+          ))}
         </div>
+        <button
+          type="button"
+          onClick={handleAddPackage}
+          className="flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
+        >
+          <Plus size={14} /> Add Package
+        </button>
       </div>
 
       {/* ── Pricing Preview — shown once both cities are known ───────────── */}

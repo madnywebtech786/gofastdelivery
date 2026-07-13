@@ -322,6 +322,7 @@ export default function AdminHistoryClient({
                       <p className="text-xs mt-1.5" style={{ color: 'var(--fg-3)' }}>
                         {b.packageDetails.kind}
                         {b.packageDetails.weightSlab && ` · ${b.packageDetails.weightSlab.replace(/_/g, ' ')}`}
+                        {b.packageDetails.packages?.length > 1 && ` · ×${b.packageDetails.packages.length} packages`}
                       </p>
                     )}
                   </div>

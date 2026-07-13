@@ -117,14 +117,14 @@ export async function emailExists(email) {
 
 /**
  * Update a user's profile info.
- * For customers: name, email, phone, contactName, companyName, buzzCode, profile (updated flag).
+ * For customers: name, email, phone, contactName, companyName, address, profile (updated flag).
  * For admins: name, email, phone, address.
  * Returns the updated doc (no passwordHash).
  */
 export async function updateUserProfile(userId, fields) {
   const db = await getDb()
   const now = new Date()
-  const allowed = ['name', 'phone', 'address', 'contactName', 'companyName', 'buzzCode', 'profileUpdated']
+  const allowed = ['name', 'phone', 'address', 'contactName', 'companyName', 'profileUpdated']
   const setFields = { updatedAt: now }
   for (const key of allowed) {
     if (key in fields) setFields[key] = fields[key]

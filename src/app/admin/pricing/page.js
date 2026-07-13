@@ -151,13 +151,13 @@ export default function PricingPage() {
         <form onSubmit={handleAddRule} className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <Input label="From City" type="text" value={form.fromCity}
-              onChange={(e) => setForm((f) => ({ ...f, fromCity: e.target.value }))} placeholder="Lahore" />
+              onChange={(e) => setForm((f) => ({ ...f, fromCity: e.target.value }))} placeholder="Calgary" />
             <Input label="To City" type="text" value={form.toCity}
-              onChange={(e) => setForm((f) => ({ ...f, toCity: e.target.value }))} placeholder="Karachi" />
+              onChange={(e) => setForm((f) => ({ ...f, toCity: e.target.value }))} placeholder="Edmonton" />
             <Select label="Weight Slab" value={form.weightSlab}
               onChange={(v) => setForm((f) => ({ ...f, weightSlab: v }))} options={WEIGHT_SLABS} />
-            <Input label="Price (PKR)" type="number" min="0" step="0.01" value={form.price}
-              onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))} placeholder="500" />
+            <Input label="Price (CAD)" type="number" min="0" step="0.01" value={form.price}
+              onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))} placeholder="25.00" />
           </div>
 
           {error   && <div className={alertDanger}  style={{ background: 'var(--danger-bg)',  border: '1px solid var(--danger)',  color: 'var(--danger)'  }}><AlertCircle  size={12} className="mt-0.5 shrink-0" />{error}</div>}
@@ -176,9 +176,9 @@ export default function PricingPage() {
             </p>
             <pre className="text-xs leading-relaxed mono" style={{ color: 'var(--fg-2)' }}>
 {`From City,To City,Weight Slab,Price
-Lahore,Karachi,up_to_10,1200
-Lahore,Islamabad,up_to_10,450
-Karachi,Lahore,10_to_25,2000`}
+Calgary,Edmonton,up_to_10,45.00
+Calgary,Airdrie,up_to_10,15.00
+Edmonton,Calgary,10_to_25,65.00`}
             </pre>
           </div>
 
@@ -242,7 +242,7 @@ Karachi,Lahore,10_to_25,2000`}
             <div className="rounded-xl overflow-hidden border border-border overflow-x-auto">
               <table className="data-table">
                 <thead>
-                  <tr><th>From</th><th>To</th><th>Weight</th><th className="text-right">Price (PKR)</th><th /></tr>
+                  <tr><th>From</th><th>To</th><th>Weight</th><th className="text-right">Price (CAD)</th><th /></tr>
                 </thead>
                 <tbody>
                   {filtered.map((r) => (

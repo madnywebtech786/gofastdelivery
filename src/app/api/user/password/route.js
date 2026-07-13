@@ -5,6 +5,8 @@ import { findUserById, updateUserPassword } from '@/lib/db/users'
 import { getDb } from '@/lib/db/client'
 import { ObjectId } from 'mongodb'
 
+const MAX_PW_BYTES = 72  // bcrypt truncates beyond this
+
 export async function POST(request) {
   try {
     const { userId } = await verifySession()
@@ -12,6 +14,13 @@ export async function POST(request) {
 
     if (!currentPassword || !newPassword) {
       return NextResponse.json({ error: 'Current and new password are required.' }, { status: 400 })
+    }
+
+    if (Buffer.byteLength(newPassword, 'utf8') > MAX_PW_BYTES) {
+      return NextResponse.json(
+        { error: 'Password is too long (max 72 characters).' },
+        { status: 400 }
+      )
     }
 
     // Strength: min 8 chars, 1 uppercase, 1 number, 1 special

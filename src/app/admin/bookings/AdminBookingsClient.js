@@ -6,7 +6,9 @@ import Link from 'next/link'
 import Badge from '@/components/ui/Badge'
 import Button from '@/components/ui/Button'
 import Select from '@/components/ui/Select'
+import DatePicker from '@/components/ui/DatePicker'
 import { useToast } from '@/components/ui/Toast'
+import { FILTER_QUERY_MAP } from '@/lib/bookingStatusFilters'
 import {
   MapPin, Clock, ChevronRight, UserCheck, AlertCircle,
   PackageCheck, CheckCircle2, Search, X,
@@ -14,6 +16,7 @@ import {
 } from 'lucide-react'
 
 const STATUS_FILTER_OPTIONS = [
+  { value: 'todays_work',     label: "Today's Work" },
   { value: 'pending',         label: 'Pending' },
   { value: 'on_the_way',      label: 'On the Way' },
   { value: 'picked_up',       label: 'Ready to Deliver' },
@@ -22,12 +25,32 @@ const STATUS_FILTER_OPTIONS = [
   { value: 'delivered_today', label: 'Delivered Today' },
 ]
 
+// Tabs where the pickup-date picker is shown — only the standalone "Pending"
+// tab. "Today's Work" still date-scopes its pending sub-query to today
+// internally (see FILTER_QUERY_MAP), but doesn't expose the picker itself
+// since it's a fixed "today" snapshot, not an admin-adjustable view.
+const PICKUP_DATE_FILTER_TABS = new Set(['pending'])
+
+function todayYMD() {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
 const ASSIGN_KIND_BY_STATUS = {
   pending:        'pickup_only',
   failed_pickup:  'pickup_only',
   picked_up:      'delivery_only',
   failed_dropoff: 'delivery_only',
 }
+
+// Filters whose bookings can never be assignable (on_the_way already has a
+// driver mid-route; delivered_today is a completed-order history view) —
+// disables the "select all" header checkbox there instead of letting it
+// spin and silently select nothing.
+const NON_ASSIGNABLE_FILTERS = new Set(['on_the_way', 'delivered_today'])
 
 function isAssignable(booking) {
   if (!Object.hasOwn(ASSIGN_KIND_BY_STATUS, booking.status)) return false
@@ -108,19 +131,26 @@ function formatTimeAgo(d) {
   return `${Math.floor(h / 24)}d ago`
 }
 
-export default function AdminBookingsClient({ initialStatusFilter, initialPage, bookings, total, pageSize }) {
+export default function AdminBookingsClient({ initialStatusFilter, initialPickupDate, initialPage, bookings, total, pageSize }) {
   const router     = useRouter()
   const pathname   = usePathname()
   const searchParams = useSearchParams()
   const toast      = useToast()
   const [isPending, startTransition] = useTransition()
 
-  const [statusFilter, setStatusFilter] = useState(initialStatusFilter ?? 'pending')
+  const [statusFilter, setStatusFilter] = useState(initialStatusFilter ?? 'todays_work')
+  // '' means "explicitly cleared, no date restriction" — mirrors the
+  // undefined/null distinction the server uses, but as a controlled input
+  // DatePicker needs a string, so '' is the "cleared" sentinel here.
+  const [pickupDate, setPickupDate]     = useState(initialPickupDate ?? todayYMD())
   // Local search filters the current page only — no network round-trip needed
   const [search, setSearch]             = useState('')
-  // Map<bookingId, bookingObject> — persists across page navigation so
-  // selections from multiple pages are all kept and assignable.
+  // Map<bookingId, bookingObject> — persists across page navigation AND
+  // filter switches, so selections from multiple pages/filters are all kept
+  // and assignable together.
   const [selectedMap, setSelectedMap]   = useState(new Map())
+  // True while the "select all matching this filter" fetch is in flight
+  const [selectingAll, setSelectingAll] = useState(false)
   const [drivers, setDrivers]           = useState([])
   const [driverId, setDriverId]         = useState('')
   const [loadingDrivers, setLoadingDrivers] = useState(true)
@@ -143,10 +173,19 @@ export default function AdminBookingsClient({ initialStatusFilter, initialPage, 
       .finally(() => setLoadingDrivers(false))
   }, [])
 
-  // Builds a URL with updated params, preserving others
+  // Builds a URL with updated params, preserving others. `pickupDate` is
+  // special: '' must stay as a literal `?pickupDate=` (means "explicitly
+  // cleared, no date restriction") rather than being deleted like every
+  // other param's '' — deleting it would make the param absent, which the
+  // server reads as "not provided, default to today" instead of "cleared".
   const buildUrl = useCallback((updates) => {
     const params = new URLSearchParams(searchParams.toString())
     for (const [k, v] of Object.entries(updates)) {
+      if (k === 'pickupDate') {
+        if (v == null) params.delete(k)
+        else params.set(k, String(v)) // '' included — keeps the param present-but-empty
+        continue
+      }
       if (v == null || v === '1') params.delete(k)
       else params.set(k, String(v))
     }
@@ -162,9 +201,20 @@ export default function AdminBookingsClient({ initialStatusFilter, initialPage, 
 
   function onStatusChange(next) {
     setStatusFilter(next)
-    setSelectedMap(new Map())
+    // selectedMap is intentionally NOT cleared here — selections persist
+    // across filter switches so an admin can pick some from "Pending" and
+    // some from "Ready to Deliver" and assign them together in one call.
     setSearch('')
-    navigateTo({ status: next, page: 1 })
+    // Switching into "Pending" with no date currently chosen resets it back
+    // to today rather than silently leaving a cleared/stale date in place.
+    const nextPickupDate = PICKUP_DATE_FILTER_TABS.has(next) && !pickupDate ? todayYMD() : pickupDate
+    if (nextPickupDate !== pickupDate) setPickupDate(nextPickupDate)
+    navigateTo({ status: next, pickupDate: PICKUP_DATE_FILTER_TABS.has(next) ? nextPickupDate : null, page: 1 })
+  }
+
+  function onPickupDateChange(val) {
+    setPickupDate(val ?? '')
+    navigateTo({ pickupDate: val ?? '', page: 1 })
   }
 
   function onPageChange(p) {
@@ -183,10 +233,53 @@ export default function AdminBookingsClient({ initialStatusFilter, initialPage, 
   }, [bookings, search])
 
   // All selected bookings that can actually be assigned — drawn from the Map
-  // so selections survive page navigation.
+  // so selections survive page navigation AND filter switches.
   const assignableSelected = useMemo(() =>
     Array.from(selectedMap.values()).filter((b) => isAssignable(b)),
   [selectedMap])
+
+  // Does a selected booking match ONE sub-query's {status, hasDriver,
+  // pickupDate} shape? pickupDate here is the resolved 'YYYY-MM-DD' string
+  // (or absent/'' for "no restriction") — matches the server's stops.pickupTime
+  // prefix-match logic in buildAdminFilter (src/lib/db/bookings.js).
+  function matchesSubQuery(b, subQuery) {
+    if (!subQuery.status.includes(b.status)) return false
+    if (subQuery.hasDriver === true  && !b.assignedDriverId) return false
+    if (subQuery.hasDriver === false &&  b.assignedDriverId) return false
+    if (subQuery.pickupDate) {
+      const pickupStop = b.stops?.find((s) => s.type === 'pickup')
+      if (!pickupStop?.pickupTime?.startsWith(subQuery.pickupDate)) return false
+    }
+    return true
+  }
+
+  // Does a selected booking belong to the CURRENT status filter? Mirrors
+  // FILTER_QUERY_MAP's shape client-side, using the same source of truth the
+  // server uses to build the filtered list — needed to tell "selected from
+  // this filter" apart from "selected from a different filter" without a
+  // second round-trip. `todays_work` is a `combine` (union) of several
+  // sub-queries, so it matches if ANY of them match; other filters are a
+  // single flat sub-query.
+  const rawFilterQuery = FILTER_QUERY_MAP[statusFilter]
+  const currentSubQueries = Array.isArray(rawFilterQuery.combine)
+    ? rawFilterQuery.combine
+    : [rawFilterQuery]
+  // Only the sub-query that declares pickupDate gets the live picker value
+  // substituted in — mirrors resolveFilterQuery's applyPickupDate on the server.
+  const resolvedSubQueries = currentSubQueries.map((q) =>
+    q.pickupDate != null ? { ...q, pickupDate: pickupDate || null } : q
+  )
+  function matchesCurrentFilter(b) {
+    return resolvedSubQueries.some((q) => matchesSubQuery(b, q))
+  }
+
+  // Selected bookings whose status/driver combo belongs to the filter
+  // currently in view vs. selected from some other filter entirely.
+  const selectedInCurrentFilter = useMemo(
+    () => assignableSelected.filter(matchesCurrentFilter),
+    [assignableSelected, statusFilter, pickupDate]
+  )
+  const selectedFromOtherFilters = assignableSelected.length - selectedInCurrentFilter.length
 
   function toggleSelect(b) {
     if (!isAssignable(b)) return
@@ -197,15 +290,53 @@ export default function AdminBookingsClient({ initialStatusFilter, initialPage, 
     })
   }
 
-  function toggleAllVisible() {
-    const assignable = displayed.filter((b) => isAssignable(b))
-    const allChecked = assignable.length > 0 && assignable.every((b) => selectedMap.has(b._id))
+  // True once every booking matching the CURRENT FILTER (not just the
+  // current page) is in selectedMap — drives the header checkbox's checked
+  // state and what clicking it does next.
+  const allInFilterSelected = total > 0 && selectedInCurrentFilter.length === total
+
+  async function handleSelectAllInFilter() {
+    if (selectingAll) return
+    setSelectingAll(true)
+    setError('')
+    try {
+      const dateParam = PICKUP_DATE_FILTER_TABS.has(statusFilter) ? `&pickupDate=${encodeURIComponent(pickupDate)}` : ''
+      const res = await fetch(`/api/bookings/admin-select-all?status=${encodeURIComponent(statusFilter)}${dateParam}`)
+      const data = await res.json()
+      if (!res.ok) { setError(data.error || 'Could not select all — please try again.'); return }
+
+      setSelectedMap((prev) => {
+        const n = new Map(prev)
+        for (const b of data) if (isAssignable(b)) n.set(b._id, b)
+        return n
+      })
+      const label = STATUS_FILTER_OPTIONS.find((o) => o.value === statusFilter)?.label ?? statusFilter
+      toast.success('Selected all', `${data.length} "${label}" booking${data.length === 1 ? '' : 's'} added to your selection.`)
+    } catch {
+      setError('Network error while selecting all. Please try again.')
+    } finally {
+      setSelectingAll(false)
+    }
+  }
+
+  function clearCurrentFilterSelection() {
     setSelectedMap((prev) => {
       const n = new Map(prev)
-      if (allChecked) assignable.forEach((b) => n.delete(b._id))
-      else            assignable.forEach((b) => n.set(b._id, b))
+      for (const b of selectedInCurrentFilter) n.delete(b._id)
       return n
     })
+  }
+
+  function toggleAllVisible() {
+    // If everything matching the whole filter (beyond just this page) is
+    // already selected, the header checkbox's job is to clear THIS filter's
+    // selections (leaving other filters' selections untouched). Otherwise it
+    // triggers a real "select every matching booking in this filter" fetch.
+    if (allInFilterSelected) {
+      clearCurrentFilterSelection()
+      return
+    }
+    handleSelectAllInFilter()
   }
 
   function buildAssignments() {
@@ -312,13 +443,25 @@ export default function AdminBookingsClient({ initialStatusFilter, initialPage, 
       </div>
 
       {/* ── Filters row — isolated stacking context so dropdown floats above cards ── */}
-      <div className="grid md:grid-cols-[260px_1fr] gap-3 anim-fade-up s1" style={{ position: 'relative', zIndex: 10 }}>
+      <div
+        className={`grid gap-3 anim-fade-up s1 ${PICKUP_DATE_FILTER_TABS.has(statusFilter) ? 'md:grid-cols-[220px_180px_1fr]' : 'md:grid-cols-[260px_1fr]'}`}
+        style={{ position: 'relative', zIndex: 10 }}
+      >
         <Select
           value={statusFilter}
           onChange={onStatusChange}
           options={STATUS_FILTER_OPTIONS}
           placeholder="Filter by status"
         />
+        {PICKUP_DATE_FILTER_TABS.has(statusFilter) && (
+          <DatePicker
+            value={pickupDate}
+            onChange={onPickupDateChange}
+            placeholder="Pickup date"
+            helper="Pending only"
+            clearable
+          />
+        )}
         <div className="relative">
           <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--fg-3)' }} />
           <input
@@ -345,33 +488,46 @@ export default function AdminBookingsClient({ initialStatusFilter, initialPage, 
           {/* List header */}
           <div className="px-5 py-3.5 border-b border-border flex items-center gap-3"
             style={{ background: 'var(--surface-2)' }}>
-            <label className="flex items-center gap-3 cursor-pointer flex-1">
+            <label className="flex items-center gap-3 cursor-pointer flex-1 min-w-0">
               <input
                 type="checkbox"
-                checked={displayed.some((b) => isAssignable(b)) && displayed.filter((b) => isAssignable(b)).every((b) => selectedMap.has(b._id))}
+                checked={allInFilterSelected}
+                disabled={selectingAll || (NON_ASSIGNABLE_FILTERS.has(statusFilter) && total > 0)}
                 ref={(el) => {
                   if (!el) return
-                  const assignable = displayed.filter((b) => isAssignable(b))
-                  const picked = assignable.filter((b) => selectedMap.has(b._id)).length
-                  el.indeterminate = picked > 0 && picked < assignable.length
+                  el.indeterminate = selectedInCurrentFilter.length > 0 && !allInFilterSelected
                 }}
                 onChange={toggleAllVisible}
-                className="h-4 w-4 rounded cursor-pointer accent-accent"
+                className="h-4 w-4 rounded cursor-pointer accent-accent disabled:cursor-not-allowed disabled:opacity-50"
+                title={
+                  NON_ASSIGNABLE_FILTERS.has(statusFilter)
+                    ? 'Bookings in this view are not assignable'
+                    : allInFilterSelected ? 'Clear all selected in this filter' : `Select all ${total} matching this filter`
+                }
               />
-              <span className="text-sm font-semibold" style={{ color: 'var(--fg)' }}>
+              <span className="text-sm font-semibold flex items-center gap-1.5 min-w-0" style={{ color: 'var(--fg)' }}>
                 {selectedMap.size > 0
                   ? <span style={{ color: 'var(--accent)' }}>{selectedMap.size} selected</span>
                   : <span>{total} booking{total !== 1 ? 's' : ''}</span>}
+                {selectedFromOtherFilters > 0 && (
+                  <span
+                    className="text-xs font-medium px-1.5 py-0.5 rounded-full shrink-0"
+                    style={{ background: 'var(--surface-3, #eef2ff)', color: 'var(--fg-3)' }}
+                    title="These are selected from a different status filter and stay selected when you switch back"
+                  >
+                    {selectedFromOtherFilters} from other filters
+                  </span>
+                )}
               </span>
             </label>
             {selectedMap.size > 0 && (
               <button onClick={() => setSelectedMap(new Map())}
-                className="text-xs font-medium transition-colors hover:underline"
+                className="text-xs font-medium transition-colors hover:underline shrink-0"
                 style={{ color: 'var(--fg-3)' }}>
-                Clear
+                Clear all
               </button>
             )}
-            {isPending && (
+            {(isPending || selectingAll) && (
               <svg className="animate-spin shrink-0" width="14" height="14" viewBox="0 0 16 16" fill="none" style={{ color: 'var(--fg-3)' }}>
                 <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" strokeDasharray="25 10" />
               </svg>
@@ -485,6 +641,7 @@ export default function AdminBookingsClient({ initialStatusFilter, initialPage, 
                           <p className="text-xs mt-1.5" style={{ color: 'var(--fg-3)' }}>
                             {b.packageDetails.kind}
                             {b.packageDetails.weightSlab && ` · ${b.packageDetails.weightSlab.replace(/_/g, ' ')}`}
+                            {b.packageDetails.packages?.length > 1 && ` · ×${b.packageDetails.packages.length} packages`}
                           </p>
                         )}
 
@@ -717,19 +874,17 @@ export default function AdminBookingsClient({ initialStatusFilter, initialPage, 
                       <p className="text-sm mt-2" style={{ color: 'var(--fg-3)' }}>{detailBooking.packageDetails.description}</p>
                     )}
                   </div>
-                  {Array.isArray(detailBooking.packageDetails.items) && detailBooking.packageDetails.items.length > 0 && (
+                  {Array.isArray(detailBooking.packageDetails.packages) && detailBooking.packageDetails.packages.length > 1 && (
                     <div className="mt-3 pt-3 border-t border-border">
                       <p className="text-[11px] font-semibold mb-1.5" style={{ color: 'var(--fg-3)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                        Items ({detailBooking.packageDetails.items.length})
+                        Packages ({detailBooking.packageDetails.packages.length})
                       </p>
                       <ul className="space-y-1">
-                        {detailBooking.packageDetails.items.map((it) => (
-                          <li key={it.itemId} className="flex items-center gap-2 text-sm" style={{ color: 'var(--fg-2)' }}>
-                            <span className="shrink-0 inline-flex min-w-5.5 justify-center rounded-md bg-slate-100 text-slate-700 text-[11px] font-bold px-1.5 py-0.5">×{it.quantity}</span>
-                            <span className="truncate">{it.name}</span>
-                            {it.type && <span className="text-xs" style={{ color: 'var(--fg-3)' }}>· {it.type}</span>}
-                            {it.pickedUpAt && <span className="ml-auto text-[10px] font-semibold uppercase" style={{ color: '#047857' }}>Picked up</span>}
-                            {it.deliveredAt && <span className="ml-auto text-[10px] font-semibold uppercase" style={{ color: '#047857' }}>Delivered</span>}
+                        {detailBooking.packageDetails.packages.map((p, i) => (
+                          <li key={p.itemId ?? i} className="flex items-center gap-2 text-sm" style={{ color: 'var(--fg-2)' }}>
+                            <span className="shrink-0 inline-flex min-w-5.5 justify-center rounded-md bg-slate-100 text-slate-700 text-[11px] font-bold px-1.5 py-0.5">{i + 1}</span>
+                            <span className="truncate">{p.kind}</span>
+                            {p.weightSlab && <span className="ml-auto text-xs" style={{ color: 'var(--fg-3)' }}>{p.weightSlab.replace(/_/g, ' ')}</span>}
                           </li>
                         ))}
                       </ul>
@@ -752,6 +907,7 @@ export default function AdminBookingsClient({ initialStatusFilter, initialPage, 
                       return (
                         <div className="space-y-2">
                           {stop.address      && <p className="text-sm font-semibold" style={{ color: 'var(--fg)' }}>{stop.address}</p>}
+                          {stop.buzzCode     && <p className="text-xs" style={{ color: 'var(--fg-3)' }}>Unit/Buzz Code: {stop.buzzCode}</p>}
                           {stop.contactName  && <p className="text-xs" style={{ color: 'var(--fg-2)' }}>{stop.contactName}</p>}
                           {stop.contactPhone && <p className="text-xs mono" style={{ color: 'var(--fg-3)' }}>{stop.contactPhone}</p>}
                           {stop.notes        && <p className="text-xs mt-2 italic" style={{ color: 'var(--fg-3)' }}>{stop.notes}</p>}
@@ -773,6 +929,7 @@ export default function AdminBookingsClient({ initialStatusFilter, initialPage, 
                       return (
                         <div className="space-y-2">
                           {stop.address      && <p className="text-sm font-semibold" style={{ color: 'var(--fg)' }}>{stop.address}</p>}
+                          {stop.buzzCode     && <p className="text-xs" style={{ color: 'var(--fg-3)' }}>Unit/Buzz Code: {stop.buzzCode}</p>}
                           {stop.contactName  && <p className="text-xs" style={{ color: 'var(--fg-2)' }}>{stop.contactName}</p>}
                           {stop.contactPhone && <p className="text-xs mono" style={{ color: 'var(--fg-3)' }}>{stop.contactPhone}</p>}
                           {stop.notes        && <p className="text-xs mt-2 italic" style={{ color: 'var(--fg-3)' }}>{stop.notes}</p>}

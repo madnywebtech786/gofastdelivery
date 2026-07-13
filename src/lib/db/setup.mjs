@@ -9,9 +9,11 @@ import { fileURLToPath } from 'url'
 const __dirname = fileURLToPath(new URL('.', import.meta.url))
 config({ path: resolve(__dirname, '../../../.env.local') })
 
-import { getDb } from './client.js'
-
+// Dynamic import, not static — client.js throws at import time if
+// MONGODB_URI is unset, and ESM hoists static imports above the config()
+// call above, which would make the throw fire before dotenv ever runs.
 async function setup() {
+  const { getDb } = await import('./client.js')
   console.log('Setting up MongoDB indexes...')
   const db = await getDb()
 
@@ -57,6 +59,13 @@ async function setup() {
     { key: { createdAt: -1 }, name: 'createdAt_desc' },
   ])
   console.log('✓ invoices indexes')
+
+  // --- password_reset_otps (TTL: auto-delete on expiry; one doc per email) ---
+  await db.collection('password_reset_otps').createIndexes([
+    { key: { expiresAt: 1 }, expireAfterSeconds: 0, name: 'ttl_expiry' },
+    { key: { email: 1 }, unique: true, name: 'email_unique' },
+  ])
+  console.log('✓ password_reset_otps indexes')
 
   console.log('\nDatabase setup complete.')
   process.exit(0)

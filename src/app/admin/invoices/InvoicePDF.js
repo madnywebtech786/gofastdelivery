@@ -271,6 +271,26 @@ export default function InvoicePDF({ invoice }) {
         </div>
       </div>
 
+      {/* ── Payment Instructions ── */}
+      <div style={{
+        margin: '0 28px 20px',
+        padding: '16px 20px',
+        background: `${BRAND_GREEN}0d`,
+        border: `1px solid ${BRAND_GREEN}38`,
+        borderRadius: '10px',
+      }}>
+        <div style={{ fontSize: '9px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: BRAND_GREEN_DARK, marginBottom: '6px' }}>
+          Payment Instructions
+        </div>
+        <div style={{ fontSize: '12px', color: '#334155', lineHeight: 1.65 }}>
+          We accept payment via Interac e-Transfer, sent to{' '}
+          <strong style={{ color: '#0f172a' }}>gofastdelivery2024@gmail.com</strong>.
+          Please include the invoice number{' '}
+          <strong style={{ color: '#0f172a' }}>{invoice.invoiceNumber}</strong>{' '}
+          in the transfer message so we can match your payment quickly.
+        </div>
+      </div>
+
       {/* ── Notes ── */}
       {invoice.notes && (
         <div style={{

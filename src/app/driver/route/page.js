@@ -976,20 +976,18 @@ export default function DriverRoutePage() {
   return (
     <div className="fixed inset-0 flex flex-col bg-gray-100">
 
-      {/* Top overlay — back + status pill + sign out */}
+      {/* Top overlay — back + status pill (only when there's something to report) + sign out */}
       <div className="absolute top-0 left-0 right-0 z-40 flex items-center justify-between px-3 pt-3 pointer-events-none">
         <button
           onClick={() => handleGoHome()}
-          className="pointer-events-auto bg-white shadow-md rounded-full w-10 h-10 flex items-center justify-center text-gray-700 text-lg active:bg-gray-100"
+          className="pointer-events-auto bg-white shadow-md rounded-full w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center text-gray-700 text-lg active:bg-gray-100"
         >
           ←
         </button>
-        <div className="pointer-events-auto bg-white shadow-md rounded-full px-2 h-9 flex items-center">
-          <OnlineIndicator pending={queueDepth} />
-        </div>
+        <OnlineIndicator pending={queueDepth} wrapperClassName="pointer-events-auto bg-white shadow-md rounded-full px-2 h-9 flex items-center" />
         <button
           onClick={handleSignOut}
-          className="pointer-events-auto bg-white shadow-md rounded-full px-3 h-9 text-xs font-medium text-gray-600 active:bg-gray-100"
+          className="pointer-events-auto bg-white shadow-md rounded-full px-2.5 sm:px-3 h-9 text-xs font-medium text-gray-600 active:bg-gray-100"
         >
           Sign out
         </button>

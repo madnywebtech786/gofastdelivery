@@ -182,6 +182,7 @@ function stopsHtml(stops = []) {
           <td style="vertical-align:top;padding-left:4px;">
             <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#94a3b8;margin-bottom:3px;">${label}</div>
             <div style="font-size:14px;color:#1e293b;font-weight:500;line-height:1.45;">${esc(s.address)}</div>
+            ${s.buzzCode ? `<div style="font-size:12px;color:#94a3b8;margin-top:3px;">Unit/Buzz Code: ${esc(s.buzzCode)}</div>` : ''}
             ${s.contactName ? `<div style="font-size:12px;color:#94a3b8;margin-top:3px;">${esc(s.contactName)}${s.contactPhone ? ' &middot; ' + esc(s.contactPhone) : ''}</div>` : ''}
           </td>
         </tr>
@@ -301,11 +302,17 @@ export function buildBookingConfirmedEmail({ booking, trackingUrl, recipientType
     ${booking.packageDetails?.kind ? `
       ${divider()}
       ${sectionHeading('Package Details')}
-      <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="font-size:14px;color:#475569;line-height:1.8;">
-        <tr><td><strong style="color:#334155;">Type:</strong>&nbsp;${esc(booking.packageDetails.kind)}</td></tr>
-        ${booking.packageDetails.description ? `<tr><td><strong style="color:#334155;">Contents:</strong>&nbsp;${esc(booking.packageDetails.description)}</td></tr>` : ''}
-        ${booking.packageDetails.weightSlab   ? `<tr><td><strong style="color:#334155;">Weight:</strong>&nbsp;${esc(booking.packageDetails.weightSlab.replace(/_/g,' '))}</td></tr>` : ''}
-      </table>` : ''}
+      ${Array.isArray(booking.packageDetails.packages) && booking.packageDetails.packages.length > 1 ? `
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="font-size:14px;color:#475569;line-height:1.8;width:100%;">
+          ${booking.packageDetails.packages.map((p, i) => `
+            <tr><td><strong style="color:#334155;">Package ${i + 1}:</strong>&nbsp;${esc(p.kind)}${p.weightSlab ? ` &middot; ${esc(p.weightSlab.replace(/_/g,' '))}` : ''}</td></tr>
+          `).join('')}
+        </table>` : `
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="font-size:14px;color:#475569;line-height:1.8;">
+          <tr><td><strong style="color:#334155;">Type:</strong>&nbsp;${esc(booking.packageDetails.kind)}</td></tr>
+          ${booking.packageDetails.description ? `<tr><td><strong style="color:#334155;">Contents:</strong>&nbsp;${esc(booking.packageDetails.description)}</td></tr>` : ''}
+          ${booking.packageDetails.weightSlab   ? `<tr><td><strong style="color:#334155;">Weight:</strong>&nbsp;${esc(booking.packageDetails.weightSlab.replace(/_/g,' '))}</td></tr>` : ''}
+        </table>`}` : ''}
 
     ${ctaBtn(trackingUrl, 'Track My Delivery &rarr;')}`
 
@@ -537,6 +544,22 @@ function buildInvoiceEmailHtml(invoice) {
           <td style="padding:10px 0 0;border-top:2px solid ${BRAND_GREEN};font-size:17px;font-weight:900;color:#0f172a;text-align:right;white-space:nowrap;">${fmt(balance)}</td>
         </tr>
       </tbody>
+    </table>
+
+    <!-- Payment instructions -->
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+      style="background:#f0fdf0;border:1px solid rgba(27,185,8,0.22);border-radius:10px;margin-bottom:24px;">
+      <tr>
+        <td style="padding:16px 20px;">
+          <p style="margin:0 0 6px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#15960a;">Payment Instructions</p>
+          <p style="margin:0;font-size:13px;color:#334155;line-height:1.65;">
+            We accept payment via Interac e-Transfer, sent to
+            <strong style="color:#0f172a;">gofastdelivery2024@gmail.com</strong>.
+            Please include the invoice number <strong style="color:#0f172a;">${esc(invoice.invoiceNumber)}</strong>
+            in the transfer message so we can match your payment quickly.
+          </p>
+        </td>
+      </tr>
     </table>
 
     ${invoice.notes?.trim() ? `
