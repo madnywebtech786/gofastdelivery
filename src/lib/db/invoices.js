@@ -117,6 +117,126 @@ export async function deleteInvoice(id) {
   return db.collection('invoices').deleteOne({ _id: new ObjectId(id) })
 }
 
+// Shared pipeline stages to compute each invoice's total-with-tax from its items.
+const INVOICE_TOTAL_STAGES = [
+  {
+    $addFields: {
+      _subtotal: {
+        $reduce: {
+          input: { $ifNull: ['$items', []] },
+          initialValue: 0,
+          in: {
+            $add: [
+              '$$value',
+              { $multiply: [{ $ifNull: ['$$this.rate', 0] }, { $ifNull: ['$$this.quantity', 0] }] },
+            ],
+          },
+        },
+      },
+    },
+  },
+  {
+    $addFields: {
+      _withTax: {
+        $add: [
+          '$_subtotal',
+          { $multiply: ['$_subtotal', { $divide: [{ $ifNull: ['$taxRate', 5] }, 100] }] },
+        ],
+      },
+    },
+  },
+]
+
+const REVENUE_GROUP_FIELDS = {
+  total:   { $sum: '$_withTax' },
+  revenue: { $sum: { $cond: [{ $eq: ['$status', 'paid'] }, '$_withTax', 0] } },
+  count:   { $sum: 1 },
+  paid:    { $sum: { $cond: [{ $eq: ['$status', 'paid'] }, 1, 0] } },
+}
+
+/**
+ * Returns invoice stats for charts:
+ *   byDay    — per-day counts/totals for the given year+month (for "Monthly" view)
+ *   byMonth  — per-month counts/totals for the given year     (for "Yearly" view)
+ *   byYear   — per-year totals for last 4 years
+ *   statusBreakdown — all-time count per status
+ */
+export async function getInvoiceStats({ year, month } = {}) {
+  const db = await getDb()
+  const now         = new Date()
+  const targetYear  = year  ?? now.getFullYear()
+  const targetMonth = month ?? now.getMonth() + 1  // 1-12
+
+  const daysInMonth = new Date(targetYear, targetMonth, 0).getDate()
+
+  // Per-day breakdown for the selected year+month
+  const byDay = await db.collection('invoices').aggregate([
+    {
+      $match: {
+        invoiceDate: {
+          $gte: new Date(`${targetYear}-${String(targetMonth).padStart(2,'0')}-01`),
+          $lt:  new Date(targetMonth === 12
+            ? `${targetYear + 1}-01-01`
+            : `${targetYear}-${String(targetMonth + 1).padStart(2,'0')}-01`),
+        },
+      },
+    },
+    ...INVOICE_TOTAL_STAGES,
+    {
+      $group: {
+        _id: { $dayOfMonth: '$invoiceDate' },
+        ...REVENUE_GROUP_FIELDS,
+      },
+    },
+    { $sort: { _id: 1 } },
+  ]).toArray()
+
+  // Per-month breakdown for the selected year
+  const byMonth = await db.collection('invoices').aggregate([
+    {
+      $match: {
+        invoiceDate: {
+          $gte: new Date(`${targetYear}-01-01`),
+          $lt:  new Date(`${targetYear + 1}-01-01`),
+        },
+      },
+    },
+    ...INVOICE_TOTAL_STAGES,
+    {
+      $group: {
+        _id: { $month: '$invoiceDate' },
+        ...REVENUE_GROUP_FIELDS,
+      },
+    },
+    { $sort: { _id: 1 } },
+  ]).toArray()
+
+  // Per-year totals for the last 4 years
+  const currentYear = now.getFullYear()
+  const byYear = await db.collection('invoices').aggregate([
+    {
+      $match: {
+        invoiceDate: { $gte: new Date(`${currentYear - 3}-01-01`) },
+      },
+    },
+    ...INVOICE_TOTAL_STAGES,
+    {
+      $group: {
+        _id: { $year: '$invoiceDate' },
+        ...REVENUE_GROUP_FIELDS,
+      },
+    },
+    { $sort: { _id: 1 } },
+  ]).toArray()
+
+  // All-time status breakdown
+  const statusBreakdown = await db.collection('invoices').aggregate([
+    { $group: { _id: '$status', count: { $sum: 1 } } },
+  ]).toArray()
+
+  return { byDay, byMonth, byYear, statusBreakdown, year: targetYear, month: targetMonth, daysInMonth }
+}
+
 export async function getNextInvoiceNumber() {
   const db = await getDb()
   // invoiceNumber is a zero-padded string ("INV003"), so a Mongo-side

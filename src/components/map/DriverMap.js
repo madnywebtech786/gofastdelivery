@@ -184,6 +184,7 @@ export default function DriverMap({
   onStepUpdate,
   onReroute,
   onArrival,
+  onFlushDrivenMeters,
   newStopIds = null,
 }) {
   const containerRef       = useRef(null)
@@ -630,10 +631,11 @@ export default function DriverMap({
         const ctrl = new AbortController()
         const timer = setTimeout(() => ctrl.abort(), 12000)
         try {
+          const drivenMeters = onFlushDrivenMeters?.() ?? 0
           const res = await fetch(`/api/drivers/${id}/reroute`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ currentLng: lng, currentLat: lat }),
+            body: JSON.stringify({ currentLng: lng, currentLat: lat, drivenMeters }),
             signal: ctrl.signal,
           })
           if (res.ok) {

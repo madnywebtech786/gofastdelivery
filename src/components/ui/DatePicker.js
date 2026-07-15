@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { DayPicker } from 'react-day-picker'
 import { format, parse, isValid } from 'date-fns'
 import { CalendarDays, X } from 'lucide-react'
@@ -34,8 +35,10 @@ export default function DatePicker({
   clearable = true,
 }) {
   const [open, setOpen]           = useState(false)
-  const [showAbove, setShowAbove] = useState(false)
-  const wrapRef = useRef(null)
+  const [popStyle, setPopStyle]   = useState({})
+  const wrapRef    = useRef(null)
+  const triggerRef = useRef(null)
+  const popRef     = useRef(null)
 
   const selected = value
     ? (() => { const d = parse(value, 'yyyy-MM-dd', new Date()); return isValid(d) ? d : undefined })()
@@ -43,18 +46,44 @@ export default function DatePicker({
 
   const displayText = selected ? format(selected, 'MMM d, yyyy') : ''
 
+  // Close on outside click (trigger + popover are both checked)
   useEffect(() => {
     function onDown(e) {
-      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false)
+      if (
+        wrapRef.current?.contains(e.target) ||
+        popRef.current?.contains(e.target)
+      ) return
+      setOpen(false)
     }
     document.addEventListener('mousedown', onDown)
     return () => document.removeEventListener('mousedown', onDown)
   }, [])
 
+  // Compute fixed position whenever open changes or window scrolls/resizes
   useEffect(() => {
-    if (!open || !wrapRef.current) return
-    const rect = wrapRef.current.getBoundingClientRect()
-    setShowAbove(window.innerHeight - rect.bottom < 360)
+    if (!open || !triggerRef.current) return
+    function compute() {
+      const rect       = triggerRef.current.getBoundingClientRect()
+      const popH       = 360
+      const spaceBelow = window.innerHeight - rect.bottom
+      const showAbove  = spaceBelow < popH
+      setPopStyle({
+        position: 'fixed',
+        zIndex:   9999,
+        left:     rect.left,
+        width:    'auto',
+        ...(showAbove
+          ? { bottom: window.innerHeight - rect.top + 8, top: 'auto' }
+          : { top: rect.bottom + 8, bottom: 'auto' }),
+      })
+    }
+    compute()
+    window.addEventListener('scroll', compute, true)
+    window.addEventListener('resize', compute)
+    return () => {
+      window.removeEventListener('scroll', compute, true)
+      window.removeEventListener('resize', compute)
+    }
   }, [open])
 
   function handleSelect(day) {
@@ -76,9 +105,10 @@ export default function DatePicker({
         </label>
       )}
 
-      <div className="relative" style={{ zIndex: open ? 200 : 'auto' }}>
+      <div className="relative">
         {/* Trigger button */}
         <button
+          ref={triggerRef}
           type="button"
           disabled={disabled}
           onClick={() => { if (!disabled) setOpen(p => !p) }}
@@ -109,34 +139,33 @@ export default function DatePicker({
             </span>
           )}
         </button>
-
-        {/* Calendar popover */}
-        {open && (
-          <div
-            className="dropdown-menu gfd-datepicker-popover"
-            style={{
-              position:     'absolute',
-              zIndex:       200,
-              padding:      '4px',
-              width:        'auto',
-              minWidth:     '0',
-              left:         '0',
-              top:          showAbove ? 'auto' : '100%',
-              bottom:       showAbove ? '100%' : 'auto',
-              marginTop:    showAbove ? '0' : '0.5rem',
-              marginBottom: showAbove ? '0.5rem' : '0',
-            }}
-          >
-            <DayPicker
-              mode="single"
-              selected={selected}
-              onSelect={handleSelect}
-              showOutsideDays
-              defaultMonth={selected}
-            />
-          </div>
-        )}
       </div>
+
+      {/* Calendar popover — portalled to body to escape overflow:auto on <main> */}
+      {open && typeof document !== 'undefined' && createPortal(
+        <div
+          ref={popRef}
+          className="gfd-datepicker-popover"
+          style={{
+            ...popStyle,
+            padding: '4px',
+            background: '#ffffff',
+            border: '1px solid var(--border-2)',
+            borderRadius: '10px',
+            boxShadow: '0 8px 30px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06)',
+            animation: 'fade-up 0.15s ease both',
+          }}
+        >
+          <DayPicker
+            mode="single"
+            selected={selected}
+            onSelect={handleSelect}
+            showOutsideDays
+            defaultMonth={selected}
+          />
+        </div>,
+        document.body
+      )}
 
       {error  && <p className="text-xs font-medium" style={{ color: 'var(--danger)' }}>{error}</p>}
       {helper && !error && <p className="text-xs" style={{ color: 'var(--fg-3)' }}>{helper}</p>}

@@ -122,7 +122,7 @@ export default async function AdminBookingDetailPage({ params }) {
             <div className="px-5 py-1">
               <MetaRow label="Created" value={formatDate(b.createdAt)} />
               {b.estimatedDurationSeconds && <MetaRow label="Est. Duration" value={formatDuration(b.estimatedDurationSeconds)} />}
-              {b.estimatedDistanceMeters  && <MetaRow label="Est. Distance" value={`${(b.estimatedDistanceMeters / 1000).toFixed(1)} km`} />}
+              {b.estimatedDistanceMeters  && <MetaRow label="Est. Distance" value={`${(b.estimatedDistanceMeters * 0.000621371).toFixed(1)} mi`} />}
               <MetaRow label="Tracking Token" value={<span className="mono text-xs" style={{ color: 'var(--fg-2)' }}>{b.trackingToken}</span>} />
             </div>
           </div>

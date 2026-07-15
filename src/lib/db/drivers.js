@@ -1,6 +1,117 @@
 import { ObjectId } from 'mongodb'
 import { getDb } from './client.js'
 
+const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+
+/**
+ * Increment a driver's total distance driven and a route's driven distance.
+ * Called from stop-complete, stop-failed, and reroute with the metres driven on that leg/slice.
+ */
+export async function incrementDrivenDistance(driverId, routeId, metres) {
+  if (!metres || metres <= 0) return
+  const db = await getDb()
+  await Promise.all([
+    db.collection('users').updateOne(
+      { _id: new ObjectId(driverId) },
+      { $inc: { 'driverProfile.totalDistanceDrivenMeters': metres }, $set: { updatedAt: new Date() } }
+    ),
+    db.collection('routes').updateOne(
+      { _id: new ObjectId(routeId) },
+      { $inc: { drivenDistanceMeters: metres }, $set: { updatedAt: new Date() } }
+    ),
+  ])
+}
+
+/**
+ * Returns stats for a driver for the admin detail page:
+ *   totalDistanceDrivenMeters — all-time from driverProfile
+ *   totalCompletedBookings    — all-time delivered bookings
+ *   totalRoutes               — all-time routes assigned
+ *   byDay                     — per-day completed bookings for year+month
+ *   byMonth                   — per-month completed bookings for year
+ *   year, month, daysInMonth
+ */
+export async function getDriverStats(driverId, { year, month } = {}) {
+  const db          = await getDb()
+  const now         = new Date()
+  const targetYear  = year  ?? now.getFullYear()
+  const targetMonth = month ?? now.getMonth() + 1
+  const daysInMonth = new Date(targetYear, targetMonth, 0).getDate()
+
+  const objId = new ObjectId(driverId)
+
+  // Driver doc for distance
+  const driver = await db.collection('users').findOne(
+    { _id: objId },
+    { projection: { 'driverProfile.totalDistanceDrivenMeters': 1 } }
+  )
+
+  // All-time completed bookings for this driver
+  const totalCompletedBookings = await db.collection('bookings').countDocuments({
+    assignedDriverId: objId,
+    status: 'delivered',
+  })
+
+  // All-time routes
+  const totalRoutes = await db.collection('routes').countDocuments({ driverId: objId })
+
+  // Per-day completed bookings for selected month+year
+  const monthStart = new Date(`${targetYear}-${String(targetMonth).padStart(2,'0')}-01`)
+  const monthEnd   = targetMonth === 12
+    ? new Date(`${targetYear + 1}-01-01`)
+    : new Date(`${targetYear}-${String(targetMonth + 1).padStart(2,'0')}-01`)
+
+  const byDay = await db.collection('bookings').aggregate([
+    {
+      $match: {
+        assignedDriverId: objId,
+        status: 'delivered',
+        updatedAt: { $gte: monthStart, $lt: monthEnd },
+      },
+    },
+    {
+      $group: {
+        _id:   { $dayOfMonth: '$updatedAt' },
+        count: { $sum: 1 },
+      },
+    },
+    { $sort: { _id: 1 } },
+  ]).toArray()
+
+  // Per-month completed bookings for selected year
+  const yearStart = new Date(`${targetYear}-01-01`)
+  const yearEnd   = new Date(`${targetYear + 1}-01-01`)
+
+  const byMonth = await db.collection('bookings').aggregate([
+    {
+      $match: {
+        assignedDriverId: objId,
+        status: 'delivered',
+        updatedAt: { $gte: yearStart, $lt: yearEnd },
+      },
+    },
+    {
+      $group: {
+        _id:   { $month: '$updatedAt' },
+        count: { $sum: 1 },
+      },
+    },
+    { $sort: { _id: 1 } },
+  ]).toArray()
+
+  return {
+    totalDistanceDrivenMeters: driver?.driverProfile?.totalDistanceDrivenMeters ?? 0,
+    totalCompletedBookings,
+    totalRoutes,
+    byDay,
+    byMonth,
+    year:        targetYear,
+    month:       targetMonth,
+    daysInMonth,
+    monthLabel:  MONTHS_SHORT[targetMonth - 1],
+  }
+}
+
 /**
  * List all drivers with their on-duty status.
  * Excludes passwordHash.

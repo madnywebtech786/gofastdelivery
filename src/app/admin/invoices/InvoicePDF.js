@@ -168,23 +168,6 @@ export default function InvoicePDF({ invoice }) {
         </div>
       </div>
 
-      {/* ── Balance Due hero ── */}
-      <div style={{
-        padding: '18px 40px',
-        background: `linear-gradient(135deg, ${BRAND_GREEN}12 0%, ${BRAND_GREEN}06 100%)`,
-        borderBottom: `2px solid ${BRAND_GREEN}30`,
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-      }}>
-        <div style={{ fontSize: '12px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-          Balance Due
-        </div>
-        <div style={{ fontSize: '28px', fontWeight: 900, color: '#0f172a', letterSpacing: '-0.5px' }}>
-          {formatMoney(balance, currency)}
-        </div>
-      </div>
-
       {/* ── Items table ── */}
       <div style={{ padding: '0 0' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -262,10 +245,6 @@ export default function InvoicePDF({ invoice }) {
                   <td style={{ paddingBottom: '8px', textAlign: 'right', color: '#16a34a', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>−${Number(invoice.amountPaid).toFixed(2)}</td>
                 </tr>
               )}
-              <tr style={{ borderTop: `2px solid ${BRAND_GREEN}` }}>
-                <td style={{ paddingTop: '10px', fontWeight: 800, color: '#0f172a', fontSize: '14px' }}>Balance Due</td>
-                <td style={{ paddingTop: '10px', textAlign: 'right', fontWeight: 900, fontSize: '18px', color: '#0f172a', fontVariantNumeric: 'tabular-nums' }}>{formatMoney(balance, currency)}</td>
-              </tr>
             </tbody>
           </table>
         </div>
@@ -283,11 +262,28 @@ export default function InvoicePDF({ invoice }) {
           Payment Instructions
         </div>
         <div style={{ fontSize: '12px', color: '#334155', lineHeight: 1.65 }}>
-          We accept payment via Interac e-Transfer, sent to{' '}
+          We accept payment via Interac e-Transfer, send to{' '}
           <strong style={{ color: '#0f172a' }}>gofastdelivery2024@gmail.com</strong>.
           Please include the invoice number{' '}
           <strong style={{ color: '#0f172a' }}>{invoice.invoiceNumber}</strong>{' '}
           in the transfer message so we can match your payment quickly.
+        </div>
+      </div>
+
+      {/* ── Balance Due hero ── */}
+      <div style={{
+        padding: '18px 40px',
+        background: `linear-gradient(135deg, ${BRAND_GREEN}12 0%, ${BRAND_GREEN}06 100%)`,
+        borderTop: `2px solid ${BRAND_GREEN}30`,
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+      }}>
+        <div style={{ fontSize: '12px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+          Balance Due
+        </div>
+        <div style={{ fontSize: '28px', fontWeight: 900, color: '#0f172a', letterSpacing: '-0.5px' }}>
+          {formatMoney(balance, currency)}
         </div>
       </div>
 

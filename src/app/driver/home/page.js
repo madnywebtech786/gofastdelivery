@@ -11,7 +11,8 @@ import {
 
 function formatDist(m) {
   if (!m) return null
-  return m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${m} m`
+  const miles = m * 0.000621371
+  return miles >= 0.1 ? `${miles.toFixed(1)} mi` : `${Math.round(m * 3.28084)} ft`
 }
 
 function formatDur(s) {

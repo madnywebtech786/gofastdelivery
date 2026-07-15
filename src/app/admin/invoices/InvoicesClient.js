@@ -6,9 +6,11 @@ import {
   Search, X, Plus, FileText, Pencil, Trash2,
   Download, ChevronLeft, ChevronRight,
   CheckCircle2, AlertTriangle, Send, Loader2,
+  TrendingUp, DollarSign, BarChart2,
 } from 'lucide-react'
 import { triggerPrint } from './InvoicePDF'
 import { useToast } from '@/components/ui/Toast'
+import Select from '@/components/ui/Select'
 
 const PAGE_SIZE = 20
 
@@ -112,7 +114,165 @@ function Modal({ title, onClose, children, wide = false }) {
   )
 }
 
-export default function InvoicesClient({ initialInvoices, total, currentPage, currentSearch, currentStatus }) {
+const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+
+function fmtCAD(n) {
+  if (n >= 1000) return `$${(n / 1000).toFixed(1)}k`
+  return `$${Number(n ?? 0).toFixed(0)}`
+}
+
+function StatCard({ icon: Icon, label, value, sub, color = 'var(--accent)' }) {
+  return (
+    <div className="rounded-xl border border-border bg-white p-4 flex items-start gap-3">
+      <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: `${color}18` }}>
+        <Icon size={16} style={{ color }} />
+      </div>
+      <div className="min-w-0">
+        <p className="text-xs font-semibold uppercase tracking-wide mb-0.5" style={{ color: 'var(--fg-3)' }}>{label}</p>
+        <p className="text-xl font-bold leading-tight" style={{ color: 'var(--fg)' }}>{value}</p>
+        {sub && <p className="text-xs mt-0.5" style={{ color: 'var(--fg-3)' }}>{sub}</p>}
+      </div>
+    </div>
+  )
+}
+
+// Renders a bar chart where bars scale by `count` (always visible, even for $0
+// invoices) and a tooltip shows both count and revenue on hover.
+function InvoiceBars({ data, chartHeight = 140 }) {
+  const maxCount = Math.max(...data.map(d => d.count ?? 0), 1)
+  return (
+    <div className="flex items-end gap-0.5" style={{ height: chartHeight }}>
+      {data.map((d, i) => {
+        const count = d.count ?? 0
+        // Bar height driven by count so zero-revenue invoices still appear
+        const pct = count > 0 ? Math.max((count / maxCount) * 100, 6) : 0
+        return (
+          <div key={i} className="flex-1 flex flex-col items-center gap-1 group relative min-w-0">
+            {/* Tooltip */}
+            {count > 0 && (
+              <div className="absolute bottom-full mb-1.5 left-1/2 -translate-x-1/2 z-10 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="px-2 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap shadow-lg text-center"
+                  style={{ background: 'var(--fg)', color: 'var(--bg,white)' }}>
+                  <div>{count} invoice{count !== 1 ? 's' : ''}</div>
+                  {(d.revenue ?? 0) > 0 && <div style={{ color: '#86efac' }}>{fmtCAD(d.revenue)} paid</div>}
+                  {(d.total ?? 0) > 0 && <div style={{ color: '#93c5fd' }}>{fmtCAD(d.total)} billed</div>}
+                </div>
+              </div>
+            )}
+            <div className="w-full rounded-t-sm relative overflow-hidden transition-all duration-300"
+              style={{ height: `${pct}%`, minHeight: count > 0 ? '4px' : '0', background: 'var(--accent)', opacity: 0.25 }}>
+              {/* Green fill proportional to paid revenue vs total billed */}
+              {(d.total ?? 0) > 0 && (
+                <div className="absolute bottom-0 left-0 right-0 rounded-t-sm"
+                  style={{ height: `${(d.revenue / d.total) * 100}%`, background: '#16a34a', opacity: 4 }} />
+              )}
+            </div>
+            <span className="text-[9px] font-medium truncate w-full text-center" style={{ color: 'var(--fg-3)' }}>{d.label}</span>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function InvoiceStats({ stats, selectedYear, selectedMonth, onYearChange, onMonthChange }) {
+  const [view, setView] = useState('monthly') // 'monthly' = per-day | 'yearly' = per-month
+
+  // Monthly view: one bar per day of the selected month
+  const dailyData = Array.from({ length: stats.daysInMonth ?? 31 }, (_, i) => {
+    const day   = i + 1
+    const found = (stats.byDay ?? []).find(d => d._id === day)
+    return { label: String(day), count: found?.count ?? 0, revenue: found?.revenue ?? 0, total: found?.total ?? 0 }
+  })
+
+  // Yearly view: one bar per month of the selected year
+  const monthlyData = MONTHS_SHORT.map((label, i) => {
+    const found = (stats.byMonth ?? []).find(m => m._id === i + 1)
+    return { label, count: found?.count ?? 0, revenue: found?.revenue ?? 0, total: found?.total ?? 0 }
+  })
+
+  // Stat card totals from all-year byMonth data
+  const totalRevenue = (stats.byMonth ?? []).reduce((s, m) => s + (m.revenue ?? 0), 0)
+  const totalBilled  = (stats.byMonth ?? []).reduce((s, m) => s + (m.total   ?? 0), 0)
+  const totalCount   = (stats.byMonth ?? []).reduce((s, m) => s + (m.count   ?? 0), 0)
+  const paidCount    = (stats.byMonth ?? []).reduce((s, m) => s + (m.paid    ?? 0), 0)
+  const statusMap    = Object.fromEntries((stats.statusBreakdown ?? []).map(s => [s._id, s.count]))
+
+  const now          = new Date()
+  const currentYear  = now.getFullYear()
+  const yearOptions  = Array.from({ length: 4 }, (_, i) => currentYear - i)
+
+  const chartData  = view === 'monthly' ? dailyData : monthlyData
+  const chartTitle = view === 'monthly'
+    ? `${MONTHS_SHORT[(selectedMonth ?? now.getMonth() + 1) - 1]} ${selectedYear} — invoices per day`
+    : `${selectedYear} — invoices per month`
+
+  return (
+    <div className="space-y-4 anim-fade-up">
+      {/* ── Stat cards (all-year totals for selectedYear) ── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <StatCard icon={DollarSign} label="Revenue (paid)"  value={`CAD $${totalRevenue.toFixed(0)}`}                    sub={`${paidCount} paid invoices`}              color="#16a34a" />
+        <StatCard icon={TrendingUp} label="Total billed"    value={`CAD $${totalBilled.toFixed(0)}`}                     sub={`${totalCount} invoices in ${selectedYear}`} color="var(--accent)" />
+        <StatCard icon={FileText}   label="Outstanding"     value={(statusMap.sent ?? 0) + (statusMap.overdue ?? 0)}     sub={`${statusMap.overdue ?? 0} overdue`}         color="#f59e0b" />
+        <StatCard icon={BarChart2}  label="Drafts"          value={statusMap.draft ?? 0}                                 sub="not yet sent"                                color="#64748b" />
+      </div>
+
+      {/* ── Chart ── */}
+      <div className="rounded-xl border border-border bg-white p-5" style={{ overflow: 'visible' }}>
+        {/* Controls row */}
+        <div className="flex flex-wrap items-center gap-3 mb-5" style={{ position: 'relative', zIndex: 10 }}>
+          {/* View toggle */}
+          <div className="flex gap-1 p-0.5 rounded-lg" style={{ background: 'var(--surface-2)' }}>
+            {[['monthly', 'Monthly'], ['yearly', 'Yearly']].map(([v, l]) => (
+              <button key={v} onClick={() => setView(v)}
+                className="px-3 py-1.5 rounded-md text-xs font-semibold transition-all"
+                style={{
+                  background: view === v ? 'white' : 'transparent',
+                  color:      view === v ? 'var(--fg)' : 'var(--fg-3)',
+                  boxShadow:  view === v ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                }}>
+                {l}
+              </button>
+            ))}
+          </div>
+
+          {/* Month picker — only shown in monthly (per-day) view */}
+          {view === 'monthly' && (
+            <Select
+              value={String(selectedMonth)}
+              onChange={v => onMonthChange(parseInt(v))}
+              options={MONTHS_SHORT.map((m, i) => ({ value: String(i + 1), label: m }))}
+            />
+          )}
+
+          {/* Year picker */}
+          <Select
+            value={String(selectedYear)}
+            onChange={v => onYearChange(parseInt(v))}
+            options={yearOptions.map(y => ({ value: String(y), label: String(y) }))}
+          />
+
+          {/* Legend */}
+          <div className="flex items-center gap-4 ml-auto">
+            <span className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--fg-3)' }}>
+              <span className="w-3 h-3 rounded-sm inline-block" style={{ background: '#16a34a' }} /> Paid revenue
+            </span>
+            <span className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--fg-3)' }}>
+              <span className="w-3 h-3 rounded-sm inline-block" style={{ background: 'var(--accent)', opacity: 0.25 }} /> Invoices
+            </span>
+          </div>
+        </div>
+
+        {/* Chart title */}
+        <p className="text-xs font-semibold mb-3 capitalize" style={{ color: 'var(--fg-3)' }}>{chartTitle}</p>
+
+        <InvoiceBars data={chartData} chartHeight={140} />
+      </div>
+    </div>
+  )
+}
+
+export default function InvoicesClient({ initialInvoices, total, currentPage, currentSearch, currentStatus, stats }) {
   const router       = useRouter()
   const pathname     = usePathname()
   const searchParams = useSearchParams()
@@ -126,7 +286,9 @@ export default function InvoicesClient({ initialInvoices, total, currentPage, cu
   const [error, setError]               = useState('')
   const [sendingId, setSendingId]       = useState(null)
   const [sentId, setSentId]             = useState(null)
-  const debounceRef                     = useRef(null)
+  const [selectedYear, setSelectedYear]   = useState(stats?.year  ?? new Date().getFullYear())
+  const [selectedMonth, setSelectedMonth] = useState(stats?.month ?? new Date().getMonth() + 1)
+  const debounceRef                       = useRef(null)
 
   const buildUrl = useCallback((updates) => {
     const params = new URLSearchParams(searchParams.toString())
@@ -155,6 +317,16 @@ export default function InvoicesClient({ initialInvoices, total, currentPage, cu
   function handleStatusChange(val) {
     setStatusFilter(val)
     navigate({ status: val, page: 1 })
+  }
+
+  function handleYearChange(yr) {
+    setSelectedYear(yr)
+    navigate({ year: yr, page: 1 })
+  }
+
+  function handleMonthChange(mo) {
+    setSelectedMonth(mo)
+    navigate({ month: mo, page: 1 })
   }
 
   async function handleSend(inv) {
@@ -213,6 +385,17 @@ export default function InvoicesClient({ initialInvoices, total, currentPage, cu
           <Plus size={15} /> New Invoice
         </button>
       </div>
+
+      {/* ── Stats + Chart ── */}
+      {stats && (
+        <InvoiceStats
+          stats={stats}
+          selectedYear={selectedYear}
+          selectedMonth={selectedMonth}
+          onYearChange={handleYearChange}
+          onMonthChange={handleMonthChange}
+        />
+      )}
 
       {/* ── Search + Status Filter ── */}
       <div className="flex flex-col sm:flex-row gap-3 anim-fade-up s1">

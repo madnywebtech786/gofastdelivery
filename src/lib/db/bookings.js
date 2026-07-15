@@ -384,6 +384,105 @@ export async function getBookingCounters() {
   return { pending, active, todayDelivered }
 }
 
+// Statuses that represent successfully completed revenue — everything else
+// (pending/assigned/picked_up/cancelled/failed_*) is excluded from revenue
+// sums so an in-flight or dead booking's estimatedPrice never counts as
+// earned revenue.
+const REVENUE_STATUSES = ['delivered']
+const FAILED_STATUSES  = ['failed_pickup', 'failed_dropoff']
+
+/**
+ * Admin dashboard finance + ops stats — one round-trip via $facet so the
+ * dashboard's Mongo cost stays constant regardless of how many charts read
+ * from it. Window is the trailing `days` calendar days (default 30),
+ * bucketed by day for the trend chart.
+ *
+ * Revenue is booking-estimated revenue (sum of estimatedPrice on delivered
+ * bookings), NOT invoiced/collected cash — invoices are a separate, manually
+ * created billing tool with no link back to bookings (see ARCHITECTURE.md
+ * §12.2). This is the operational "value delivered" figure, not accounts
+ * receivable.
+ */
+export async function getDashboardStats({ days = 30 } = {}) {
+  const db = await getDb()
+  const windowStart = new Date()
+  windowStart.setHours(0, 0, 0, 0)
+  windowStart.setDate(windowStart.getDate() - (days - 1))
+
+  const [windowResult] = await db.collection('bookings').aggregate([
+    { $match: { createdAt: { $gte: windowStart } } },
+    {
+      $facet: {
+        // Per-day revenue + volume, revenue only counted for delivered bookings
+        byDay: [
+          {
+            $group: {
+              _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+              bookings: { $sum: 1 },
+              delivered: { $sum: { $cond: [{ $eq: ['$status', 'delivered'] }, 1, 0] } },
+              cancelled: { $sum: { $cond: [{ $eq: ['$status', 'cancelled'] }, 1, 0] } },
+              failed: { $sum: { $cond: [{ $in: ['$status', FAILED_STATUSES] }, 1, 0] } },
+              revenue: {
+                $sum: {
+                  $cond: [
+                    { $in: ['$status', REVENUE_STATUSES] },
+                    { $ifNull: ['$estimatedPrice', 0] },
+                    0,
+                  ],
+                },
+              },
+            },
+          },
+          { $sort: { _id: 1 } },
+        ],
+        // Window-wide status breakdown, for the mix donut/bar
+        statusBreakdown: [
+          { $group: { _id: '$status', count: { $sum: 1 } } },
+        ],
+        // Window-wide totals — avoids re-summing byDay client-side for the stat cards
+        totals: [
+          {
+            $group: {
+              _id: null,
+              bookingCount: { $sum: 1 },
+              deliveredCount: { $sum: { $cond: [{ $eq: ['$status', 'delivered'] }, 1, 0] } },
+              failedCount: { $sum: { $cond: [{ $in: ['$status', FAILED_STATUSES] }, 1, 0] } },
+              cancelledCount: { $sum: { $cond: [{ $eq: ['$status', 'cancelled'] }, 1, 0] } },
+              revenue: {
+                $sum: {
+                  $cond: [
+                    { $in: ['$status', REVENUE_STATUSES] },
+                    { $ifNull: ['$estimatedPrice', 0] },
+                    0,
+                  ],
+                },
+              },
+            },
+          },
+        ],
+      },
+    },
+  ]).toArray()
+
+  const totals = windowResult.totals[0] ?? {
+    bookingCount: 0, deliveredCount: 0, failedCount: 0, cancelledCount: 0, revenue: 0,
+  }
+  const completedCount = totals.deliveredCount + totals.failedCount + totals.cancelledCount
+  const failureRate = completedCount > 0 ? totals.failedCount / completedCount : 0
+
+  return {
+    days,
+    windowStart,
+    byDay: windowResult.byDay,
+    statusBreakdown: windowResult.statusBreakdown,
+    totals: {
+      ...totals,
+      avgOrderValue: totals.deliveredCount > 0 ? totals.revenue / totals.deliveredCount : 0,
+      failureRate,
+    },
+  }
+}
+
 /**
  * Get bookings assigned to a driver, optionally filtered by status group.
  * statusGroup: 'active' | 'completed' | 'all'

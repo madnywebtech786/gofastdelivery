@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { requireDriver, handleApiError } from '@/lib/dal'
-import { findActiveRoute, updateRoute } from '@/lib/db/drivers'
+import { findActiveRoute, updateRoute, incrementDrivenDistance } from '@/lib/db/drivers'
 import { markBookingFailed } from '@/lib/db/bookings'
 import { pushBookingStatusChange, pushRouteUpdate } from '@/lib/pusher'
 import { hydrateRouteItems } from '@/lib/routing/hydrate'
@@ -27,7 +27,7 @@ export async function POST(request, { params }) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
-    const { stopIndex, reason } = await request.json()
+    const { stopIndex, reason, drivenMeters } = await request.json()
     if (typeof stopIndex !== 'number') {
       return NextResponse.json({ error: 'stopIndex is required' }, { status: 400 })
     }
@@ -108,6 +108,11 @@ export async function POST(request, { params }) {
       ...(allDone ? { isActive: false } : {}),
     }
     await updateRoute(String(route._id), routeUpdateData)
+
+    // Persist distance driven on this leg (sent from client GPS accumulation)
+    if (typeof drivenMeters === 'number' && drivenMeters > 0) {
+      incrementDrivenDistance(driverId, String(route._id), Math.round(drivenMeters)).catch(() => {})
+    }
 
     // A pickup_and_dropoff pickup failure cancels two stops at once (the pickup
     // and its paired dropoff). Both are marked completed/failed so the driver's

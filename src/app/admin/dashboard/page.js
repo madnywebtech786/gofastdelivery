@@ -1,11 +1,12 @@
 import { cacheLife, cacheTag } from 'next/cache'
 import { requireAdmin } from '@/lib/dal'
-import { getBookingCounters } from '@/lib/db/bookings'
+import { getBookingCounters, getDashboardStats } from '@/lib/db/bookings'
 import { findAllDrivers } from '@/lib/db/drivers'
 import Link from 'next/link'
+import DashboardCharts from './DashboardCharts'
 import {
   Clock, Zap, CheckCircle2, Users,
-  PackageOpen, UserPlus, ChevronRight, Circle,
+  PackageOpen, UserPlus, ChevronRight,
 } from 'lucide-react'
 
 export const metadata = { title: 'Dashboard — Go Fast Delivery' }
@@ -15,6 +16,13 @@ async function getStats() {
   cacheLife('seconds')
   cacheTag('booking-counters')
   return getBookingCounters()
+}
+
+async function getFinanceStats() {
+  'use cache'
+  cacheLife('minutes')
+  cacheTag('booking-counters')
+  return getDashboardStats({ days: 30 })
 }
 
 function StatCard({ label, value, sub, icon: Icon, href, accent }) {
@@ -61,7 +69,7 @@ const QUICK_ACTIONS = [
 
 export default async function DashboardPage() {
   await requireAdmin()
-  const [stats, drivers] = await Promise.all([getStats(), findAllDrivers()])
+  const [stats, drivers, financeStats] = await Promise.all([getStats(), findAllDrivers(), getFinanceStats()])
   return (
     <div>
       <div className="mb-8 anim-fade-up">
@@ -77,6 +85,11 @@ export default async function DashboardPage() {
         <StatCard label="In Transit"      value={stats.active}         icon={Zap}          href="/admin/bookings?tab=assigned" accent={stats.active > 0 ? '#2563eb' : undefined}   sub="active deliveries" />
         <StatCard label="Delivered Today" value={stats.todayDelivered} icon={CheckCircle2} href="/admin/bookings?status=delivered_today" accent="#16a34a" sub="completed today" />
         <StatCard label="Drivers"         value={drivers.length} icon={Users} href="/admin/drivers" accent="#16a34a" sub="registered drivers" />
+      </div>
+
+      {/* Finance + performance charts */}
+      <div className="mb-8">
+        <DashboardCharts stats={financeStats} />
       </div>
 
       <div className="grid lg:grid-cols-2 gap-5">

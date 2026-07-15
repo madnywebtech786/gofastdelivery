@@ -34,6 +34,8 @@ async function setup() {
     { key: { status: 1, updatedAt: -1 }, name: 'status_updated' },
     // Covers getDriverStats delivered-today count (assignedDriverId + status + updatedAt)
     { key: { assignedDriverId: 1, status: 1, updatedAt: -1 }, name: 'driver_status_updated' },
+    // Covers getDashboardStats trailing-window $match on createdAt alone
+    { key: { createdAt: -1 }, name: 'createdAt_desc' },
   ])
   console.log('✓ bookings indexes')
 

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, useId } from 'react'
+import { createPortal } from 'react-dom'
 import { ChevronDown, Check } from 'lucide-react'
 
 /**
@@ -40,17 +41,21 @@ export default function Select({
 }) {
   const [open, setOpen]           = useState(false)
   const [highlighted, setHighlighted] = useState(-1)
-  const [showAbove, setShowAbove] = useState(false)
-  const wrapRef  = useRef(null)
-  const menuRef  = useRef(null)
-  const triggerId = useId()
+  const [menuStyle, setMenuStyle] = useState({})
+  const wrapRef    = useRef(null)
+  const triggerRef = useRef(null)
+  const menuRef    = useRef(null)
+  const triggerId  = useId()
 
   const selected = options.find((o) => o.value === value) ?? null
 
-  // Close on outside click
+  // Close on outside click — check both the wrapper and the portalled menu
   useEffect(() => {
     function onDown(e) {
-      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false)
+      if (
+        wrapRef.current && !wrapRef.current.contains(e.target) &&
+        menuRef.current && !menuRef.current.contains(e.target)
+      ) setOpen(false)
     }
     document.addEventListener('mousedown', onDown)
     return () => document.removeEventListener('mousedown', onDown)
@@ -93,13 +98,31 @@ export default function Select({
     item?.scrollIntoView({ block: 'nearest' })
   }, [highlighted, open])
 
-  // Check if there's enough space below, if not show above
+  // Compute portal position whenever open or window scrolls/resizes
   useEffect(() => {
-    if (!open || !wrapRef.current) return
-    const rect = wrapRef.current.getBoundingClientRect()
-    const spaceBelow = window.innerHeight - rect.bottom
-    const menuHeight = 240 + 20 // max-height + padding
-    setShowAbove(spaceBelow < menuHeight)
+    if (!open || !triggerRef.current) return
+    function compute() {
+      const rect        = triggerRef.current.getBoundingClientRect()
+      const menuHeight  = 244
+      const spaceBelow  = window.innerHeight - rect.bottom
+      const showAbove   = spaceBelow < menuHeight
+      setMenuStyle({
+        position: 'fixed',
+        zIndex:   9999,
+        width:    rect.width,
+        left:     rect.left,
+        ...(showAbove
+          ? { bottom: window.innerHeight - rect.top + 6, top: 'auto' }
+          : { top: rect.bottom + 6, bottom: 'auto' }),
+      })
+    }
+    compute()
+    window.addEventListener('scroll', compute, true)
+    window.addEventListener('resize', compute)
+    return () => {
+      window.removeEventListener('scroll', compute, true)
+      window.removeEventListener('resize', compute)
+    }
   }, [open])
 
   return (
@@ -127,10 +150,11 @@ export default function Select({
         {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
 
-      <div className="relative" style={{ zIndex: open ? 200 : 'auto' }}>
+      <div className="relative">
         {/* Trigger button */}
         <button
           id={triggerId}
+          ref={triggerRef}
           type="button"
           role="combobox"
           aria-expanded={open}
@@ -161,29 +185,18 @@ export default function Select({
           />
         </button>
 
-        {/* Dropdown menu */}
-        {open && (
+        {/* Dropdown menu — portalled to document.body to escape any overflow:hidden ancestor */}
+        {open && typeof document !== 'undefined' && createPortal(
           <div
             ref={menuRef}
             role="listbox"
             className="dropdown-menu"
-            style={{
-              maxHeight: '240px',
-              overflowY: 'auto',
-              position: 'absolute',
-              zIndex: 200,
-              bottom: showAbove ? '100%' : 'auto',
-              top: showAbove ? 'auto' : '100%',
-              left: 0,
-              right: 0,
-              marginTop: showAbove ? '0' : '0.5rem',
-              marginBottom: showAbove ? '0.5rem' : '0',
-            }}
+            style={{ ...menuStyle, maxHeight: '240px', overflowY: 'auto' }}
           >
             {options.length === 0 ? (
               <div className="px-3 py-3 text-sm" style={{ color: 'var(--fg-3)' }}>No options</div>
             ) : options.map((opt, i) => {
-              const isSelected = opt.value === value
+              const isSelected    = opt.value === value
               const isHighlighted = highlighted === i
               return (
                 <button
@@ -210,7 +223,8 @@ export default function Select({
                 </button>
               )
             })}
-          </div>
+          </div>,
+          document.body
         )}
       </div>
 

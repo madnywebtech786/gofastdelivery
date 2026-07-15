@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { requireDriver, handleApiError } from '@/lib/dal'
-import { findActiveRoute } from '@/lib/db/drivers'
+import { findActiveRoute, incrementDrivenDistance } from '@/lib/db/drivers'
 import { reoptimizeRoute } from '@/lib/routing/reoptimize'
 
 /**
@@ -19,7 +19,7 @@ export async function POST(request, { params }) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
-    const { currentLng, currentLat, endPoint: bodyEndPoint } = await request.json()
+    const { currentLng, currentLat, endPoint: bodyEndPoint, drivenMeters } = await request.json()
     if (currentLng == null || currentLat == null) {
       return NextResponse.json({ error: 'currentLng and currentLat are required' }, { status: 400 })
     }
@@ -27,6 +27,11 @@ export async function POST(request, { params }) {
     // Quick 404 check so the caller sees a proper error
     const route = await findActiveRoute(driverId)
     if (!route) return NextResponse.json({ error: 'No active route' }, { status: 404 })
+
+    // Flush distance driven on the current leg so far (mid-leg reroute slice)
+    if (typeof drivenMeters === 'number' && drivenMeters > 0) {
+      incrementDrivenDistance(driverId, String(route._id), Math.round(drivenMeters)).catch(() => {})
+    }
 
     const updated = await reoptimizeRoute({
       driverId,

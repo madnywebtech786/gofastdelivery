@@ -76,6 +76,99 @@ export default function DriverRoutePage() {
   const voiceRef    = useRef(null)
   const routeRef    = useRef(null)
   const mapRef      = useRef(null)
+
+  // ── GPS distance accumulation ───────────────────────────────────────────────
+  // Accumulates metres driven on the current leg in memory + localStorage so
+  // tab close / browser suspension doesn't lose the data. Flushed to the server
+  // on every stop-complete, stop-failed, or reroute request — no extra calls.
+  const distAccRef  = useRef(0)   // metres accumulated this leg (in-memory mirror)
+  const lastGpsRef  = useRef(null) // last GPS position used for accumulation
+
+  const GPS_STORAGE_KEY = 'gfd_leg_dist'
+
+  function haversineM(a, b) {
+    const R = 6371000
+    const dLat = (b.lat - a.lat) * Math.PI / 180
+    const dLng = (b.lng - a.lng) * Math.PI / 180
+    const x = Math.sin(dLat/2)**2 +
+      Math.cos(a.lat * Math.PI/180) * Math.cos(b.lat * Math.PI/180) * Math.sin(dLng/2)**2
+    return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1-x))
+  }
+
+  // Read persisted value on mount (survives tab close)
+  useEffect(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem(GPS_STORAGE_KEY) ?? 'null')
+      if (stored && typeof stored.acc === 'number') {
+        distAccRef.current = stored.acc
+        // lastGps is stale after tab close — do NOT resume from it (would add
+        // spurious distance). Just keep the accumulated total and start fresh.
+        lastGpsRef.current = null
+      }
+    } catch { /* ignore */ }
+  }, [])
+
+  function persistAcc(acc) {
+    try { localStorage.setItem(GPS_STORAGE_KEY, JSON.stringify({ acc })) } catch { /* ignore */ }
+  }
+
+  // Called on every GPS tick from watchPosition below
+  function onGpsTick(pos) {
+    const cur = { lat: pos.coords.latitude, lng: pos.coords.longitude }
+    const last = lastGpsRef.current
+    if (last) {
+      const delta = haversineM(last, cur)
+      // Ignore implausible jumps > 200m between ticks (GPS glitch / wake from suspension)
+      // For suspension gaps, the visibility-change handler below adds a bridge instead.
+      if (delta < 200) {
+        distAccRef.current += delta
+        persistAcc(distAccRef.current)
+      }
+    }
+    lastGpsRef.current = cur
+  }
+
+  // GPS watchPosition — fires every 1-3s while page is visible
+  useEffect(() => {
+    if (!navigator.geolocation) return
+    const watchId = navigator.geolocation.watchPosition(
+      onGpsTick,
+      () => {},
+      { enableHighAccuracy: true, maximumAge: 2000, timeout: 10000 }
+    )
+    return () => navigator.geolocation.clearWatch(watchId)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Suspension bridge — when tab becomes visible again after being hidden,
+  // compute haversine(lastPos → currentPos) × 1.25 to cover the gap
+  useEffect(() => {
+    function onVisible() {
+      if (document.hidden) return
+      const last = lastGpsRef.current
+      if (!last || !navigator.geolocation) return
+      navigator.geolocation.getCurrentPosition((pos) => {
+        const cur = { lat: pos.coords.latitude, lng: pos.coords.longitude }
+        const bridge = haversineM(last, cur) * 1.25
+        // Only add bridge if meaningful (> 20m) and plausible (< 50km — rules out stale GPS)
+        if (bridge > 20 && bridge < 50000) {
+          distAccRef.current += bridge
+          persistAcc(distAccRef.current)
+        }
+        lastGpsRef.current = cur
+      }, () => {}, { enableHighAccuracy: false, timeout: 5000, maximumAge: 0 })
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Flush accumulated metres and reset for the next leg
+  function flushAndResetDist() {
+    const metres = Math.round(distAccRef.current)
+    distAccRef.current = 0
+    lastGpsRef.current = null
+    try { localStorage.removeItem(GPS_STORAGE_KEY) } catch { /* ignore */ }
+    return metres
+  }
   const markerRef      = useRef(null)
   const mapsLibRef     = useRef(null)   // google.maps namespace for the end-point modal projection
   const pendingRouteRef = useRef(null)
@@ -461,10 +554,12 @@ export default function DriverRoutePage() {
         const pos = driverPosRef.current
         const id  = driverIdRef.current
         if (pos && id) {
+          // Flush distance accumulated so far on the current leg before reroute
+          const drivenMeters = flushAndResetDist()
           fetch(`/api/drivers/${id}/reroute`, {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
-            body:    JSON.stringify({ currentLng: pos.lng, currentLat: pos.lat }),
+            body:    JSON.stringify({ currentLng: pos.lng, currentLat: pos.lat, drivenMeters }),
           }).catch(() => {})
         }
       }
@@ -592,8 +687,10 @@ export default function DriverRoutePage() {
     setCompleting(true)
     try {
       const pos = driverPos
+      const drivenMeters = flushAndResetDist()
       const body = {
         stopIndex,
+        drivenMeters,
         currentLng: pos?.lng ?? null,
         currentLat: pos?.lat ?? null,
       }
@@ -670,10 +767,11 @@ export default function DriverRoutePage() {
 
     setSubmittingFailure(true)
     try {
+      const drivenMeters = flushAndResetDist()
       const res = await fetch(`/api/drivers/${driverId}/stop-failed`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ stopIndex, reason }),
+        body: JSON.stringify({ stopIndex, reason, drivenMeters }),
       })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
@@ -705,10 +803,11 @@ export default function DriverRoutePage() {
       if (data?.pairedDropoffCancelled && (data?.pendingCount ?? 0) >= 2) {
         const pos = driverPosRef.current
         if (pos) {
+          // drivenMeters already flushed above on stop-failed — pass 0 here
           fetch(`/api/drivers/${driverId}/reroute`, {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
-            body:    JSON.stringify({ currentLng: pos.lng, currentLat: pos.lat }),
+            body:    JSON.stringify({ currentLng: pos.lng, currentLat: pos.lat, drivenMeters: 0 }),
           })
             .then((r) => (r.ok ? r.json() : null))
             .then((d) => {
@@ -1002,6 +1101,7 @@ export default function DriverRoutePage() {
           driverId={driverId}
           onStepUpdate={(step, distM, stage) => voiceRef.current?.speakStep(step, distM, stage)}
           onReroute={handleRouteUpdate}
+          onFlushDrivenMeters={flushAndResetDist}
           onArrival={(stopIdx) => {
             voiceRef.current?.speak('Arrived at destination')
             setSheetOpen(true)

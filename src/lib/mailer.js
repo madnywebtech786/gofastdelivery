@@ -523,8 +523,8 @@ function buildInvoiceEmailHtml(invoice) {
       <tbody>${itemRows}</tbody>
     </table>
 
-    <!-- Totals -->
-    <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="right" style="margin-bottom:28px;min-width:240px;">
+    <!-- Totals (subtotal + tax, no balance due yet) -->
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="right" style="margin-bottom:24px;min-width:240px;">
       <tbody>
         <tr>
           <td style="padding:5px 0;font-size:13px;color:#64748b;padding-right:32px;">Subtotal</td>
@@ -539,27 +539,33 @@ function buildInvoiceEmailHtml(invoice) {
           <td style="padding:5px 0;font-size:13px;color:#16a34a;padding-right:32px;">Amount Paid</td>
           <td style="padding:5px 0;font-size:13px;font-weight:600;color:#16a34a;text-align:right;white-space:nowrap;">&#8722;$${Number(invoice.amountPaid).toFixed(2)}</td>
         </tr>` : ''}
-        <tr>
-          <td style="padding:10px 0 0;border-top:2px solid ${BRAND_GREEN};font-size:15px;font-weight:800;color:#0f172a;padding-right:32px;">Balance Due</td>
-          <td style="padding:10px 0 0;border-top:2px solid ${BRAND_GREEN};font-size:17px;font-weight:900;color:#0f172a;text-align:right;white-space:nowrap;">${fmt(balance)}</td>
-        </tr>
       </tbody>
     </table>
 
-    <!-- Payment instructions -->
+    <!-- Payment instructions (above balance due) -->
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
-      style="background:#f0fdf0;border:1px solid rgba(27,185,8,0.22);border-radius:10px;margin-bottom:24px;">
+      style="background:#f0fdf0;border:1px solid rgba(27,185,8,0.22);border-radius:10px;margin-bottom:20px;">
       <tr>
         <td style="padding:16px 20px;">
           <p style="margin:0 0 6px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#15960a;">Payment Instructions</p>
           <p style="margin:0;font-size:13px;color:#334155;line-height:1.65;">
-            We accept payment via Interac e-Transfer, sent to
+            We accept payment via Interac e-Transfer, send to
             <strong style="color:#0f172a;">gofastdelivery2024@gmail.com</strong>.
             Please include the invoice number <strong style="color:#0f172a;">${esc(invoice.invoiceNumber)}</strong>
             in the transfer message so we can match your payment quickly.
           </p>
         </td>
       </tr>
+    </table>
+
+    <!-- Balance Due -->
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="right" style="margin-bottom:28px;min-width:240px;">
+      <tbody>
+        <tr>
+          <td style="padding:10px 0 0;border-top:2px solid ${BRAND_GREEN};font-size:15px;font-weight:800;color:#0f172a;padding-right:32px;">Balance Due</td>
+          <td style="padding:10px 0 0;border-top:2px solid ${BRAND_GREEN};font-size:17px;font-weight:900;color:#0f172a;text-align:right;white-space:nowrap;">${fmt(balance)}</td>
+        </tr>
+      </tbody>
     </table>
 
     ${invoice.notes?.trim() ? `

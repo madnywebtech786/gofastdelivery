@@ -289,8 +289,16 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
       setError('Pickup time is required.')
       return
     }
+    if (!pickup.address.trim()) {
+      setError('Pickup address is required.')
+      return
+    }
     if (!pickup.contactPhone.trim()) {
       setError('Pickup phone number is required.')
+      return
+    }
+    if (!dropoff.address.trim()) {
+      setError('Drop-off address is required.')
       return
     }
     if (!dropoff.contactPhone.trim()) {
@@ -453,7 +461,7 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
           <Field label="Company Name">
             <input type="text" value={pickup.companyName} onChange={(e) => setPickup((p) => ({ ...p, companyName: e.target.value }))} className={inputCls} placeholder="ABC Corp (optional)" />
           </Field>
-          <Field label="Address">
+          <Field label="Address" required>
             <input
               type="text"
               value={pickup.address}
@@ -463,6 +471,7 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
               }}
               className={inputCls}
               placeholder="123 Main St, Calgary, AB"
+              required
             />
           </Field>
           <Field label="Buzz / Unit Code">
@@ -496,7 +505,7 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
           <Field label="Receiver Name">
             <input type="text" value={dropoff.contactName} onChange={(e) => setDropoff((p) => ({ ...p, contactName: e.target.value }))} className={inputCls} placeholder="Jane Doe" />
           </Field>
-          <Field label="Address">
+          <Field label="Address" required>
             <input
               type="text"
               value={dropoff.address}
@@ -506,6 +515,7 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
               }}
               className={inputCls}
               placeholder="123 Main St, Calgary, AB"
+              required
             />
           </Field>
           <Field label="Buzz / Unit Code">

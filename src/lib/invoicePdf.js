@@ -199,25 +199,26 @@ export function buildInvoicePdf(invoice) {
       y += 17
     })
 
-    // Balance due row
-    doc.moveTo(totalsX, y).lineTo(totalsX + totalsW, y).lineWidth(1).strokeColor(BRAND_GREEN).stroke()
-    y += 8
-    doc.font('Helvetica-Bold').fontSize(11).fillColor(DARK)
-       .text('Balance Due', totalsX, y, { width: totalsW * 0.55 })
-       .text(fmt(balance, currency), totalsX + totalsW * 0.55, y, { width: totalsW * 0.45, align: 'right' })
-
-    // ── Payment instructions ─────────────────────────────────────────────────────
-    y += 36
+    // ── Payment instructions (above balance due) ────────────────────────────────
+    y += 24
     doc.moveTo(L, y).lineTo(L + W, y).lineWidth(0.5).strokeColor(BORDER).stroke()
     y += 12
     doc.font('Helvetica-Bold').fontSize(8).fillColor(BRAND_GREEN).text('PAYMENT INSTRUCTIONS', L, y)
     y += 13
     doc.font('Helvetica').fontSize(9.5).fillColor(MID).text(
-      `We accept payment via Interac e-Transfer, sent to gofastdelivery2024@gmail.com. ` +
+      `We accept payment via Interac e-Transfer, send to gofastdelivery2024@gmail.com. ` +
       `Please include the invoice number ${invoice.invoiceNumber ?? ''} in the transfer message so we can match your payment quickly.`,
       L, y, { width: W, lineGap: 2 }
     )
     y = doc.y
+
+    // Balance due row
+    y += 20
+    doc.moveTo(totalsX, y).lineTo(totalsX + totalsW, y).lineWidth(1).strokeColor(BRAND_GREEN).stroke()
+    y += 8
+    doc.font('Helvetica-Bold').fontSize(11).fillColor(DARK)
+       .text('Balance Due', totalsX, y, { width: totalsW * 0.55 })
+       .text(fmt(balance, currency), totalsX + totalsW * 0.55, y, { width: totalsW * 0.45, align: 'right' })
 
     // ── Notes ──────────────────────────────────────────────────────────────────
     if (invoice.notes?.trim()) {
