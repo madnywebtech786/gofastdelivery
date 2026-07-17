@@ -17,7 +17,10 @@ import 'react-day-picker/src/style.css'
  *   placeholder — trigger text when no date selected
  *   error       — error message string
  *   helper      — helper text string
- *   disabled    — boolean
+ *   disabled    — boolean (disables the whole field)
+ *   disabledDays — react-day-picker Matcher | Matcher[] for individual
+ *                  calendar days (e.g. date => date.getDay() === 0 to block
+ *                  Sundays). See https://daypicker.dev/docs/selection-modes#disabled
  *   required    — boolean
  *   className   — extra className on root wrapper
  *   clearable   — show clear button when a date is selected (default true)
@@ -30,6 +33,7 @@ export default function DatePicker({
   error,
   helper,
   disabled = false,
+  disabledDays,
   required = false,
   className = '',
   clearable = true,
@@ -160,6 +164,7 @@ export default function DatePicker({
             mode="single"
             selected={selected}
             onSelect={handleSelect}
+            disabled={disabledDays}
             showOutsideDays
             defaultMonth={selected}
           />

@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
 import Button from '@/components/ui/Button'
 import Select from '@/components/ui/Select'
+import DatePicker from '@/components/ui/DatePicker'
 import { useToast } from '@/components/ui/Toast'
 import { placesAutocomplete, placeDetails } from '@/lib/google-geocode'
 import { Plus, Trash2 } from 'lucide-react'
@@ -36,6 +37,36 @@ const WEIGHT_SLABS = [
   { label: '25–50 kg (heavy)', value: '25_to_50' },
   { label: '50+ kg (freight)', value: '50_plus' },
 ]
+
+// Fixed pickup-time slots (client-specified). value stays "HH:mm" (24h) so it
+// composes directly into the "YYYY-MM-DDTHH:mm" pickupTime string the API and
+// admin pickup-date filter (src/lib/db/bookings.js buildAdminFilter) expect.
+const PICKUP_TIME_SLOTS = [
+  { value: '08:00', label: '8:00 AM' },
+  { value: '08:30', label: '8:30 AM' },
+  { value: '09:00', label: '9:00 AM' },
+  { value: '09:30', label: '9:30 AM' },
+  { value: '10:00', label: '10:00 AM' },
+  { value: '10:30', label: '10:30 AM' },
+  { value: '11:00', label: '11:00 AM' },
+  { value: '12:00', label: '12:00 PM' },
+  { value: '12:30', label: '12:30 PM' },
+  { value: '13:00', label: '1:00 PM' },
+  { value: '13:30', label: '1:30 PM' },
+  { value: '14:00', label: '2:00 PM' },
+  { value: '14:30', label: '2:30 PM' },
+  { value: '15:00', label: '3:00 PM' },
+  { value: '15:30', label: '3:30 PM' },
+  { value: '16:00', label: '4:00 PM' },
+  { value: '16:30', label: '4:30 PM' },
+]
+
+// react-day-picker Matcher — blocks all Sundays and any day before today.
+function isPickupDateDisabled(date) {
+  const startOfToday = new Date()
+  startOfToday.setHours(0, 0, 0, 0)
+  return date.getDay() === 0 || date < startOfToday
+}
 
 function emptyPackage() {
   return { kind: '', weightSlab: 'up_to_10' }
@@ -204,6 +235,16 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
   const hasPickup  = stops.some((s) => s.type === 'pickup')
   const hasDropoff = stops.some((s) => s.type === 'dropoff')
 
+  // If the selected pickup date is today, hide time slots that have already
+  // passed (mirrors the previous datetime-local input's `min={now+1min}`).
+  const pickupDatePart = pickup.pickupTime.split('T')[0] || ''
+  const availableTimeSlots = (() => {
+    const todayStr = new Date().toLocaleDateString('en-CA') // 'YYYY-MM-DD', local time
+    if (pickupDatePart !== todayStr) return PICKUP_TIME_SLOTS
+    const nowHHMM = new Date(Date.now() + 60000).toTimeString().slice(0, 5)
+    return PICKUP_TIME_SLOTS.filter((slot) => slot.value > nowHHMM)
+  })()
+
   // Fetch all pricing rules once on mount
   useEffect(() => {
     fetch('/api/pricing/rules/public')
@@ -285,7 +326,11 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
       setError('Place a pickup point and a drop-off point on the map.')
       return
     }
-    if (!pickup.pickupTime.trim()) {
+    if (!pickup.pickupTime.split('T')[0]) {
+      setError('Pickup date is required.')
+      return
+    }
+    if (!pickup.pickupTime.split('T')[1]) {
       setError('Pickup time is required.')
       return
     }
@@ -483,18 +528,38 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
               placeholder="#4B, buzz 1234 (optional)"
             />
           </Field>
+          <Field label="Pickup Date" required>
+            <DatePicker
+              value={pickup.pickupTime.split('T')[0] || ''}
+              onChange={(dateStr) =>
+                setPickup((p) => ({ ...p, pickupTime: dateStr ? `${dateStr}T${p.pickupTime.split('T')[1] || ''}` : '' }))
+              }
+              disabledDays={isPickupDateDisabled}
+              placeholder="Select a date"
+              required
+            />
+          </Field>
           <Field label="Pickup Time" required>
-            <input type="datetime-local" value={pickup.pickupTime} min={new Date(Date.now() + 60000).toISOString().slice(0, 16)} onChange={(e) => setPickup((p) => ({ ...p, pickupTime: e.target.value }))} className={inputCls} required />
+            <Select
+              value={pickup.pickupTime.split('T')[1] || ''}
+              onChange={(timeStr) =>
+                setPickup((p) => ({ ...p, pickupTime: p.pickupTime.split('T')[0] ? `${p.pickupTime.split('T')[0]}T${timeStr}` : '' }))
+              }
+              options={availableTimeSlots}
+              placeholder="Select a time"
+              disabled={!pickup.pickupTime.split('T')[0]}
+              required
+            />
           </Field>
           <Field label="Phone Number" required>
             <input type="tel" value={pickup.contactPhone} onChange={(e) => setPickup((p) => ({ ...p, contactPhone: e.target.value }))} className={inputCls} placeholder="+1 403-000-0000" required />
           </Field>
+          <Field label="Your Email (for booking confirmation &amp; updates)">
+            <input type="email" value={senderEmail} onChange={(e) => setSenderEmail(e.target.value)} className={inputCls} placeholder="you@example.com" />
+          </Field>
         </div>
         <Field label="Description / Notes">
-          <input type="text" value={pickup.notes} onChange={(e) => setPickup((p) => ({ ...p, notes: e.target.value }))} className={inputCls} placeholder="Gate code, leave at front desk, etc." />
-        </Field>
-        <Field label="Your Email (for booking confirmation &amp; updates)">
-          <input type="email" value={senderEmail} onChange={(e) => setSenderEmail(e.target.value)} className={inputCls} placeholder="you@example.com" />
+          <textarea value={pickup.notes} onChange={(e) => setPickup((p) => ({ ...p, notes: e.target.value }))} className={inputCls} rows={3} placeholder="Gate code, leave at front desk, etc." />
         </Field>
       </div>
 

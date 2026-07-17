@@ -176,7 +176,7 @@ export async function POST(request) {
       const bookingCopy = JSON.parse(JSON.stringify(booking))
       sendBookingConfirmed({ booking: bookingCopy, trackingUrl })
         .catch((e) => console.error('[mailer] guest booking confirmed:', e))
-      sendBookingConfirmedSms({ booking: bookingCopy, trackingUrl })
+      sendBookingConfirmedSms({ booking: bookingCopy, trackingUrl, isGuest: true })
         .catch((e) => console.error('[sms] guest booking confirmed:', e))
     } catch { /* non-fatal */ }
 
