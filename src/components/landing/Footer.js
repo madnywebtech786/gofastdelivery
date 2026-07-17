@@ -52,11 +52,16 @@ const SERVICES = [
   { label: 'Hotshot Delivery',  href: '/services/hotshot-delivery' },
 ]
 
+const LEGAL_LINKS = [
+  { label: 'Terms & Conditions', href: '/terms' },
+  { label: 'Privacy Policy',     href: '/privacy-policy' },
+]
+
 export default function Footer() {
   return (
     <footer style={{ background: '#0d0d0d', borderTop: '1px solid rgba(255,88,13,0.3)' }}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-10">
 
           {/* Col 1: Logo + tagline */}
           <div className="flex flex-col gap-4">
@@ -135,7 +140,30 @@ export default function Footer() {
             </ul>
           </div>
 
-          {/* Col 4: Contact */}
+          {/* Col 4: Legal */}
+          <div>
+            <h4 className="text-sm font-black text-white tracking-widest uppercase mb-5">
+              Legal
+            </h4>
+            <ul className="flex flex-col gap-3">
+              {LEGAL_LINKS.map(link => (
+                <li key={link.href}>
+                  <Link
+                    href={link.href}
+                    className="flex items-center gap-2 text-sm transition-colors group"
+                    style={{ color: 'rgb(156,163,175)' }}
+                    onMouseEnter={e => e.currentTarget.style.color = 'var(--brand-orange)'}
+                    onMouseLeave={e => e.currentTarget.style.color = 'rgb(156,163,175)'}
+                  >
+                    <ArrowRight size={12} className="opacity-0 group-hover:opacity-100 transition-opacity" />
+                    {link.label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Col 5: Contact */}
           <div>
             <h4 className="text-sm font-black text-white tracking-widest uppercase mb-5">
               Contact
