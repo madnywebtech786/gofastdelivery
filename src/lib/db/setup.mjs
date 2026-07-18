@@ -69,6 +69,18 @@ async function setup() {
   ])
   console.log('✓ password_reset_otps indexes')
 
+  // --- cities (pricing zone registry) ---
+  await db.collection('cities').createIndexes([
+    { key: { nameKey: 1 }, unique: true, name: 'nameKey_unique' },
+  ])
+  console.log('✓ cities indexes')
+
+  // --- pricing_rules (one row per unordered city pair) ---
+  await db.collection('pricing_rules').createIndexes([
+    { key: { cityAKey: 1, cityBKey: 1 }, unique: true, name: 'city_pair_unique' },
+  ])
+  console.log('✓ pricing_rules indexes')
+
   console.log('\nDatabase setup complete.')
   process.exit(0)
 }

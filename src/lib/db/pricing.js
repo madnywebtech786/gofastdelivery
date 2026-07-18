@@ -1,37 +1,91 @@
 import { ObjectId } from 'mongodb'
 import { getDb } from './client.js'
 
-/**
- * List all pricing rules, sorted by fromCity → toCity → weightSlab.
- */
-export async function getAllPricingRules() {
-  const db = await getDb()
-  return db
-    .collection('pricing')
-    .find({})
-    .sort({ fromCity: 1, toCity: 1, weightSlab: 1 })
-    .toArray()
+const ZONES = ['calgary', 'satellite', 'regional']
+
+function toKey(s) {
+  return String(s ?? '').trim().toLowerCase()
 }
 
 /**
- * Upsert a single pricing rule.
- * Key = fromCity + toCity + weightSlab (case-insensitive, trimmed).
+ * List all cities, sorted by zone then name.
  */
-export async function upsertPricingRule({ fromCity, toCity, weightSlab, price }) {
+export async function getAllCities() {
   const db = await getDb()
-  const key = {
-    fromCity:   fromCity.trim().toLowerCase(),
-    toCity:     toCity.trim().toLowerCase(),
-    weightSlab: weightSlab.trim().toLowerCase(),
+  return db.collection('cities').find({}).sort({ zone: 1, name: 1 }).toArray()
+}
+
+/**
+ * Create or update a city by its case-insensitive key.
+ * Throws if `zone` isn't one of ZONES.
+ */
+export async function upsertCity({ name, zone }) {
+  if (!ZONES.includes(zone)) {
+    throw new Error(`Invalid zone "${zone}" — must be one of ${ZONES.join(', ')}`)
   }
-  return db.collection('pricing').updateOne(
-    key,
+  const nameKey = toKey(name)
+  if (!nameKey) throw new Error('City name is required')
+  const db = await getDb()
+  return db.collection('cities').updateOne(
+    { nameKey },
+    {
+      $set: { nameKey, name: String(name).trim(), zone, updatedAt: new Date() },
+      $setOnInsert: { createdAt: new Date() },
+    },
+    { upsert: true }
+  )
+}
+
+export async function deleteCity(id) {
+  const db = await getDb()
+  return db.collection('cities').deleteOne({ _id: new ObjectId(id) })
+}
+
+/**
+ * Canonical unordered-pair key: sorts the two city keys alphabetically so
+ * Calgary→Airdrie and Airdrie→Calgary always resolve to the same pair.
+ */
+function pairKey(cityKeyA, cityKeyB) {
+  return [cityKeyA, cityKeyB].sort()
+}
+
+/**
+ * List all pricing rules, sorted by cityA then cityB.
+ */
+export async function getAllPricingRules() {
+  const db = await getDb()
+  return db.collection('pricing_rules').find({}).sort({ cityAKey: 1, cityBKey: 1 }).toArray()
+}
+
+/**
+ * Create or update the rule for a city pair. Order of arguments doesn't
+ * matter — Airdrie/Calgary and Calgary/Airdrie hit the same stored row.
+ * Both cities must already exist in the city registry.
+ */
+export async function upsertPricingRule({ cityA, cityB, baseRate, additionalPackageRate }) {
+  const keyA = toKey(cityA)
+  const keyB = toKey(cityB)
+  if (!keyA || !keyB) throw new Error('Both cities are required')
+
+  const db = await getDb()
+  const cities = await db.collection('cities').find({ nameKey: { $in: [keyA, keyB] } }).toArray()
+  const cityByKey = new Map(cities.map((c) => [c.nameKey, c]))
+  if (!cityByKey.has(keyA) || !cityByKey.has(keyB)) {
+    throw new Error('Both cities must already exist in the city registry')
+  }
+
+  const [sortedA, sortedB] = pairKey(keyA, keyB)
+  const displayA = cityByKey.get(sortedA).name
+  const displayB = cityByKey.get(sortedB).name
+
+  return db.collection('pricing_rules').updateOne(
+    { cityAKey: sortedA, cityBKey: sortedB },
     {
       $set: {
-        ...key,
-        fromCityDisplay: fromCity.trim(),
-        toCityDisplay:   toCity.trim(),
-        price: Number(price),
+        cityAKey: sortedA, cityBKey: sortedB,
+        cityADisplay: displayA, cityBDisplay: displayB,
+        baseRate: Number(baseRate),
+        additionalPackageRate: Number(additionalPackageRate),
         updatedAt: new Date(),
       },
       $setOnInsert: { createdAt: new Date() },
@@ -40,81 +94,35 @@ export async function upsertPricingRule({ fromCity, toCity, weightSlab, price })
   )
 }
 
-/**
- * Bulk-upsert pricing rules from an Excel/CSV parse result.
- * rows = [{ fromCity, toCity, weightSlab, price }]
- */
-export async function bulkUpsertPricingRules(rows) {
-  const db = await getDb()
-  const ops = rows.map((row) => {
-    const key = {
-      fromCity:   String(row.fromCity ?? '').trim().toLowerCase(),
-      toCity:     String(row.toCity ?? '').trim().toLowerCase(),
-      weightSlab: String(row.weightSlab ?? 'up_to_10').trim().toLowerCase(),
-    }
-    return {
-      updateOne: {
-        filter: key,
-        update: {
-          $set: {
-            ...key,
-            fromCityDisplay: String(row.fromCity ?? '').trim(),
-            toCityDisplay:   String(row.toCity ?? '').trim(),
-            price: Number(row.price ?? 0),
-            updatedAt: new Date(),
-          },
-          $setOnInsert: { createdAt: new Date() },
-        },
-        upsert: true,
-      },
-    }
-  })
-  if (ops.length === 0) return { upsertedCount: 0, modifiedCount: 0 }
-  return db.collection('pricing').bulkWrite(ops, { ordered: false })
-}
-
-/**
- * Delete a pricing rule by ID.
- */
 export async function deletePricingRule(id) {
   const db = await getDb()
-  return db.collection('pricing').deleteOne({ _id: new ObjectId(id) })
+  return db.collection('pricing_rules').deleteOne({ _id: new ObjectId(id) })
 }
 
+const SETTINGS_ID = 'global'
+const DEFAULT_SETTINGS = { maxWeightLbs: 20, overweightSurcharge: 0 }
+
 /**
- * Estimate price for a booking.
- * Matches on city names extracted from addresses (simple heuristic: last 2 comma-separated parts).
- * Returns { price, routeLabel, weightLabel } or null if no rule found.
+ * Get the single global pricing-settings doc, seeded with defaults if absent.
  */
-export async function estimatePrice({ pickupAddress, dropoffAddress, weightSlab = 'up_to_10' }) {
+export async function getPricingSettings() {
   const db = await getDb()
+  const doc = await db.collection('pricing_settings').findOne({ _id: SETTINGS_ID })
+  if (!doc) return { _id: SETTINGS_ID, ...DEFAULT_SETTINGS }
+  return doc
+}
 
-  function extractCity(address) {
-    const parts = address.split(',').map((p) => p.trim())
-    // Try second-to-last part as city, or last if only 1 part
-    return (parts[parts.length - 2] ?? parts[parts.length - 1] ?? '').toLowerCase()
-  }
-
-  const fromCity = extractCity(pickupAddress)
-  const toCity   = extractCity(dropoffAddress)
-  const slab     = (weightSlab ?? 'up_to_10').trim().toLowerCase()
-
-  const rule = await db.collection('pricing').findOne({
-    fromCity, toCity, weightSlab: slab,
-  })
-
-  if (!rule) return null
-
-  const WEIGHT_LABELS = {
-    up_to_10: 'Up to 10 kg',
-    '10_to_25': '10–25 kg',
-    '25_to_50': '25–50 kg',
-    '50_plus':  '50+ kg',
-  }
-
-  return {
-    price:       rule.price,
-    routeLabel:  `${rule.fromCityDisplay} → ${rule.toCityDisplay}`,
-    weightLabel: WEIGHT_LABELS[slab] ?? slab,
-  }
+export async function updatePricingSettings({ maxWeightLbs, overweightSurcharge }) {
+  const db = await getDb()
+  return db.collection('pricing_settings').updateOne(
+    { _id: SETTINGS_ID },
+    {
+      $set: {
+        maxWeightLbs: Number(maxWeightLbs),
+        overweightSurcharge: Number(overweightSurcharge),
+        updatedAt: new Date(),
+      },
+    },
+    { upsert: true }
+  )
 }
