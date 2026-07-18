@@ -305,13 +305,13 @@ export function buildBookingConfirmedEmail({ booking, trackingUrl, recipientType
       ${Array.isArray(booking.packageDetails.packages) && booking.packageDetails.packages.length > 1 ? `
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="font-size:14px;color:#475569;line-height:1.8;width:100%;">
           ${booking.packageDetails.packages.map((p, i) => `
-            <tr><td><strong style="color:#334155;">Package ${i + 1}:</strong>&nbsp;${esc(p.kind)}${p.weightSlab ? ` &middot; ${esc(p.weightSlab.replace(/_/g,' '))}` : ''}</td></tr>
+            <tr><td><strong style="color:#334155;">Package ${i + 1}:</strong>&nbsp;${esc(p.kind)}${p.weightLbs > 0 ? ` &middot; ${p.weightLbs} lbs` : ''}</td></tr>
           `).join('')}
         </table>` : `
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="font-size:14px;color:#475569;line-height:1.8;">
           <tr><td><strong style="color:#334155;">Type:</strong>&nbsp;${esc(booking.packageDetails.kind)}</td></tr>
           ${booking.packageDetails.description ? `<tr><td><strong style="color:#334155;">Contents:</strong>&nbsp;${esc(booking.packageDetails.description)}</td></tr>` : ''}
-          ${booking.packageDetails.weightSlab   ? `<tr><td><strong style="color:#334155;">Weight:</strong>&nbsp;${esc(booking.packageDetails.weightSlab.replace(/_/g,' '))}</td></tr>` : ''}
+          ${booking.packageDetails.weightLbs > 0 ? `<tr><td><strong style="color:#334155;">Weight:</strong>&nbsp;${booking.packageDetails.weightLbs} lbs</td></tr>` : ''}
         </table>`}` : ''}
 
     ${ctaBtn(trackingUrl, 'Track My Delivery &rarr;')}`

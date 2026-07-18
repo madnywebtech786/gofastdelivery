@@ -140,15 +140,15 @@ export default async function AdminBookingDetailPage({ params }) {
                       <li key={p.itemId ?? i} className="flex items-center gap-2 text-sm" style={{ color: 'var(--fg)' }}>
                         <span className="shrink-0 inline-flex min-w-5.5 justify-center rounded-md bg-slate-100 text-slate-700 text-[11px] font-bold px-1.5 py-0.5">{i + 1}</span>
                         <span className="truncate">{p.kind}</span>
-                        {p.weightSlab && <span className="ml-auto text-xs" style={{ color: 'var(--fg-3)' }}>{p.weightSlab.replace(/_/g, ' ')}</span>}
+                        {p.weightLbs > 0 && <span className="ml-auto text-xs" style={{ color: 'var(--fg-3)' }}>{p.weightLbs} lbs</span>}
                       </li>
                     ))}
                   </ul>
                 ) : (
                   <>
                     <p className="text-sm" style={{ color: 'var(--fg)' }}>{b.packageDetails.kind}</p>
-                    {b.packageDetails.weightSlab && (
-                      <p className="text-xs mt-0.5" style={{ color: 'var(--fg-3)' }}>{b.packageDetails.weightSlab.replace(/_/g, ' ')}</p>
+                    {b.packageDetails.weightLbs > 0 && (
+                      <p className="text-xs mt-0.5" style={{ color: 'var(--fg-3)' }}>{b.packageDetails.weightLbs} lbs</p>
                     )}
                   </>
                 )}

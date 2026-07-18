@@ -140,6 +140,28 @@ export async function updateUserProfile(userId, fields) {
 }
 
 /**
+ * Update a driver's name/email/phone (admin-driven edit, distinct from the
+ * self-service updateUserProfile — that one has no driver field allow-list
+ * and email isn't editable there). Caller must check email uniqueness first
+ * via emailExists() if email is being changed. Returns the updated doc.
+ */
+export async function updateDriverInfo(driverId, { name, email, phone }) {
+  const db = await getDb()
+  const setFields = { updatedAt: new Date() }
+  if (name != null)  setFields.name  = name
+  if (email != null) setFields.email = email.toLowerCase().trim()
+  if (phone != null) setFields.phone = phone || null
+  await db.collection('users').updateOne(
+    { _id: new ObjectId(driverId), role: 'driver' },
+    { $set: setFields }
+  )
+  return db.collection('users').findOne(
+    { _id: new ObjectId(driverId) },
+    { projection: { passwordHash: 0 } }
+  )
+}
+
+/**
  * Update a user's password. Caller must verify the old password first.
  */
 export async function updateUserPassword(userId, newPasswordHash) {

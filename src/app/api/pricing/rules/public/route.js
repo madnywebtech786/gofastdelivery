@@ -1,35 +1,38 @@
 import { NextResponse } from 'next/server'
 import { verifySession, handleApiError } from '@/lib/dal'
-import { getAllPricingRules } from '@/lib/db/pricing'
+import { getAllCities, getAllPricingRules, getPricingSettings } from '@/lib/db/pricing'
 
 /**
  * GET /api/pricing/rules/public
  *
- * Returns all pricing rules for authenticated customers to use
- * for client-side price lookup — no admin role required.
- * Only exposes fields needed for matching and display.
+ * Everything BookingForm.js needs for a zero-extra-call client-side price
+ * preview via calculatePrice() (src/lib/pricing.js) — no admin role required,
+ * any authenticated role.
  */
 export async function GET() {
   try {
     await verifySession()
-    const rules = await getAllPricingRules()
+    const [cities, rules, settings] = await Promise.all([
+      getAllCities(),
+      getAllPricingRules(),
+      getPricingSettings(),
+    ])
 
-    // Strip internal fields — only expose what the client needs
-    const safe = rules.map((r) => ({
-      fromCity:        r.fromCity,
-      toCity:          r.toCity,
-      weightSlab:      r.weightSlab,
-      fromCityDisplay: r.fromCityDisplay,
-      toCityDisplay:   r.toCityDisplay,
-      price:           r.price,
+    const safeCities = cities.map((c) => ({ nameKey: c.nameKey, name: c.name, zone: c.zone }))
+    const safeRules = rules.map((r) => ({
+      cityAKey: r.cityAKey, cityBKey: r.cityBKey,
+      cityADisplay: r.cityADisplay, cityBDisplay: r.cityBDisplay,
+      baseRate: r.baseRate, additionalPackageRate: r.additionalPackageRate,
     }))
 
-    return NextResponse.json(safe, {
-      headers: {
-        // Cache for 5 minutes in the browser — pricing rarely changes mid-session
-        'Cache-Control': 'private, max-age=300',
+    return NextResponse.json(
+      {
+        cities: safeCities,
+        rules: safeRules,
+        settings: { maxWeightLbs: settings.maxWeightLbs, overweightSurcharge: settings.overweightSurcharge },
       },
-    })
+      { headers: { 'Cache-Control': 'private, max-age=300' } }
+    )
   } catch (err) {
     return handleApiError(err, '[GET /api/pricing/rules/public]')
   }

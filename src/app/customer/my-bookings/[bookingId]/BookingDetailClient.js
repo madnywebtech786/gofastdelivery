@@ -24,13 +24,6 @@ function formatDate(d) {
   })
 }
 
-const WEIGHT_LABELS = {
-  up_to_10:  'Up to 10 kg',
-  '10_to_25':'10–25 kg',
-  '25_to_50':'25–50 kg',
-  '50_plus': '50+ kg',
-}
-
 export default function BookingDetailClient({ booking: initial, origin }) {
   const router = useRouter()
   const toast  = useToast()
@@ -203,11 +196,11 @@ export default function BookingDetailClient({ booking: initial, origin }) {
                 <p className="text-sm font-semibold" style={{ color: 'var(--fg)' }}>{b.packageDetails.kind}</p>
               </div>
             )}
-            {b.packageDetails.weightSlab && (
+            {b.packageDetails.weightLbs > 0 && (
               <div>
                 <p className="text-xs font-medium uppercase tracking-wide mb-0.5" style={{ color: 'var(--fg-3)' }}>Weight</p>
                 <p className="text-sm font-semibold" style={{ color: 'var(--fg)' }}>
-                  {WEIGHT_LABELS[b.packageDetails.weightSlab] ?? b.packageDetails.weightSlab}
+                  {b.packageDetails.weightLbs} lbs
                 </p>
               </div>
             )}
@@ -233,9 +226,9 @@ export default function BookingDetailClient({ booking: initial, origin }) {
                     <li key={p.itemId ?? i} className="flex items-center gap-2 text-sm" style={{ color: 'var(--fg-2)' }}>
                       <span className="shrink-0 inline-flex min-w-5.5 justify-center rounded-md bg-slate-100 text-slate-700 text-[11px] font-bold px-1.5 py-0.5">{i + 1}</span>
                       <span className="truncate">{p.kind}</span>
-                      {p.weightSlab && (
+                      {p.weightLbs > 0 && (
                         <span className="ml-auto text-xs" style={{ color: 'var(--fg-3)' }}>
-                          {WEIGHT_LABELS[p.weightSlab] ?? p.weightSlab}
+                          {p.weightLbs} lbs
                         </span>
                       )}
                     </li>

@@ -11,6 +11,8 @@ import {
 import { sendBookingConfirmed } from '@/lib/mailer'
 import { sendBookingConfirmedSms } from '@/lib/sms'
 import { checkRateLimit } from '@/lib/redis'
+import { calculatePrice } from '@/lib/pricing'
+import { getAllCities, getAllPricingRules, getPricingSettings } from '@/lib/db/pricing'
 
 // Service area bounding box — Greater Alberta / Western Canada
 const LAT_MIN =  48.0
@@ -44,6 +46,25 @@ function validateStop(stop, label) {
   }
   if (stop.lat < LAT_MIN || stop.lat > LAT_MAX || stop.lng < LNG_MIN || stop.lng > LNG_MAX) {
     return `${label}: coordinates are outside the service area`
+  }
+  return null
+}
+
+// Every package must have a real kind and a positive weight — mirrors the
+// client-side check in BookingForm.js, but this is the one that actually
+// matters: a direct API call bypasses the client entirely.
+function validatePackages(packageDetails) {
+  const packages = Array.isArray(packageDetails?.packages) && packageDetails.packages.length > 0
+    ? packageDetails.packages
+    : [packageDetails]
+  for (let i = 0; i < packages.length; i++) {
+    const p = packages[i] ?? {}
+    if (!sanitizeStr(p.kind)) {
+      return `Package ${i + 1}: kind of package is required`
+    }
+    if (!(Number(p.weightLbs) > 0)) {
+      return `Package ${i + 1}: weight must be greater than 0`
+    }
   }
   return null
 }
@@ -146,11 +167,30 @@ export async function POST(request) {
     if (cleanSenderEmail   && !isValidEmail(cleanSenderEmail))   return NextResponse.json({ error: 'Invalid sender email'   }, { status: 400 })
     if (cleanReceiverEmail && !isValidEmail(cleanReceiverEmail)) return NextResponse.json({ error: 'Invalid receiver email' }, { status: 400 })
 
-    // estimatedPrice sanity check
-    const price = estimatedPrice != null ? Number(estimatedPrice) : null
-    if (price !== null && (!isFinite(price) || price < 0 || price > 100_000)) {
-      return NextResponse.json({ error: 'Invalid estimated price' }, { status: 400 })
-    }
+    const packagesErr = validatePackages(packageDetails)
+    if (packagesErr) return NextResponse.json({ error: packagesErr }, { status: 400 })
+
+    // Server-side authoritative price — never trust the client-sent estimate.
+    // estimatedPrice may still arrive in the request body (BookingForm.js
+    // sends its own client-computed preview) but is intentionally unused for
+    // the stored price below; the server always recomputes from
+    // pricing_rules/cities/settings using the pickup/dropoff city each stop
+    // already carries client-side.
+    const packagesForPricing = Array.isArray(packageDetails?.packages) && packageDetails.packages.length > 0
+      ? packageDetails.packages
+      : [{ weightLbs: packageDetails?.weightLbs }]
+    const [cities, rules, settings] = await Promise.all([
+      getAllCities(),
+      getAllPricingRules(),
+      getPricingSettings(),
+    ])
+    const priceResult = calculatePrice({
+      fromCityName: pickup.city,
+      toCityName: dropoff.city,
+      packages: packagesForPricing,
+      cities, rules, settings,
+    })
+    const price = priceResult?.total ?? null
 
     const trackingToken = trackingId()
     const booking = await createBooking({

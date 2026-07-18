@@ -1,11 +1,6 @@
 import { NextResponse } from 'next/server'
 import { requireAdmin, handleApiError } from '@/lib/dal'
-import {
-  getAllPricingRules,
-  upsertPricingRule,
-  bulkUpsertPricingRules,
-  deletePricingRule,
-} from '@/lib/db/pricing'
+import { getAllPricingRules, upsertPricingRule, deletePricingRule } from '@/lib/db/pricing'
 
 export async function GET() {
   try {
@@ -20,26 +15,19 @@ export async function GET() {
 export async function POST(request) {
   try {
     await requireAdmin()
-    const body = await request.json()
-
-    // Bulk import from Excel parse: { rows: [...] }
-    if (Array.isArray(body.rows)) {
-      const valid = body.rows.filter(
-        (r) => r.fromCity && r.toCity && r.price != null
+    const { cityA, cityB, baseRate, additionalPackageRate } = await request.json()
+    if (!cityA || !cityB || baseRate == null || additionalPackageRate == null) {
+      return NextResponse.json(
+        { error: 'cityA, cityB, baseRate, and additionalPackageRate are required' },
+        { status: 400 }
       )
-      if (valid.length === 0) {
-        return NextResponse.json({ error: 'No valid rows found' }, { status: 400 })
-      }
-      const result = await bulkUpsertPricingRules(valid)
-      return NextResponse.json({ imported: valid.length, result: String(result) })
     }
-
-    // Single rule upsert
-    const { fromCity, toCity, weightSlab, price } = body
-    if (!fromCity || !toCity || price == null) {
-      return NextResponse.json({ error: 'fromCity, toCity, and price are required' }, { status: 400 })
+    const base = Number(baseRate)
+    const additional = Number(additionalPackageRate)
+    if (!isFinite(base) || base < 0 || !isFinite(additional) || additional < 0) {
+      return NextResponse.json({ error: 'Rates must be zero or a positive number' }, { status: 400 })
     }
-    await upsertPricingRule({ fromCity, toCity, weightSlab: weightSlab ?? 'up_to_10', price })
+    await upsertPricingRule({ cityA, cityB, baseRate: base, additionalPackageRate: additional })
     return NextResponse.json({ ok: true })
   } catch (err) {
     return handleApiError(err, '[POST /api/pricing/rules]')

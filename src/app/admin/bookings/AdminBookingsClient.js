@@ -640,7 +640,7 @@ export default function AdminBookingsClient({ initialStatusFilter, initialPickup
                         {b.packageDetails?.kind && (
                           <p className="text-xs mt-1.5" style={{ color: 'var(--fg-3)' }}>
                             {b.packageDetails.kind}
-                            {b.packageDetails.weightSlab && ` · ${b.packageDetails.weightSlab.replace(/_/g, ' ')}`}
+                            {b.packageDetails.weightLbs > 0 && ` · ${b.packageDetails.weightLbs} lbs`}
                             {b.packageDetails.packages?.length > 1 && ` · ×${b.packageDetails.packages.length} packages`}
                           </p>
                         )}
@@ -867,8 +867,8 @@ export default function AdminBookingsClient({ initialStatusFilter, initialPickup
                     {detailBooking.packageDetails.kind && (
                       <p className="text-sm" style={{ color: 'var(--fg)' }}>{detailBooking.packageDetails.kind}</p>
                     )}
-                    {detailBooking.packageDetails.weightSlab && (
-                      <p className="text-sm" style={{ color: 'var(--fg-2)' }}>{detailBooking.packageDetails.weightSlab.replace(/_/g, ' ')}</p>
+                    {detailBooking.packageDetails.weightLbs > 0 && (
+                      <p className="text-sm" style={{ color: 'var(--fg-2)' }}>{detailBooking.packageDetails.weightLbs} lbs</p>
                     )}
                     {detailBooking.packageDetails.description && (
                       <p className="text-sm mt-2" style={{ color: 'var(--fg-3)' }}>{detailBooking.packageDetails.description}</p>
@@ -884,7 +884,7 @@ export default function AdminBookingsClient({ initialStatusFilter, initialPickup
                           <li key={p.itemId ?? i} className="flex items-center gap-2 text-sm" style={{ color: 'var(--fg-2)' }}>
                             <span className="shrink-0 inline-flex min-w-5.5 justify-center rounded-md bg-slate-100 text-slate-700 text-[11px] font-bold px-1.5 py-0.5">{i + 1}</span>
                             <span className="truncate">{p.kind}</span>
-                            {p.weightSlab && <span className="ml-auto text-xs" style={{ color: 'var(--fg-3)' }}>{p.weightSlab.replace(/_/g, ' ')}</span>}
+                            {p.weightLbs > 0 && <span className="ml-auto text-xs" style={{ color: 'var(--fg-3)' }}>{p.weightLbs} lbs</span>}
                           </li>
                         ))}
                       </ul>

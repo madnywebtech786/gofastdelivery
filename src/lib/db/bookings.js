@@ -2,43 +2,29 @@ import { ObjectId } from 'mongodb'
 import { nanoid } from 'nanoid'
 import { getDb } from './client.js'
 
-// Ranked lightest → heaviest. Used to pick the heaviest slab across multiple
-// packages in one booking ("highest slab wins" — conservative, matches how
-// physical shipping consolidation is priced; the `pricing` collection only
-// has a flat rate per slab, no per-kg rate to sum against).
-const WEIGHT_SLAB_ORDER = ['up_to_10', '10_to_25', '25_to_50', '50_plus']
 const MAX_PACKAGES = 20
 
 function normalizeOnePackage(p) {
   return {
     itemId:     String(p?.itemId ?? '').trim().slice(0, 60) || nanoid(10),
-    kind:       String(p?.kind       ?? '').trim().slice(0, 120),
-    weightSlab: String(p?.weightSlab ?? '').trim().slice(0, 60),
+    kind:       String(p?.kind ?? '').trim().slice(0, 120),
+    weightLbs:  Number.isFinite(Number(p?.weightLbs)) && Number(p?.weightLbs) > 0 ? Number(p.weightLbs) : 0,
     quantity:   Number.isFinite(Number(p?.quantity)) && Number(p?.quantity) > 0 ? Math.floor(Number(p.quantity)) : 1,
     pickedUpAt:  null,
     deliveredAt: null,
   }
 }
 
-// Picks the heaviest weightSlab among a set of packages. Unknown/empty slabs
-// sort before all known slabs so they never win over a real selection.
-function heaviestWeightSlab(slabs) {
-  return slabs.reduce((heaviest, slab) => {
-    const rank = WEIGHT_SLAB_ORDER.indexOf(slab)
-    const heaviestRank = WEIGHT_SLAB_ORDER.indexOf(heaviest)
-    return rank > heaviestRank ? slab : heaviest
-  }, slabs[0] ?? '')
-}
-
 /**
  * Normalizes packageDetails for storage.
  *
- * Accepts either the legacy single-package shape ({kind, weightSlab}) or the
- * multi-package shape ({packages: [{kind, weightSlab, quantity}, ...]}).
- * When `packages` is present, the top-level kind/weightSlab are DERIVED
- * (first package's kind for display back-compat; heaviest slab across all
- * packages for pricing) so every existing reader of packageDetails.kind /
- * packageDetails.weightSlab keeps working unchanged for both shapes.
+ * Accepts either the legacy single-package shape ({kind, weightLbs}) or the
+ * multi-package shape ({packages: [{kind, weightLbs, quantity}, ...]}).
+ * When `packages` is present, the top-level `kind` is DERIVED (first
+ * package's kind, for display back-compat) so every existing reader of
+ * packageDetails.kind keeps working unchanged for both shapes. There is no
+ * top-level weight anymore — pricing (src/lib/pricing.js) checks each
+ * package's weightLbs independently against the overweight threshold.
  */
 function normalizePackageDetails(pkg) {
   if (!pkg) return null
@@ -46,15 +32,14 @@ function normalizePackageDetails(pkg) {
   if (Array.isArray(pkg.packages) && pkg.packages.length > 0) {
     const packages = pkg.packages.slice(0, MAX_PACKAGES).map(normalizeOnePackage)
     return {
-      kind:       packages[0].kind,
-      weightSlab: heaviestWeightSlab(packages.map((p) => p.weightSlab)),
+      kind: packages[0].kind,
       packages,
     }
   }
 
   return {
-    kind:      String(pkg.kind      ?? '').trim().slice(0, 120),
-    weightSlab: String(pkg.weightSlab ?? '').trim().slice(0, 60),
+    kind:      String(pkg.kind ?? '').trim().slice(0, 120),
+    weightLbs: Number.isFinite(Number(pkg.weightLbs)) && Number(pkg.weightLbs) > 0 ? Number(pkg.weightLbs) : 0,
   }
 }
 

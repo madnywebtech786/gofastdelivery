@@ -7,7 +7,8 @@ import Button from '@/components/ui/Button'
 import Select from '@/components/ui/Select'
 import DatePicker from '@/components/ui/DatePicker'
 import { useToast } from '@/components/ui/Toast'
-import { placesAutocomplete, placeDetails } from '@/lib/google-geocode'
+import { placesAutocomplete, placeDetails, reverseGeocode } from '@/lib/google-geocode'
+import { calculatePrice } from '@/lib/pricing'
 import { Plus, Trash2 } from 'lucide-react'
 
 const BookingMap = dynamic(() => import('@/components/map/BookingMap'), {
@@ -29,13 +30,6 @@ const PACKAGE_KINDS = [
   'Gifts & Flowers',
   'Industrial Samples',
   'Other',
-]
-
-const WEIGHT_SLABS = [
-  { label: 'Up to 10 kg', value: 'up_to_10' },
-  { label: '10–25 kg (extra package)', value: '10_to_25' },
-  { label: '25–50 kg (heavy)', value: '25_to_50' },
-  { label: '50+ kg (freight)', value: '50_plus' },
 ]
 
 // Fixed pickup-time slots (client-specified). value stays "HH:mm" (24h) so it
@@ -69,17 +63,7 @@ function isPickupDateDisabled(date) {
 }
 
 function emptyPackage() {
-  return { kind: '', weightSlab: 'up_to_10' }
-}
-
-// Heaviest slab across all packages ("highest slab wins") — WEIGHT_SLABS is
-// already ordered lightest → heaviest, so the array index is the rank.
-function heaviestWeightSlab(packages) {
-  return packages.reduce((heaviest, p) => {
-    const rank = WEIGHT_SLABS.findIndex((w) => w.value === p.weightSlab)
-    const heaviestRank = WEIGHT_SLABS.findIndex((w) => w.value === heaviest)
-    return rank > heaviestRank ? p.weightSlab : heaviest
-  }, packages[0]?.weightSlab ?? 'up_to_10')
+  return { kind: '', weightLbs: '' }
 }
 
 function SectionHeading({ children }) {
@@ -184,9 +168,14 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
                 if (!predictions.length) { mapRef.current?.setPlacing(null); return }
                 return placeDetails(predictions[0].placeId, sessionToken)
               })
-              .then((result) => {
+              .then(async (result) => {
                 if (!result) return
-                mapRef.current?.setPickupCoords(result.lng, result.lat, result.address, '')
+                // placeDetails only returns { lng, lat } — reverse-geocode the
+                // same point to resolve `city`, exactly like a manual map
+                // click does (BookingMap.js's handlePlace), so the profile-
+                // prefilled pickup pin can price itself like any other pin.
+                const { city } = await reverseGeocode(result.lng, result.lat)
+                mapRef.current?.setPickupCoords(result.lng, result.lat, result.address, city)
               })
               .catch(() => { mapRef.current?.setPlacing(null) })
               .finally(() => { profileSeedInFlightRef.current = false })
@@ -202,12 +191,29 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
       .catch(() => {})
   }, [apiPath])
 
-  // Package details — one or more packages, each with its own kind + weight
-  // slab. The booking is priced off the heaviest slab across all packages.
+  // Package details — one or more packages, each with its own kind + weight.
   const [packages, setPackages] = useState([emptyPackage()])
+  // One error string per package (by index), shown at the bottom of that
+  // package's own card — cleared for a package as soon as the user fixes it.
+  const [packageErrors, setPackageErrors] = useState([])
+
+  function validatePackage(p) {
+    if (!p.kind) return 'Please select a kind of package.'
+    if (!p.weightLbs || Number(p.weightLbs) <= 0) return 'Please enter a weight greater than 0.'
+    return null
+  }
 
   function handlePackageChange(index, field, value) {
     setPackages((prev) => prev.map((p, i) => (i === index ? { ...p, [field]: value } : p)))
+    // Re-validate just this package as the user edits it, so a fixed field
+    // clears its own error immediately instead of waiting for next submit.
+    setPackageErrors((prev) => {
+      if (!prev[index]) return prev
+      const updated = { ...packages[index], [field]: value }
+      const next = [...prev]
+      next[index] = validatePackage(updated)
+      return next
+    })
   }
 
   function handleAddPackage() {
@@ -216,17 +222,23 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
 
   function handleRemovePackage(index) {
     setPackages((prev) => (prev.length > 1 ? prev.filter((_, i) => i !== index) : prev))
+    setPackageErrors((prev) => prev.filter((_, i) => i !== index))
   }
 
   // Sender + receiver notification emails
   const [senderEmail,   setSenderEmail]   = useState('')
   const [receiverEmail, setReceiverEmail] = useState('')
 
-  // Pricing rules fetched once on mount — keyed as Map for O(1) lookup
-  // rule key: `${fromCity}|${toCity}|${weightSlab}` (all lowercased)
-  const pricingRulesRef = useRef(null) // null = not loaded yet, Map after load
+  // Pricing data fetched once on mount — { cities, rules, settings }, fed
+  // straight into calculatePrice() (src/lib/pricing.js) with zero extra calls.
+  // Must be state, not a ref: the price-preview effect below depends on
+  // [stops, packages] only, so if this were a ref the fetch resolving after
+  // the user has already placed both pins would never re-trigger the price
+  // calculation — the section would stay hidden until some unrelated change
+  // (e.g. editing package weight) happened to re-run the effect.
+  const [pricingData, setPricingData] = useState(null) // null = not loaded yet (or failed)
 
-  // Pricing preview — computed client-side from pricingRulesRef, no extra API calls
+  // Pricing preview — computed client-side from pricingData, no extra API calls
   const [pricingPreview, setPricingPreview] = useState(null)
 
   const [submitting, setSubmitting] = useState(false)
@@ -245,19 +257,12 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
     return PICKUP_TIME_SLOTS.filter((slot) => slot.value > nowHHMM)
   })()
 
-  // Fetch all pricing rules once on mount
+  // Fetch cities/rules/settings once on mount
   useEffect(() => {
     fetch('/api/pricing/rules/public')
-      .then((r) => r.ok ? r.json() : [])
-      .then((rules) => {
-        const map = new Map()
-        for (const r of rules) {
-          const key = `${r.fromCity}|${r.toCity}|${r.weightSlab}`
-          map.set(key, r)
-        }
-        pricingRulesRef.current = map
-      })
-      .catch(() => { pricingRulesRef.current = new Map() })
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => { setPricingData(data) })
+      .catch(() => { setPricingData(null) })
   }, [])
 
   const handleStopsChange = useCallback((newStops) => {
@@ -282,41 +287,29 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
     mapRef.current?.removeStop(index)
   }
 
-  // Client-side price lookup — runs whenever stops or weight changes, zero API calls
+  // Client-side price preview — runs whenever stops or packages change, zero
+  // extra API calls (uses the cities/rules/settings fetched once on mount).
   useEffect(() => {
     const pickupStop  = stops.find((s) => s.type === 'pickup')
     const dropoffStop = stops.find((s) => s.type === 'dropoff')
 
-    if (!pickupStop?.city || !dropoffStop?.city || !pricingRulesRef.current) {
+    if (!pickupStop?.city || !dropoffStop?.city || !pricingData) {
       setPricingPreview(null)
       return
     }
 
-    const fromCity = pickupStop.city.toLowerCase()
-    const toCity   = dropoffStop.city.toLowerCase()
-    const slab     = heaviestWeightSlab(packages)
-
-    const key  = `${fromCity}|${toCity}|${slab}`
-    const rule = pricingRulesRef.current.get(key)
-
-    if (!rule) {
-      setPricingPreview(null)
-      return
-    }
-
-    const WEIGHT_LABELS = {
-      up_to_10:  'Up to 10 kg',
-      '10_to_25': '10–25 kg',
-      '25_to_50': '25–50 kg',
-      '50_plus':  '50+ kg',
-    }
-
-    setPricingPreview({
-      price:       rule.price,
-      routeLabel:  `${rule.fromCityDisplay} → ${rule.toCityDisplay}`,
-      weightLabel: WEIGHT_LABELS[slab] ?? slab,
+    const { cities, rules, settings } = pricingData
+    const result = calculatePrice({
+      fromCityName: pickupStop.city,
+      toCityName: dropoffStop.city,
+      packages,
+      cities, rules, settings,
     })
-  }, [stops, packages])
+
+    setPricingPreview(
+      result ? { price: result.total, maxWeightLbs: settings?.maxWeightLbs ?? 20, ...result.breakdown } : null
+    )
+  }, [stops, packages, pricingData])
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -348,6 +341,12 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
     }
     if (!dropoff.contactPhone.trim()) {
       setError('Drop-off phone number is required.')
+      return
+    }
+    const nextPackageErrors = packages.map(validatePackage)
+    if (nextPackageErrors.some(Boolean)) {
+      setPackageErrors(nextPackageErrors)
+      setError('Fix the package details highlighted below.')
       return
     }
 
@@ -388,6 +387,7 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
             lat: pickupStop.lat,
             lng: pickupStop.lng,
             address: pickup.address || pickupStop.address,
+            city: pickupStop.city,
             contactName: pickup.contactName,
             companyName: pickup.companyName,
             buzzCode: pickup.buzzCode,
@@ -401,13 +401,14 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
             lat: dropoffStop.lat,
             lng: dropoffStop.lng,
             address: dropoff.address || dropoffStop.address,
+            city: dropoffStop.city,
             contactName: dropoff.contactName,
             buzzCode: dropoff.buzzCode,
             contactPhone: dropoff.contactPhone,
           },
         ],
         packageDetails: {
-          packages: packages.map((p) => ({ kind: p.kind, weightSlab: p.weightSlab, quantity: 1 })),
+          packages: packages.map((p) => ({ kind: p.kind, weightLbs: Number(p.weightLbs) || 0, quantity: 1 })),
         },
         senderEmail:   senderEmail   || null,
         receiverEmail: receiverEmail || null,
@@ -436,6 +437,7 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
       dropoffAddressIsAutoFilledRef.current = true
       pickupAddressIsAutoFilledRef.current = true
       setPackages([emptyPackage()])
+      setPackageErrors([])
       setSenderEmail('')
       setReceiverEmail('')
       setPricingPreview(null)
@@ -472,7 +474,7 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
         </div>
         {/* Address confirmation pills */}
         {stops.length > 0 && (
-          <div className="mt-2 space-y-1.5">
+          <div className="mt-6 space-y-1.5">
             {stops.map((stop, i) => (
               <div key={stop.type} className="flex items-center gap-2 text-xs">
                 <span
@@ -628,13 +630,30 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
                   onChange={(v) => handlePackageChange(i, 'kind', v)}
                   options={PACKAGE_KINDS.map((k) => ({ value: k, label: k }))}
                 />
-                <Select
-                  label="Weight"
-                  value={p.weightSlab}
-                  onChange={(v) => handlePackageChange(i, 'weightSlab', v)}
-                  options={WEIGHT_SLABS}
-                />
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-semibold uppercase tracking-wide select-none" style={{ color: '#64748b' }}>
+                    Weight (lbs)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    value={p.weightLbs}
+                    onChange={(e) => handlePackageChange(i, 'weightLbs', e.target.value)}
+                    className="w-full rounded-xl border px-3.5 py-2.5 text-sm transition-all duration-150 focus:outline-none"
+                    style={{
+                      borderColor: packageErrors[i] ? 'var(--danger)' : 'var(--border-2)',
+                      color: 'var(--fg)',
+                    }}
+                    onFocus={(e) => { e.target.style.borderColor = 'var(--accent)'; e.target.style.boxShadow = '0 0 0 3px var(--accent-dim)' }}
+                    onBlur={(e) => { e.target.style.borderColor = packageErrors[i] ? 'var(--danger)' : 'var(--border-2)'; e.target.style.boxShadow = 'none' }}
+                    placeholder="e.g. 12"
+                  />
+                </div>
               </div>
+              {packageErrors[i] && (
+                <p className="text-xs font-medium" style={{ color: 'var(--danger)' }}>{packageErrors[i]}</p>
+              )}
             </div>
           ))}
         </div>
@@ -652,15 +671,44 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
         <div className="rounded-xl border border-border bg-surface p-4">
           <SectionHeading>💰 Estimated Price</SectionHeading>
           {pricingPreview ? (
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs text-muted">{pricingPreview.routeLabel}</p>
-                <p className="text-xs text-muted capitalize">{pricingPreview.weightLabel}</p>
+            <div className="space-y-3">
+              <p className="text-xs text-muted">{pricingPreview.routeLabel}</p>
+
+              <div className="rounded-lg border border-border bg-white dark:bg-surface divide-y divide-border text-sm">
+                <div className="flex items-center justify-between px-3 py-2">
+                  <span className="text-muted">Base rate (1st package)</span>
+                  <span className="font-medium text-foreground">${pricingPreview.baseRate.toFixed(2)}</span>
+                </div>
+                {pricingPreview.hubFee > 0 && (
+                  <div className="flex items-center justify-between px-3 py-2">
+                    <span className="text-muted">Calgary hub handling fee</span>
+                    <span className="font-medium text-foreground">${pricingPreview.hubFee.toFixed(2)}</span>
+                  </div>
+                )}
+                {pricingPreview.packageCount > 1 && (
+                  <div className="flex items-center justify-between px-3 py-2">
+                    <span className="text-muted">
+                      Additional packages ({pricingPreview.packageCount - 1} × ${(pricingPreview.additionalPackagesTotal / (pricingPreview.packageCount - 1)).toFixed(2)})
+                    </span>
+                    <span className="font-medium text-foreground">${pricingPreview.additionalPackagesTotal.toFixed(2)}</span>
+                  </div>
+                )}
+                {pricingPreview.overweightCount > 0 && (
+                  <div className="flex items-center justify-between px-3 py-2">
+                    <span className="text-muted">
+                      Overweight surcharge ({pricingPreview.overweightCount} pkg over {pricingPreview.maxWeightLbs} lb)
+                    </span>
+                    <span className="font-medium text-foreground">${pricingPreview.overweightTotal.toFixed(2)}</span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between px-3 py-2.5" style={{ background: 'var(--surface-2)' }}>
+                  <span className="text-sm font-bold text-foreground">Total</span>
+                  <p className="text-xl font-bold text-foreground">
+                    ${pricingPreview.price.toFixed(2)}
+                    <span className="text-xs text-muted font-normal ml-1">CAD</span>
+                  </p>
+                </div>
               </div>
-              <p className="text-2xl font-bold text-foreground">
-                ${pricingPreview.price.toFixed(2)}
-                <span className="text-xs text-muted font-normal ml-1">CAD</span>
-              </p>
             </div>
           ) : (
             <p className="text-sm text-muted">No rate configured for this route yet.</p>

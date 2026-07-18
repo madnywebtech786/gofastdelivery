@@ -10,6 +10,7 @@ import {
 import Link from 'next/link'
 import Select from '@/components/ui/Select'
 import ResetPasswordButton from './ResetPasswordButton'
+import EditDriverButton from './EditDriverButton'
 
 const BRAND       = '#1bb908'
 const MONTHS      = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
@@ -42,30 +43,38 @@ function StatCard({ icon: Icon, label, value, sub, accent = BRAND }) {
 // ── Bar chart ──────────────────────────────────────────────────────────────────
 function DriverBars({ data, height = 120 }) {
   const maxCount = Math.max(...data.map(d => d.count), 1)
+  // Bar area gets a fixed pixel height of its own (separate from the label
+  // row below) so each bar's `height: ${pct}%` resolves against a real,
+  // definite box — a flex child with no explicit height (the old layout)
+  // lets percentage heights collapse to whatever the content needs, which is
+  // why differently-sized bars all rendered at roughly the same height.
+  const barAreaHeight = height - 16 // reserve ~16px for the day-label row below
   return (
-    <div className="flex items-end gap-0.5" style={{ height }}>
+    <div className="flex items-end gap-0.5">
       {data.map((d, i) => {
         const pct = d.count > 0 ? Math.max((d.count / maxCount) * 100, 6) : 0
         return (
           <div key={i} className="flex-1 flex flex-col items-center gap-1 group relative min-w-0">
-            {d.count > 0 && (
-              <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 z-10 pointer-events-none
-                opacity-0 group-hover:opacity-100 transition-opacity duration-150">
-                <div className="px-2.5 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap shadow-xl text-center"
-                  style={{ background: 'var(--fg)', color: 'white' }}>
-                  {d.count} {d.count === 1 ? 'delivery' : 'deliveries'}
+            <div className="w-full flex flex-col justify-end" style={{ height: barAreaHeight }}>
+              {d.count > 0 && (
+                <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 z-10 pointer-events-none
+                  opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+                  <div className="px-2.5 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap shadow-xl text-center"
+                    style={{ background: 'var(--fg)', color: 'white' }}>
+                    {d.count} {d.count === 1 ? 'delivery' : 'deliveries'}
+                  </div>
                 </div>
-              </div>
-            )}
-            <div className="w-full rounded-t-sm transition-all duration-500"
-              style={{
-                height: `${pct}%`,
-                minHeight: d.count > 0 ? '4px' : '0',
-                background: d.count > 0
-                  ? `linear-gradient(to top, ${BRAND}, ${BRAND}cc)`
-                  : 'var(--border)',
-                opacity: d.count > 0 ? 1 : 0.3,
-              }} />
+              )}
+              <div className="w-full rounded-t-sm transition-all duration-500"
+                style={{
+                  height: `${pct}%`,
+                  minHeight: d.count > 0 ? '4px' : '0',
+                  background: d.count > 0
+                    ? `linear-gradient(to top, ${BRAND}, ${BRAND}cc)`
+                    : 'var(--border)',
+                  opacity: d.count > 0 ? 1 : 0.3,
+                }} />
+            </div>
             <span className="text-[9px] font-semibold truncate w-full text-center"
               style={{ color: 'var(--fg-3)' }}>{d.label}</span>
           </div>
@@ -223,7 +232,10 @@ export default function DriverDetailClient({ driver: d, route: r, stats, booking
           </div>
           <p className="text-sm mt-0.5" style={{ color: 'var(--fg-3)' }}>{d.email}</p>
         </div>
-        <ResetPasswordButton driverId={driverId} driverName={d.name} />
+        <div className="flex items-center gap-2 shrink-0">
+          <EditDriverButton driverId={driverId} driver={d} onSaved={() => router.refresh()} />
+          <ResetPasswordButton driverId={driverId} driverName={d.name} />
+        </div>
       </div>
 
       {/* ── Stat cards ── */}
