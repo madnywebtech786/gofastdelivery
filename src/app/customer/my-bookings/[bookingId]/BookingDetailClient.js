@@ -8,8 +8,17 @@ import StatusTimeline from '@/components/ui/StatusTimeline'
 import { useToast } from '@/components/ui/Toast'
 import {
   ArrowLeft, Clock, MapPin, User, Phone, Link2, CheckCircle2,
-  Copy, Trash2, Package, Ruler, ExternalLink, Loader2,
+  Copy, Trash2, Package, Ruler, ExternalLink, Loader2, Pencil,
 } from 'lucide-react'
+
+// Statuses a customer may still edit their own booking's details from —
+// mirrors CUSTOMER_EDITABLE_STATUSES in src/lib/db/bookings.js.
+const EDITABLE_STATUSES = ['pending', 'failed_pickup', 'failed_dropoff']
+
+// Statuses a customer may cancel from — mirrors CUSTOMER_CANCELLABLE_STATUSES
+// in src/lib/db/bookings.js. Excludes failed_dropoff: the package has
+// already been picked up and is sitting with a driver at that point.
+const CANCELLABLE_STATUSES = ['pending', 'failed_pickup']
 
 function formatDuration(s) {
   if (!s) return null
@@ -34,7 +43,8 @@ export default function BookingDetailClient({ booking: initial, origin }) {
   const [copiedToken, setCopiedToken] = useState(false)
 
   const trackingUrl = `${origin}/track/${booking.trackingToken}`
-  const canCancel   = booking.status === 'pending'
+  const canCancel   = CANCELLABLE_STATUSES.includes(booking.status)
+  const canEdit     = EDITABLE_STATUSES.includes(booking.status)
 
   async function handleCancel() {
     setShowConfirm(false)
@@ -43,7 +53,7 @@ export default function BookingDetailClient({ booking: initial, origin }) {
       const res = await fetch(`/api/bookings/${booking._id}`, { method: 'DELETE' })
       if (!res.ok) {
         const d = await res.json().catch(() => ({}))
-        toast.error('Cannot cancel', d.error || 'Only pending bookings can be cancelled.')
+        toast.error('Cannot cancel', d.error || 'This booking can no longer be cancelled.')
         return
       }
       setBooking((prev) => ({
@@ -105,17 +115,31 @@ export default function BookingDetailClient({ booking: initial, origin }) {
             {formatDate(b.createdAt)}
           </p>
         </div>
-        {canCancel && (
-          <button
-            onClick={() => setShowConfirm(true)}
-            disabled={cancelling}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold shrink-0 transition-all"
-            style={{ color: 'var(--danger)', background: 'var(--danger-bg)', border: '1px solid rgba(220,38,38,0.2)' }}
-          >
-            {cancelling ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
-            Cancel
-          </button>
-        )}
+        <div className="flex items-center gap-2 shrink-0">
+          {canEdit && (
+            <Link
+              href={`/customer/my-bookings/${b._id}/edit`}
+              title="Edit booking"
+              aria-label="Edit booking"
+              className="flex items-center justify-center w-9 h-9 rounded-xl transition-all"
+              style={{ color: 'var(--accent)', background: 'var(--accent-dim)', border: '1px solid var(--accent-border)' }}
+            >
+              <Pencil size={14} />
+            </Link>
+          )}
+          {canCancel && (
+            <button
+              onClick={() => setShowConfirm(true)}
+              disabled={cancelling}
+              title="Cancel booking"
+              aria-label="Cancel booking"
+              className="flex items-center justify-center w-9 h-9 rounded-xl transition-all"
+              style={{ color: 'var(--danger)', background: 'var(--danger-bg)', border: '1px solid rgba(220,38,38,0.2)' }}
+            >
+              {cancelling ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* ── ETA + Price ───────────────────────────────────────────── */}

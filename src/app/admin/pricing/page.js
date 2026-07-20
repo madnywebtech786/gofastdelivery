@@ -237,8 +237,9 @@ export default function PricingPage() {
           `applies in both directions — set Calgary ↔ Airdrie once, and it prices Calgary→Airdrie and ` +
           `Airdrie→Calgary bookings identically. "Additional Package Rate" is added once per EXTRA ` +
           `package in the same booking (a booking with 3 packages pays: base rate + 2 × additional rate). ` +
-          `Satellite-to-satellite routes (e.g. Airdrie → Okotoks) are priced automatically as a $5 hub fee ` +
-          `plus the destination city's Calgary rate — you never need to add a rule for those directly.`
+          `Satellite-to-satellite routes (e.g. Airdrie → Okotoks) are priced automatically at the ` +
+          `destination city's Calgary rate (shown to the customer as routed via the Calgary hub) — ` +
+          `you never need to add a rule for those directly. No extra hub fee is charged.`
         }
       >
         <form onSubmit={handleAddRule} className="space-y-4 mb-5">

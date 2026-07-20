@@ -72,13 +72,19 @@ function makeMarkerEl(color, label) {
 /**
  * BookingMap — exactly 1 pickup + 1 drop-off, no more.
  *
+ * Props:
+ *   lockPickup — when true, disables setting/moving the pickup pin (the
+ *                "Set Pickup" button and handlePlace('pickup') both become
+ *                no-ops). Used when editing a failed_dropoff booking, where
+ *                the package has already been picked up.
+ *
  * Ref handle:
  *   removeStop(index) — 0 = pickup, 1 = dropoff
  *   clearAll()        — remove both and reset search
  *   setPickupCoords(lng, lat, address, city) — pre-seed pickup externally
  *   setPlacing(val)   — externally control placing mode
  */
-const BookingMap = forwardRef(function BookingMap({ onStopsChange }, ref) {
+const BookingMap = forwardRef(function BookingMap({ onStopsChange, lockPickup = false }, ref) {
   const containerRef  = useRef(null)
   const mapRef        = useRef(null)
   const mapsLibRef    = useRef(null) // google.maps namespace
@@ -148,6 +154,29 @@ const BookingMap = forwardRef(function BookingMap({ onStopsChange }, ref) {
       setPickup({ lng, lat, address, city })
       setPlacing(null)
     },
+    // Pre-seed drop-off from an external coordinate (e.g. editing an existing booking)
+    setDropoffCoords(lng, lat, address, city) {
+      const map = mapRef.current
+      const { AdvancedMarkerElement } = markerLibRef.current ?? {}
+      if (!map || !AdvancedMarkerElement) return
+      if (dropoffMarker.current) dropoffMarker.current.map = null
+      const el = makeMarkerEl(DROPOFF_COLOR, 'D')
+      dropoffMarker.current = new AdvancedMarkerElement({ map, position: { lat, lng }, content: el })
+      setDropoff({ lng, lat, address, city })
+      setPlacing(null)
+    },
+    // Fit the map viewport to show both pickup and drop-off pins at once —
+    // used when pre-seeding both pins for edit mode (setPickupCoords alone
+    // panTo+zooms to only the pickup point, which would leave dropoff offscreen).
+    fitToStops() {
+      const map = mapRef.current
+      const mapsLib = mapsLibRef.current
+      if (!map || !mapsLib || !pickupMarker.current || !dropoffMarker.current) return
+      const bounds = new mapsLib.LatLngBounds()
+      bounds.extend(pickupMarker.current.position)
+      bounds.extend(dropoffMarker.current.position)
+      map.fitBounds(bounds, 80)
+    },
     setPlacing(val) { setPlacing(val) },
   }))
 
@@ -201,6 +230,7 @@ const BookingMap = forwardRef(function BookingMap({ onStopsChange }, ref) {
   // ── Place a stop at the current map centre ────────────────────────────────
 
   async function handlePlace(type) {
+    if (type === 'pickup' && lockPickup) return // pickup already happened — can't be moved
     const map = mapRef.current
     const { AdvancedMarkerElement } = markerLibRef.current ?? {}
     if (!map || !AdvancedMarkerElement) return
@@ -336,6 +366,8 @@ const BookingMap = forwardRef(function BookingMap({ onStopsChange }, ref) {
     ? 'Pan to your pickup location and click "Set Pickup"'
     : !dropoff
     ? 'Pan to the drop-off location and click "Set Drop-off"'
+    : lockPickup
+    ? 'Pickup is locked — you can still reposition the drop-off point'
     : 'Both points set — you can reposition either one'
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -468,7 +500,9 @@ const BookingMap = forwardRef(function BookingMap({ onStopsChange }, ref) {
           </div>
         )}
 
-        {/* Placing overlay */}
+        {/* Placing overlay — also reused for 'loading' (e.g. edit mode
+            pre-filling both pins at once), which gets its own neutral
+            color/label instead of the pickup/dropoff green/red. */}
         {placing && (
           <div
             className="absolute inset-0 rounded-xl flex flex-col items-center justify-center gap-3 pointer-events-none"
@@ -477,19 +511,21 @@ const BookingMap = forwardRef(function BookingMap({ onStopsChange }, ref) {
             <svg width="36" height="36" viewBox="0 0 36 36"
               style={{ animation: 'spin 0.75s linear infinite' }}>
               <circle cx="18" cy="18" r="14" fill="none"
-                stroke={placing === 'pickup' ? '#16a34a' : '#dc2626'}
+                stroke={placing === 'pickup' ? '#16a34a' : placing === 'dropoff' ? '#dc2626' : '#4f46e5'}
                 strokeWidth="3" strokeOpacity="0.2" />
               <path d="M18 4 A14 14 0 0 1 32 18"
                 fill="none"
-                stroke={placing === 'pickup' ? '#16a34a' : '#dc2626'}
+                stroke={placing === 'pickup' ? '#16a34a' : placing === 'dropoff' ? '#dc2626' : '#4f46e5'}
                 strokeWidth="3" strokeLinecap="round" />
             </svg>
             <span className="text-xs font-bold px-3 py-1.5 rounded-full"
               style={{
-                background: placing === 'pickup' ? '#16a34a' : '#dc2626',
+                background: placing === 'pickup' ? '#16a34a' : placing === 'dropoff' ? '#dc2626' : '#4f46e5',
                 color: '#fff',
               }}>
-              Setting {placing === 'pickup' ? 'Pickup' : 'Drop-off'}…
+              {placing === 'pickup' ? 'Setting Pickup…'
+                : placing === 'dropoff' ? 'Setting Drop-off…'
+                : 'Loading booking details…'}
             </span>
           </div>
         )}
@@ -504,16 +540,17 @@ const BookingMap = forwardRef(function BookingMap({ onStopsChange }, ref) {
           <button
             type="button"
             onClick={() => handlePlace('pickup')}
-            disabled={placing !== null}
+            disabled={placing !== null || lockPickup}
+            title={lockPickup ? 'Already picked up — pickup location is locked' : undefined}
             className={[
               'px-3 sm:px-4 py-2 sm:py-2.5 rounded-full text-white text-xs sm:text-sm font-semibold shadow-lg transition',
               pickup
                 ? 'bg-green-700 hover:bg-green-800'
                 : 'bg-green-600 hover:bg-green-700',
-              placing !== null ? 'opacity-60 cursor-not-allowed' : '',
+              (placing !== null || lockPickup) ? 'opacity-60 cursor-not-allowed' : '',
             ].join(' ')}
           >
-            {placing === 'pickup' ? 'Setting…' : pickup ? '✓ Pickup' : '+ Set Pickup'}
+            {placing === 'pickup' ? 'Setting…' : pickup ? (lockPickup ? '🔒 Pickup' : '✓ Pickup') : '+ Set Pickup'}
           </button>
           <button
             type="button"

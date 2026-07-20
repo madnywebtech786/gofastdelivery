@@ -6,11 +6,20 @@ import Badge from '@/components/ui/Badge'
 import { useToast } from '@/components/ui/Toast'
 import {
   Plus, Search, Filter, PackageOpen, MapPin,
-  ArrowRight, ChevronLeft, ChevronRight, X, Trash2,
-  Loader2, History,
+  Eye, ChevronLeft, ChevronRight, X, Trash2,
+  Loader2, History, Pencil,
 } from 'lucide-react'
 
 const PAGE_SIZE = 8
+
+// Statuses a customer may still edit their own booking's details from —
+// mirrors CUSTOMER_EDITABLE_STATUSES in src/lib/db/bookings.js.
+const EDITABLE_STATUSES = ['pending', 'failed_pickup', 'failed_dropoff']
+
+// Statuses a customer may cancel from — mirrors CUSTOMER_CANCELLABLE_STATUSES
+// in src/lib/db/bookings.js. Excludes failed_dropoff: the package has
+// already been picked up and is sitting with a driver at that point.
+const CANCELLABLE_STATUSES = ['pending', 'failed_pickup']
 
 const STATUS_FILTERS = [
   { value: 'all',     label: 'All' },
@@ -89,7 +98,7 @@ export default function MyBookingsClient({ bookings: initial }) {
       const res = await fetch(`/api/bookings/${id}`, { method: 'DELETE' })
       if (!res.ok) {
         const d = await res.json().catch(() => ({}))
-        toast.error('Could not cancel', d.error || 'Only pending bookings can be cancelled.')
+        toast.error('Could not cancel', d.error || 'This booking can no longer be cancelled.')
         return
       }
       setBookings((prev) => prev.map((b) => b._id === id ? { ...b, status: 'cancelled' } : b))
@@ -245,22 +254,34 @@ export default function MyBookingsClient({ bookings: initial }) {
                         }
                       </td>
                       <td>
-                        <div className="flex items-center justify-end gap-2">
-                          {b.status === 'pending' && (
+                        <div className="flex items-center justify-end gap-1.5">
+                          {CANCELLABLE_STATUSES.includes(b.status) && (
                             <button
                               onClick={() => setConfirmId(b._id)}
                               disabled={isCancelling}
-                              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all"
+                              title="Cancel booking"
+                              aria-label="Cancel booking"
+                              className="flex items-center justify-center w-8 h-8 rounded-lg transition-all"
                               style={{ color: 'var(--danger)', background: 'var(--danger-bg)' }}
                             >
-                              {isCancelling ? <Loader2 size={11} className="animate-spin" /> : <Trash2 size={11} />}
-                              Cancel
+                              {isCancelling ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
                             </button>
                           )}
+                          {EDITABLE_STATUSES.includes(b.status) && (
+                            <Link href={`/customer/my-bookings/${b._id}/edit`}
+                              title="Edit booking"
+                              aria-label="Edit booking"
+                              className="flex items-center justify-center w-8 h-8 rounded-lg transition-all"
+                              style={{ color: 'var(--fg-2)', background: 'var(--surface-2)' }}>
+                              <Pencil size={13} />
+                            </Link>
+                          )}
                           <Link href={`/customer/my-bookings/${b._id}`}
-                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all"
+                            title="View booking"
+                            aria-label="View booking"
+                            className="flex items-center justify-center w-8 h-8 rounded-lg transition-all"
                             style={{ color: 'var(--accent)', background: 'var(--accent-dim)' }}>
-                            View <ArrowRight size={11} />
+                            <Eye size={13} />
                           </Link>
                         </div>
                       </td>
@@ -305,18 +326,31 @@ export default function MyBookingsClient({ bookings: initial }) {
                     {b.estimatedPrice && (
                       <span className="text-sm font-bold mono" style={{ color: 'var(--accent)' }}>${b.estimatedPrice}</span>
                     )}
-                    <div className="flex items-center gap-2 ml-auto">
-                      {b.status === 'pending' && (
+                    <div className="flex items-center gap-1.5 ml-auto">
+                      {CANCELLABLE_STATUSES.includes(b.status) && (
                         <button onClick={() => setConfirmId(b._id)}
-                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold"
+                          title="Cancel booking"
+                          aria-label="Cancel booking"
+                          className="flex items-center justify-center w-8 h-8 rounded-lg"
                           style={{ color: 'var(--danger)', background: 'var(--danger-bg)' }}>
-                          <Trash2 size={11} /> Cancel
+                          <Trash2 size={13} />
                         </button>
                       )}
+                      {EDITABLE_STATUSES.includes(b.status) && (
+                        <Link href={`/customer/my-bookings/${b._id}/edit`}
+                          title="Edit booking"
+                          aria-label="Edit booking"
+                          className="flex items-center justify-center w-8 h-8 rounded-lg"
+                          style={{ color: 'var(--fg-2)', background: 'var(--surface-2)' }}>
+                          <Pencil size={13} />
+                        </Link>
+                      )}
                       <Link href={`/customer/my-bookings/${b._id}`}
-                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold"
+                        title="View booking"
+                        aria-label="View booking"
+                        className="flex items-center justify-center w-8 h-8 rounded-lg"
                         style={{ color: 'var(--accent)', background: 'var(--accent-dim)' }}>
-                        View <ArrowRight size={11} />
+                        <Eye size={13} />
                       </Link>
                     </div>
                   </div>
@@ -395,7 +429,7 @@ export default function MyBookingsClient({ bookings: initial }) {
             </div>
             <h3 className="text-base font-bold text-center mb-1" style={{ color: 'var(--fg)' }}>Cancel Booking?</h3>
             <p className="text-sm text-center mb-5" style={{ color: 'var(--fg-3)' }}>
-              This action cannot be undone. Only pending bookings can be cancelled.
+              This action cannot be undone.
             </p>
             <div className="flex gap-3">
               <button

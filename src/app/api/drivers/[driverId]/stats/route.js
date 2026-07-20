@@ -17,7 +17,11 @@ export async function GET(request, { params }) {
       findDriverById(driverId),
     ])
 
-    return NextResponse.json({ ...stats, name: driver?.name ?? '' })
+    return NextResponse.json({
+      ...stats,
+      name: driver?.name ?? '',
+      isOnDuty: driver?.driverProfile?.isOnDuty ?? false,
+    })
   } catch (err) {
     return handleApiError(err, '[GET /api/drivers/[driverId]/stats]')
   }

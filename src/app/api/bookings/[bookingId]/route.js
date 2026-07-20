@@ -5,9 +5,10 @@ import {
   updateBookingStatus,
   cancelBooking,
   BOOKING_STATUSES,
+  CUSTOMER_CANCELLABLE_STATUSES,
 } from '@/lib/db/bookings'
 import { pushBookingStatusChange } from '@/lib/pusher'
-import { revalidateTag } from 'next/cache'
+import { revalidateTag, revalidatePath } from 'next/cache'
 
 export async function GET(request, { params }) {
   try {
@@ -84,19 +85,26 @@ export async function DELETE(request, { params }) {
     if (role === 'admin') {
       result = await cancelBooking(bookingId)
     } else if (role === 'customer') {
-      result = await cancelBooking(bookingId, { customerId: userId })
+      result = await cancelBooking(bookingId, { customerId: userId, allowedStatuses: CUSTOMER_CANCELLABLE_STATUSES })
     } else {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
     if (result.matchedCount === 0) {
       return NextResponse.json(
-        { error: 'Booking not found, not authorized, or already past pending status' },
+        { error: 'Booking not found, not authorized, or no longer cancellable at its current status' },
         { status: 404 }
       )
     }
 
     revalidateTag('booking-counters')
+    if (role === 'customer') {
+      // See PATCH /api/bookings/[bookingId]/edit for why this is needed —
+      // Cache Components can leave the list page stale in a hidden client
+      // Activity boundary otherwise.
+      revalidatePath('/customer/my-bookings')
+      revalidatePath('/customer/my-bookings/[bookingId]', 'page')
+    }
     return NextResponse.json({ success: true })
   } catch (err) {
     return handleApiError(err, '[DELETE /api/bookings/[bookingId]]')

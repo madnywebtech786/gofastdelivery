@@ -9,13 +9,14 @@ export const metadata = { title: 'Drivers — Go Fast Delivery' }
 export default async function AdminDriversPage() {
   await requireAdmin()
   const drivers = await findAllDrivers()
+  const onlineCount = drivers.filter((d) => d.driverProfile?.isOnDuty).length
   return (
     <div>
       <div className="flex items-center justify-between gap-4 mb-6 anim-fade-up">
         <div>
           <h1 className="text-2xl font-bold" style={{ color: 'var(--fg)' }}>Drivers</h1>
           <p className="text-sm mt-1" style={{ color: 'var(--fg-3)' }}>
-            {drivers.length} driver{drivers.length !== 1 ? 's' : ''} total
+            {drivers.length} driver{drivers.length !== 1 ? 's' : ''} total · {onlineCount} online
           </p>
         </div>
         <Link href="/admin/drivers/new">
@@ -42,6 +43,7 @@ export default async function AdminDriversPage() {
                 <tr>
                   <th>Driver</th>
                   <th className="hidden md:table-cell">Phone</th>
+                  <th>Status</th>
                   <th />
                 </tr>
               </thead>
@@ -65,6 +67,9 @@ export default async function AdminDriversPage() {
                         <Phone size={11} style={{ color: 'var(--fg-3)' }} />
                         {d.phone ?? '—'}
                       </span>
+                    </td>
+                    <td>
+                      <DriverStatusBadge isOnDuty={!!d.driverProfile?.isOnDuty} />
                     </td>
                     <td className="text-right">
                       <Link href={`/admin/drivers/${d._id}`}
@@ -93,6 +98,7 @@ export default async function AdminDriversPage() {
                   <p className="text-sm font-semibold truncate" style={{ color: 'var(--fg)' }}>{d.name}</p>
                   <p className="text-xs mt-0.5" style={{ color: 'var(--fg-3)' }}>{d.phone ?? d.email}</p>
                 </div>
+                <DriverStatusBadge isOnDuty={!!d.driverProfile?.isOnDuty} />
                 <ChevronRight size={14} style={{ color: 'var(--fg-3)' }} />
               </Link>
             ))}
@@ -100,5 +106,20 @@ export default async function AdminDriversPage() {
         </div>
       )}
     </div>
+  )
+}
+
+function DriverStatusBadge({ isOnDuty }) {
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 text-xs font-semibold px-2 py-1 rounded-full shrink-0"
+      style={{
+        background: isOnDuty ? 'rgba(34,197,94,0.1)' : 'var(--surface-2)',
+        color: isOnDuty ? '#16a34a' : 'var(--fg-3)',
+      }}
+    >
+      <span className="w-1.5 h-1.5 rounded-full" style={{ background: isOnDuty ? '#22c55e' : 'var(--fg-3)' }} />
+      {isOnDuty ? 'Online' : 'Offline'}
+    </span>
   )
 }

@@ -22,7 +22,10 @@ export default async function BookPage() {
           Place pins on the map to set your pickup and drop-off points
         </p>
       </div>
-      <BookingForm />
+      {/* key="create" forces a fresh mount (fresh state, fresh refs) even if
+          React would otherwise reuse a BookingForm instance — guards against
+          stale values carrying over from a just-visited edit page. */}
+      <BookingForm key="create" />
     </div>
   )
 }

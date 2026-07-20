@@ -572,13 +572,58 @@ export async function markBookingFailed(bookingId, { stage, reason, driverId } =
 /**
  * Cancel a booking (customer can only cancel their own pending bookings).
  */
-export async function cancelBooking(bookingId, { customerId } = {}) {
+// Statuses a customer may cancel their own booking from — nothing has been
+// physically picked up yet in either state (pending: never assigned;
+// failed_pickup: assignedDriverId already cleared by stop-failed). Excludes
+// failed_dropoff deliberately — the package is already picked up and sitting
+// with a driver at that point, so it can't simply be cancelled.
+export const CUSTOMER_CANCELLABLE_STATUSES = ['pending', 'failed_pickup']
+
+/**
+ * Cancel a booking. `allowedStatuses` defaults to admin's original,
+ * unchanged privilege (pending only); pass CUSTOMER_CANCELLABLE_STATUSES for
+ * the customer self-service path.
+ */
+export async function cancelBooking(bookingId, { customerId, allowedStatuses = ['pending'] } = {}) {
   const db = await getDb()
-  const filter = { _id: new ObjectId(bookingId), status: 'pending' }
+  const filter = { _id: new ObjectId(bookingId), status: { $in: allowedStatuses } }
   if (customerId) filter.customerId = new ObjectId(customerId)
 
   return db.collection('bookings').updateOne(filter, {
     $set: { status: 'cancelled', updatedAt: new Date() },
     $push: { statusHistory: { status: 'cancelled', timestamp: new Date(), note: 'Booking cancelled' } },
+  })
+}
+
+// Statuses a customer may still edit their own booking's details from —
+// mirrors the scenarios that actually require a correction: not yet
+// assigned, or a failed pickup/dropoff attempt that needs fixed info before
+// it can be retried.
+export const CUSTOMER_EDITABLE_STATUSES = ['pending', 'failed_pickup', 'failed_dropoff']
+
+/**
+ * Update a customer's own booking's editable fields (stops, package details,
+ * notification emails, estimated price). Only allowed while the booking is
+ * in one of CUSTOMER_EDITABLE_STATUSES — enforced in the Mongo filter itself
+ * (not just app code) so a race with a status change can't silently apply a
+ * stale edit. Does not touch status/statusHistory/assignment fields.
+ */
+export async function updateBookingDetails(bookingId, customerId, { stops, packageDetails, senderEmail, receiverEmail, estimatedPrice }) {
+  const db = await getDb()
+  const filter = {
+    _id: new ObjectId(bookingId),
+    customerId: new ObjectId(customerId),
+    status: { $in: CUSTOMER_EDITABLE_STATUSES },
+  }
+
+  return db.collection('bookings').updateOne(filter, {
+    $set: {
+      stops,
+      packageDetails: normalizePackageDetails(packageDetails),
+      senderEmail:    senderEmail   || null,
+      receiverEmail:  receiverEmail || null,
+      estimatedPrice: estimatedPrice ?? null,
+      updatedAt: new Date(),
+    },
   })
 }

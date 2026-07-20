@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Spinner from '@/components/ui/Spinner'
+import { useToast } from '@/components/ui/Toast'
 import {
   PackageCheck, Truck, CheckCircle2, MapPin, Navigation,
   RefreshCw, Clock, Ruler, Package, ChevronRight,
@@ -24,10 +25,13 @@ function formatDur(s) {
 
 export default function DriverHomePage() {
   const router = useRouter()
-  const [driverId, setDriverId] = useState(null)
-  const [stats, setStats]       = useState(null)
-  const [route, setRoute]       = useState(null)
-  const [loading, setLoading]   = useState(true)
+  const toast = useToast()
+  const [driverId, setDriverId]   = useState(null)
+  const [stats, setStats]         = useState(null)
+  const [route, setRoute]         = useState(null)
+  const [loading, setLoading]     = useState(true)
+  const [isOnDuty, setIsOnDuty]   = useState(false)
+  const [dutyBusy, setDutyBusy]   = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -42,8 +46,13 @@ export default function DriverHomePage() {
         fetch(`/api/drivers/${me.userId}/route-data?t=${Date.now()}`, { cache: 'no-store' }),
       ])
 
-      if (statsRes.ok) setStats(await statsRes.json())
-      else setStats(null)
+      if (statsRes.ok) {
+        const data = await statsRes.json()
+        setStats(data)
+        setIsOnDuty(!!data.isOnDuty)
+      } else {
+        setStats(null)
+      }
 
       if (routeRes.ok) setRoute(await routeRes.json())
       else setRoute(null)
@@ -53,6 +62,27 @@ export default function DriverHomePage() {
   }, [router])
 
   useEffect(() => { load() }, [load])
+
+  async function toggleDuty() {
+    if (!driverId || dutyBusy) return
+    const next = !isOnDuty
+    setDutyBusy(true)
+    try {
+      const res = await fetch(`/api/drivers/${driverId}/duty`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isOnDuty: next }),
+      })
+      if (!res.ok) throw new Error('duty update failed')
+      // Only flip the visible state once the server has confirmed the change.
+      setIsOnDuty(next)
+      toast.success(next ? "You're online — dispatch can assign you deliveries." : "You're offline — dispatch won't see you as available.")
+    } catch {
+      toast.error('Could not update status. Please try again.')
+    } finally {
+      setDutyBusy(false)
+    }
+  }
 
   useEffect(() => {
     function onVisible() {
@@ -91,10 +121,49 @@ export default function DriverHomePage() {
 
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <div className="px-5 pt-6 pb-5 border-b border-border bg-white">
-        <p className="text-xs font-semibold uppercase tracking-widest mb-0.5" style={{ color: 'var(--fg-3)' }}>{greeting}</p>
-        <h1 className="text-2xl font-bold" style={{ color: 'var(--fg)' }}>
-          {stats?.name ?? 'Driver'}
-        </h1>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-widest mb-0.5" style={{ color: 'var(--fg-3)' }}>{greeting}</p>
+            <h1 className="text-2xl font-bold" style={{ color: 'var(--fg)' }}>
+              {stats?.name ?? 'Driver'}
+            </h1>
+          </div>
+
+          {/* Online/offline duty toggle — persisted server-side, survives logout.
+              Only flips once the server confirms the change (see toggleDuty). */}
+          <button
+            onClick={toggleDuty}
+            disabled={dutyBusy}
+            aria-busy={dutyBusy}
+            className="shrink-0 flex items-center gap-2 pl-2.5 pr-1 py-1 rounded-full border transition-colors disabled:cursor-wait"
+            style={{
+              background: isOnDuty ? 'rgba(34,197,94,0.08)' : 'var(--surface-2)',
+              borderColor: isOnDuty ? 'rgba(34,197,94,0.3)' : 'var(--border)',
+              opacity: dutyBusy ? 0.75 : 1,
+            }}
+            aria-pressed={isOnDuty}
+          >
+            <span className="text-xs font-bold" style={{ color: isOnDuty ? '#16a34a' : 'var(--fg-3)' }}>
+              {dutyBusy ? 'Updating…' : (isOnDuty ? 'Online' : 'Offline')}
+            </span>
+            <span
+              className="relative w-9 h-5 rounded-full transition-colors"
+              style={{ background: isOnDuty ? '#22c55e' : 'var(--border)' }}
+            >
+              <span
+                className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all flex items-center justify-center"
+                style={{ left: isOnDuty ? '18px' : '2px' }}
+              >
+                {dutyBusy && (
+                  <svg className="w-2.5 h-2.5" style={{ animation: 'spin 0.7s linear infinite' }} viewBox="0 0 24 24" fill="none">
+                    <circle style={{ opacity: 0.25 }} cx="12" cy="12" r="10" stroke={isOnDuty ? '#22c55e' : 'var(--fg-3)'} strokeWidth="3" />
+                    <path style={{ opacity: 0.9 }} fill={isOnDuty ? '#22c55e' : 'var(--fg-3)'} d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                )}
+              </span>
+            </span>
+          </button>
+        </div>
 
         {/* Stats row */}
         <div className="mt-5 grid grid-cols-3 gap-3">

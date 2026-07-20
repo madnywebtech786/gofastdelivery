@@ -5,8 +5,6 @@
  * sync by hand.
  */
 
-const HUB_FEE = 5
-
 function toKey(s) {
   return String(s ?? '').trim().toLowerCase()
 }
@@ -57,12 +55,14 @@ export function calculatePrice({ fromCityName, toCityName, packages, cities, rul
   const differentCities = fromCity.nameKey !== toCity.nameKey
 
   if (bothSatellite && differentCities) {
-    // Trans-city via Calgary hub: $5 hub fee + destination city's Calgary rate.
+    // Trans-city via Calgary hub: priced at the destination city's Calgary
+    // rate (no separate satellite-pair rules needed). No hub handling fee —
+    // per client decision, satellite-to-satellite no longer carries the $5
+    // surcharge, though the route is still shown as going via the hub.
     const hubCity = cities.find((c) => c.zone === 'calgary')
     if (!hubCity) return null
     rule = findRule(rules, hubCity.nameKey, toCity.nameKey)
     if (!rule) return null
-    hubFee = HUB_FEE
     routeLabel = `${fromCity.name} → Calgary Hub → ${toCity.name}`
   } else {
     rule = findRule(rules, fromCity.nameKey, toCity.nameKey)

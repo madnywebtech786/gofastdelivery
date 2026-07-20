@@ -18,6 +18,12 @@ import { ChevronDown, Check } from 'lucide-react'
  *   disabled     — boolean
  *   className    — extra className on the root wrapper
  *   required     — boolean (for form validation)
+ *   onOpen()     — optional, fires each time the dropdown opens (e.g. to
+ *                  refetch fresh options right before the user picks one)
+ *   loading      — optional, shows loadingMessage instead of the option list
+ *                  while a fresh fetch triggered by onOpen is in flight
+ *   loadingMessage — text shown in the menu while loading (default 'Loading…')
+ *   emptyMessage   — text shown in the menu when options is empty (default 'No options')
  *
  * Usage:
  *   <Select
@@ -38,6 +44,10 @@ export default function Select({
   disabled = false,
   className = '',
   required = false,
+  onOpen,
+  loading = false,
+  loadingMessage = 'Loading…',
+  emptyMessage = 'No options',
 }) {
   const [open, setOpen]           = useState(false)
   const [highlighted, setHighlighted] = useState(-1)
@@ -66,7 +76,7 @@ export default function Select({
     if (disabled) return
     if (!open) {
       if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown') {
-        e.preventDefault(); setOpen(true); setHighlighted(0)
+        e.preventDefault(); setOpen(true); setHighlighted(0); onOpen?.()
       }
       return
     }
@@ -161,7 +171,15 @@ export default function Select({
           aria-haspopup="listbox"
           disabled={disabled}
           onKeyDown={onKeyDown}
-          onClick={() => { if (!disabled) { setOpen((p) => !p); setHighlighted(0) } }}
+          onClick={() => {
+            if (disabled) return
+            setOpen((p) => {
+              const next = !p
+              if (next) onOpen?.()
+              return next
+            })
+            setHighlighted(0)
+          }}
           className="w-full flex items-center justify-between gap-2 text-left rounded-xl border px-3.5 py-2.5 text-sm transition-all duration-150 cursor-pointer select-none"
           style={{
             background: disabled ? '#f8f9fc' : '#ffffff',
@@ -193,8 +211,10 @@ export default function Select({
             className="dropdown-menu"
             style={{ ...menuStyle, maxHeight: '240px', overflowY: 'auto' }}
           >
-            {options.length === 0 ? (
-              <div className="px-3 py-3 text-sm" style={{ color: 'var(--fg-3)' }}>No options</div>
+            {loading ? (
+              <div className="px-3 py-3 text-sm" style={{ color: 'var(--fg-3)' }}>{loadingMessage}</div>
+            ) : options.length === 0 ? (
+              <div className="px-3 py-3 text-sm" style={{ color: 'var(--fg-3)' }}>{emptyMessage}</div>
             ) : options.map((opt, i) => {
               const isSelected    = opt.value === value
               const isHighlighted = highlighted === i

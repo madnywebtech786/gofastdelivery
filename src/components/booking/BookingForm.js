@@ -87,33 +87,53 @@ function Field({ label, required, children }) {
 }
 
 const inputCls =
-  'w-full rounded-lg border border-border bg-white dark:bg-surface px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary'
+  'w-full rounded-lg border border-border bg-white dark:bg-surface px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-60 disabled:cursor-not-allowed disabled:bg-surface'
 
-export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
+// Pulls a stop's { lat, lng } out of either shape a booking doc can have —
+// stored bookings use stop.coordinates.{lat,lng} (see createBooking), while
+// the live map/form state uses flat stop.lat/lng.
+function stopLatLng(stop) {
+  return { lat: stop?.coordinates?.lat ?? stop?.lat, lng: stop?.coordinates?.lng ?? stop?.lng }
+}
+
+export default function BookingForm({ apiPath = '/api/bookings', onSuccess, initialBooking = null }) {
   const router = useRouter()
   const toast  = useToast()
   const mapRef = useRef(null)
+  const isEditMode = !!initialBooking
+  // failed_dropoff means the package has already been picked up — the driver
+  // is already carrying whatever was picked up, so pickup location/details
+  // and package contents can no longer be changed at that point; only
+  // drop-off info can still be corrected. Server-side enforcement (the real
+  // security boundary) lives in PATCH /api/bookings/[bookingId]/edit, which
+  // discards any pickup/packageDetails the client sends and re-uses the
+  // booking's existing values instead — this UI lock is for a clear,
+  // consistent experience, not the source of truth.
+  const isPickupLocked = isEditMode && initialBooking.status === 'failed_dropoff'
+
+  const initialPickupStop  = initialBooking?.stops?.find((s) => s.type === 'pickup')  ?? null
+  const initialDropoffStop = initialBooking?.stops?.find((s) => s.type === 'dropoff') ?? null
 
   // Map stops
   const [stops, setStops] = useState([])
 
   // Pickup details (for the pickup stop card)
   const [pickup, setPickup] = useState({
-    contactName: '',
-    companyName: '',
-    address: '',
-    buzzCode: '',
-    pickupTime: '',
-    contactPhone: '',
-    notes: '',
+    contactName:  initialPickupStop?.contactName  ?? '',
+    companyName:  initialPickupStop?.companyName  ?? '',
+    address:      initialPickupStop?.address      ?? '',
+    buzzCode:     initialPickupStop?.buzzCode     ?? '',
+    pickupTime:   initialPickupStop?.pickupTime   ?? '',
+    contactPhone: initialPickupStop?.contactPhone ?? '',
+    notes:        initialPickupStop?.notes        ?? '',
   })
 
   // Drop-off details (for the dropoff stop card)
   const [dropoff, setDropoff] = useState({
-    contactName: '',
-    address: '',
-    buzzCode: '',
-    contactPhone: '',
+    contactName:  initialDropoffStop?.contactName  ?? '',
+    address:      initialDropoffStop?.address      ?? '',
+    buzzCode:     initialDropoffStop?.buzzCode     ?? '',
+    contactPhone: initialDropoffStop?.contactPhone ?? '',
   })
   // Tracks whether the Address field currently holds an address auto-filled
   // from a "Set Pickup"/"Set Drop-off" click (safe to overwrite on the NEXT
@@ -133,8 +153,11 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
 
   // Prefill pickup details from customer profile if profileUpdated is true.
   // Also geocode the saved address and pre-seed the pickup pin on the map.
+  // Skipped in edit mode — the booking already has real, saved stop data
+  // (see the pin-seeding effect below), which must win over the profile.
   useEffect(() => {
     if (apiPath !== '/api/bookings') return // guest form — skip
+    if (isEditMode) return
     fetch('/api/user/profile')
       .then((r) => r.ok ? r.json() : null)
       .then((user) => {
@@ -189,10 +212,68 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
         tryShowThenGeocode()
       })
       .catch(() => {})
-  }, [apiPath])
+  }, [apiPath, isEditMode])
+
+  // Edit mode: seed both pins from the booking's already-known coordinates.
+  // Stored stops don't persist `city` (only used transiently at creation to
+  // price the booking — see POST /api/bookings), so it's re-resolved here via
+  // reverseGeocode using the real saved coordinates (no Places Autocomplete
+  // round-trip needed, unlike profile-prefill which only has text to start
+  // from). Retries briefly until the map ref is ready, then fits the
+  // viewport to both pins.
+  useEffect(() => {
+    if (!isEditMode || !initialPickupStop || !initialDropoffStop) return
+    const pickupLL  = stopLatLng(initialPickupStop)
+    const dropoffLL = stopLatLng(initialDropoffStop)
+    if (!Number.isFinite(pickupLL.lat) || !Number.isFinite(dropoffLL.lat)) return
+
+    let attempts = 0
+    let cancelled = false
+    let overlayShown = false
+    const trySeed = async () => {
+      if (cancelled) return
+      if (mapRef.current?.setPickupCoords && mapRef.current?.setDropoffCoords) {
+        // Show a loading overlay on the map while both pins are resolved —
+        // otherwise the map just sits empty during the reverse-geocode calls
+        // below, with no indication the booking is being pre-filled.
+        mapRef.current.setPlacing?.('loading')
+        overlayShown = true
+        try {
+          const [pickupGeo, dropoffGeo] = await Promise.all([
+            reverseGeocode(pickupLL.lng, pickupLL.lat),
+            reverseGeocode(dropoffLL.lng, dropoffLL.lat),
+          ])
+          if (cancelled) return
+          mapRef.current.setPickupCoords(pickupLL.lng, pickupLL.lat, initialPickupStop.address, pickupGeo.city)
+          mapRef.current.setDropoffCoords(dropoffLL.lng, dropoffLL.lat, initialDropoffStop.address, dropoffGeo.city)
+          mapRef.current.fitToStops?.()
+        } finally {
+          // setPickupCoords/setDropoffCoords already clear placing on success
+          // (mirrors setPlacing(null) at the end of each) — only need to
+          // force-clear here on the cancelled/thrown path so it never sticks.
+          if (cancelled && overlayShown) mapRef.current?.setPlacing?.(null)
+        }
+      } else if (attempts < 20) {
+        attempts++
+        setTimeout(trySeed, 300)
+      }
+    }
+    trySeed()
+    return () => {
+      cancelled = true
+      if (overlayShown) mapRef.current?.setPlacing?.(null)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- seed once on mount only
+  }, [isEditMode])
 
   // Package details — one or more packages, each with its own kind + weight.
-  const [packages, setPackages] = useState([emptyPackage()])
+  const [packages, setPackages] = useState(
+    initialBooking?.packageDetails?.packages?.length > 0
+      ? initialBooking.packageDetails.packages.map((p) => ({ kind: p.kind ?? '', weightLbs: p.weightLbs ?? '' }))
+      : initialBooking?.packageDetails?.kind
+        ? [{ kind: initialBooking.packageDetails.kind, weightLbs: initialBooking.packageDetails.weightLbs ?? '' }]
+        : [emptyPackage()]
+  )
   // One error string per package (by index), shown at the bottom of that
   // package's own card — cleared for a package as soon as the user fixes it.
   const [packageErrors, setPackageErrors] = useState([])
@@ -226,8 +307,8 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
   }
 
   // Sender + receiver notification emails
-  const [senderEmail,   setSenderEmail]   = useState('')
-  const [receiverEmail, setReceiverEmail] = useState('')
+  const [senderEmail,   setSenderEmail]   = useState(initialBooking?.senderEmail   ?? '')
+  const [receiverEmail, setReceiverEmail] = useState(initialBooking?.receiverEmail ?? '')
 
   // Pricing data fetched once on mount — { cities, rules, settings }, fed
   // straight into calculatePrice() (src/lib/pricing.js) with zero extra calls.
@@ -415,17 +496,29 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
         estimatedPrice: pricingPreview?.price ?? null,
       }
 
-      const res = await fetch(apiPath, {
-        method: 'POST',
+      const url    = isEditMode ? `/api/bookings/${initialBooking._id}/edit` : apiPath
+      const method = isEditMode ? 'PATCH' : 'POST'
+
+      const res = await fetch(url, {
+        method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       })
 
       const data = await res.json()
       if (!res.ok) {
-        const msg = data.error || 'Failed to create booking. Please try again.'
+        const msg = data.error || (isEditMode ? 'Failed to update booking. Please try again.' : 'Failed to create booking. Please try again.')
         setError(msg)
-        toast.error('Could not create booking', msg)
+        toast.error(isEditMode ? 'Could not save changes' : 'Could not create booking', msg)
+        return
+      }
+
+      if (isEditMode) {
+        // Silent update — no re-send of confirmation email/SMS. Navigate back
+        // to the detail page, which re-fetches the now-updated booking.
+        toast.success('Booking updated', 'Your changes have been saved.')
+        router.push(`/customer/my-bookings/${initialBooking._id}`)
+        router.refresh()
         return
       }
 
@@ -470,7 +563,7 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
       <div>
         <SectionHeading>📍 Set Pickup &amp; Drop-off on Map</SectionHeading>
         <div className="h-[420px]">
-          <BookingMap ref={mapRef} onStopsChange={handleStopsChange} />
+          <BookingMap ref={mapRef} onStopsChange={handleStopsChange} lockPickup={isPickupLocked} />
         </div>
         {/* Address confirmation pills */}
         {stops.length > 0 && (
@@ -485,13 +578,15 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
                 </span>
                 <span className="font-medium text-foreground capitalize">{stop.type}</span>
                 <span className="text-muted truncate flex-1">{stop.address}</span>
-                <button
-                  type="button"
-                  onClick={() => handleDeleteStop(i)}
-                  className="text-danger hover:text-red-700 font-medium shrink-0"
-                >
-                  Remove
-                </button>
+                {!(isPickupLocked && stop.type === 'pickup') && (
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteStop(i)}
+                    className="text-danger hover:text-red-700 font-medium shrink-0"
+                  >
+                    Remove
+                  </button>
+                )}
               </div>
             ))}
           </div>
@@ -500,13 +595,25 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
 
       {/* ── Pickup Details ───────────────────────────────────────────────── */}
       <div className="rounded-xl border border-border bg-surface p-4 space-y-4">
-        <SectionHeading>📦 Pickup Details</SectionHeading>
+        <SectionHeading>
+          📦 Pickup Details
+          {isPickupLocked && (
+            <span className="text-[11px] font-semibold normal-case tracking-normal px-2 py-0.5 rounded-full" style={{ background: 'var(--danger-bg)', color: 'var(--danger)' }}>
+              Locked — already picked up
+            </span>
+          )}
+        </SectionHeading>
+        {isPickupLocked && (
+          <p className="text-xs text-muted -mt-2">
+            This package has already been picked up, so pickup details and package contents can't be changed. You can still update the drop-off information below.
+          </p>
+        )}
         <div className="grid grid-cols-2 gap-3">
           <Field label="Contact Name">
-            <input type="text" value={pickup.contactName} onChange={(e) => setPickup((p) => ({ ...p, contactName: e.target.value }))} className={inputCls} placeholder="John Smith" />
+            <input type="text" value={pickup.contactName} onChange={(e) => setPickup((p) => ({ ...p, contactName: e.target.value }))} className={inputCls} placeholder="John Smith" disabled={isPickupLocked} />
           </Field>
           <Field label="Company Name">
-            <input type="text" value={pickup.companyName} onChange={(e) => setPickup((p) => ({ ...p, companyName: e.target.value }))} className={inputCls} placeholder="ABC Corp (optional)" />
+            <input type="text" value={pickup.companyName} onChange={(e) => setPickup((p) => ({ ...p, companyName: e.target.value }))} className={inputCls} placeholder="ABC Corp (optional)" disabled={isPickupLocked} />
           </Field>
           <Field label="Address" required>
             <input
@@ -519,6 +626,7 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
               className={inputCls}
               placeholder="123 Main St, Calgary, AB"
               required
+              disabled={isPickupLocked}
             />
           </Field>
           <Field label="Buzz / Unit Code">
@@ -528,6 +636,7 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
               onChange={(e) => setPickup((p) => ({ ...p, buzzCode: e.target.value }))}
               className={inputCls}
               placeholder="#4B, buzz 1234 (optional)"
+              disabled={isPickupLocked}
             />
           </Field>
           <Field label="Pickup Date" required>
@@ -539,6 +648,7 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
               disabledDays={isPickupDateDisabled}
               placeholder="Select a date"
               required
+              disabled={isPickupLocked}
             />
           </Field>
           <Field label="Pickup Time" required>
@@ -549,19 +659,19 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
               }
               options={availableTimeSlots}
               placeholder="Select a time"
-              disabled={!pickup.pickupTime.split('T')[0]}
+              disabled={isPickupLocked || !pickup.pickupTime.split('T')[0]}
               required
             />
           </Field>
           <Field label="Phone Number" required>
-            <input type="tel" value={pickup.contactPhone} onChange={(e) => setPickup((p) => ({ ...p, contactPhone: e.target.value }))} className={inputCls} placeholder="+1 403-000-0000" required />
+            <input type="tel" value={pickup.contactPhone} onChange={(e) => setPickup((p) => ({ ...p, contactPhone: e.target.value }))} className={inputCls} placeholder="+1 403-000-0000" required disabled={isPickupLocked} />
           </Field>
           <Field label="Your Email (for booking confirmation &amp; updates)">
-            <input type="email" value={senderEmail} onChange={(e) => setSenderEmail(e.target.value)} className={inputCls} placeholder="you@example.com" />
+            <input type="email" value={senderEmail} onChange={(e) => setSenderEmail(e.target.value)} className={inputCls} placeholder="you@example.com" disabled={isPickupLocked} />
           </Field>
         </div>
         <Field label="Description / Notes">
-          <textarea value={pickup.notes} onChange={(e) => setPickup((p) => ({ ...p, notes: e.target.value }))} className={inputCls} rows={3} placeholder="Gate code, leave at front desk, etc." />
+          <textarea value={pickup.notes} onChange={(e) => setPickup((p) => ({ ...p, notes: e.target.value }))} className={inputCls} rows={3} placeholder="Gate code, leave at front desk, etc." disabled={isPickupLocked} />
         </Field>
       </div>
 
@@ -605,13 +715,20 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
 
       {/* ── Package Details ──────────────────────────────────────────────── */}
       <div className="rounded-xl border border-border bg-surface p-4 space-y-4">
-        <SectionHeading>📋 Package Details</SectionHeading>
+        <SectionHeading>
+          📋 Package Details
+          {isPickupLocked && (
+            <span className="text-[11px] font-semibold normal-case tracking-normal px-2 py-0.5 rounded-full" style={{ background: 'var(--danger-bg)', color: 'var(--danger)' }}>
+              Locked — already picked up
+            </span>
+          )}
+        </SectionHeading>
         <div className="space-y-3">
           {packages.map((p, i) => (
             <div key={i} className="rounded-lg border border-border p-3 space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold text-muted">Package {i + 1}</span>
-                {packages.length > 1 && (
+                {packages.length > 1 && !isPickupLocked && (
                   <button
                     type="button"
                     onClick={() => handleRemovePackage(i)}
@@ -629,6 +746,7 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
                   value={p.kind}
                   onChange={(v) => handlePackageChange(i, 'kind', v)}
                   options={PACKAGE_KINDS.map((k) => ({ value: k, label: k }))}
+                  disabled={isPickupLocked}
                 />
                 <div className="flex flex-col gap-1.5">
                   <label className="text-xs font-semibold uppercase tracking-wide select-none" style={{ color: '#64748b' }}>
@@ -640,7 +758,8 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
                     step="0.1"
                     value={p.weightLbs}
                     onChange={(e) => handlePackageChange(i, 'weightLbs', e.target.value)}
-                    className="w-full rounded-xl border px-3.5 py-2.5 text-sm transition-all duration-150 focus:outline-none"
+                    disabled={isPickupLocked}
+                    className="w-full rounded-xl border px-3.5 py-2.5 text-sm transition-all duration-150 focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed disabled:bg-surface"
                     style={{
                       borderColor: packageErrors[i] ? 'var(--danger)' : 'var(--border-2)',
                       color: 'var(--fg)',
@@ -657,13 +776,15 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
             </div>
           ))}
         </div>
-        <button
-          type="button"
-          onClick={handleAddPackage}
-          className="flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
-        >
-          <Plus size={14} /> Add Package
-        </button>
+        {!isPickupLocked && (
+          <button
+            type="button"
+            onClick={handleAddPackage}
+            className="flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
+          >
+            <Plus size={14} /> Add Package
+          </button>
+        )}
       </div>
 
       {/* ── Pricing Preview — shown once both cities are known ───────────── */}
@@ -728,7 +849,7 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess }) {
         disabled={!hasPickup || !hasDropoff}
         className="w-full"
       >
-        Create Booking
+        {isEditMode ? 'Save Changes' : 'Create Booking'}
       </Button>
     </form>
   )

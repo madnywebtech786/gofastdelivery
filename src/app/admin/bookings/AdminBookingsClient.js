@@ -17,7 +17,7 @@ import {
 
 const STATUS_FILTER_OPTIONS = [
   { value: 'todays_work',     label: "Today's Work" },
-  { value: 'pending',         label: 'Pending' },
+  { value: 'pending',         label: 'Pending Orders' },
   { value: 'on_the_way',      label: 'On the Way' },
   { value: 'picked_up',       label: 'Ready to Deliver' },
   { value: 'failed_pickup',   label: 'Pickup Failed' },
@@ -131,6 +131,17 @@ function formatTimeAgo(d) {
   return `${Math.floor(h / 24)}d ago`
 }
 
+// pickupTime is a raw "YYYY-MM-DDTHH:mm" local string (see BookingForm.js) —
+// new Date() parses it as local time directly, no timezone conversion needed.
+function formatPickupTime(pickupTime) {
+  if (!pickupTime) return null
+  const d = new Date(pickupTime)
+  if (isNaN(d.getTime())) return null
+  const date = d.toLocaleDateString('en-CA', { month: 'short', day: 'numeric' })
+  const time = d.toLocaleTimeString('en-CA', { hour: 'numeric', minute: '2-digit' })
+  return `${date}, ${time}`
+}
+
 export default function AdminBookingsClient({ initialStatusFilter, initialPickupDate, initialPage, bookings, total, pageSize }) {
   const router     = useRouter()
   const pathname   = usePathname()
@@ -154,6 +165,11 @@ export default function AdminBookingsClient({ initialStatusFilter, initialPickup
   const [drivers, setDrivers]           = useState([])
   const [driverId, setDriverId]         = useState('')
   const [loadingDrivers, setLoadingDrivers] = useState(true)
+  // True while re-fetching drivers specifically because the Select was just
+  // opened — distinct from loadingDrivers (the initial page-load fetch), so
+  // the dropdown can show "Checking who's online…" instead of "No options"
+  // for the brief moment between open and the refreshed list landing.
+  const [refreshingDrivers, setRefreshingDrivers] = useState(false)
   const [assigning, setAssigning]       = useState(false)
   const [error, setError]               = useState('')
   const [detailBooking, setDetailBooking] = useState(null)
@@ -165,13 +181,23 @@ export default function AdminBookingsClient({ initialStatusFilter, initialPickup
 
   useEffect(() => () => { try { assignAbortRef.current?.abort() } catch {} }, [])
 
-  useEffect(() => {
-    fetch('/api/drivers')
+  // Shared by the initial mount fetch and the on-open refetch below — a
+  // driver going online/offline mid-session must be reflected the next time
+  // the admin opens the assign dropdown, not just on a full page reload.
+  const fetchDrivers = useCallback((markLoading) => {
+    if (markLoading === 'initial') setLoadingDrivers(true)
+    else setRefreshingDrivers(true)
+    return fetch('/api/drivers')
       .then((r) => r.json())
       .then((data) => setDrivers(Array.isArray(data) ? data : []))
       .catch(() => {})
-      .finally(() => setLoadingDrivers(false))
+      .finally(() => {
+        if (markLoading === 'initial') setLoadingDrivers(false)
+        else setRefreshingDrivers(false)
+      })
   }, [])
+
+  useEffect(() => { fetchDrivers('initial') }, [fetchDrivers])
 
   // Builds a URL with updated params, preserving others. `pickupDate` is
   // special: '' must stay as a literal `?pickupDate=` (means "explicitly
@@ -379,7 +405,17 @@ export default function AdminBookingsClient({ initialStatusFilter, initialPickup
         signal: ctrl.signal,
       })
       const data = await res.json()
-      if (!res.ok) { setError(data.error || 'Assignment failed.'); setConfirmPayload(null); return }
+      if (!res.ok) {
+        const msg = data.error || 'Assignment failed.'
+        setError(msg)
+        setConfirmPayload(null)
+        if (data.code === 'DRIVER_OFFLINE') {
+          toast.error('Driver went offline', msg)
+          setDriverId('')
+          fetchDrivers() // drop the now-stale offline driver from the dropdown
+        }
+        return
+      }
 
       const n = data.assigned
       toast.success('Assignment complete',
@@ -404,7 +440,11 @@ export default function AdminBookingsClient({ initialStatusFilter, initialPickup
   }
 
   const selectedDriver = drivers.find((d) => d._id === driverId)
-  const driverOptions  = drivers.map((d) => ({
+  // Only online drivers can be newly assigned — dispatch needs to reach them.
+  // driverName()/selectedDriver still resolve against the full list so an
+  // already-assigned driver's name keeps showing even if they've since gone offline.
+  const onlineDrivers  = drivers.filter((d) => d.driverProfile?.isOnDuty)
+  const driverOptions  = onlineDrivers.map((d) => ({
     value: d._id,
     label: d.name,
     meta: d.pendingStopCount > 0 ? `${d.pendingStopCount} active stops` : '',
@@ -637,6 +677,14 @@ export default function AdminBookingsClient({ initialStatusFilter, initialPickup
                           </div>
                         </div>
 
+                        {formatPickupTime(pickup?.pickupTime) && (
+                          <div className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-lg mt-2"
+                            style={{ background: 'rgba(217,119,6,0.1)', color: '#92400e' }}>
+                            <Clock size={11} />
+                            {formatPickupTime(pickup.pickupTime)}
+                          </div>
+                        )}
+
                         {b.packageDetails?.kind && (
                           <p className="text-xs mt-1.5" style={{ color: 'var(--fg-3)' }}>
                             {b.packageDetails.kind}
@@ -746,14 +794,16 @@ export default function AdminBookingsClient({ initialStatusFilter, initialPickup
 
             {loadingDrivers ? (
               <div className="h-10 rounded-xl animate-pulse" style={{ background: 'var(--surface-2)' }} />
-            ) : drivers.length === 0 ? (
-              <p className="text-sm py-3 text-center" style={{ color: 'var(--fg-3)' }}>No active drivers found.</p>
             ) : (
               <Select
                 placeholder="— Choose a driver —"
                 value={driverId}
                 onChange={setDriverId}
                 options={driverOptions}
+                onOpen={() => fetchDrivers()}
+                loading={refreshingDrivers}
+                loadingMessage="Checking who's online…"
+                emptyMessage={drivers.length === 0 ? 'No drivers registered yet.' : 'No drivers online right now.'}
               />
             )}
 

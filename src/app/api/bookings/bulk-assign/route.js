@@ -104,6 +104,17 @@ export async function POST(request) {
     const driver = await findDriverById(driverId)
     if (!driver) return NextResponse.json({ error: 'Driver not found' }, { status: 404 })
 
+    // A driver can go offline between the admin opening the assign dropdown
+    // and clicking "Assign" — re-check the authoritative DB value here, not
+    // just whatever the client had loaded. Dispatch needs to actually be able
+    // to reach the driver, so an offline driver can't be assigned new work.
+    if (!driver.driverProfile?.isOnDuty) {
+      return NextResponse.json(
+        { error: 'This driver just went offline. Choose another driver.', code: 'DRIVER_OFFLINE' },
+        { status: 409 }
+      )
+    }
+
     const bookingIds = assignments.map((a) => a.bookingId)
     const bookings = await findBookingsByIds(bookingIds)
     if (bookings.length !== assignments.length) {

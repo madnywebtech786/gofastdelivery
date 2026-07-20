@@ -200,6 +200,9 @@ export async function POST(request) {
         order:        i,
         address:      sanitizeStr(s.address) || `${s.lat}, ${s.lng}`,
         coordinates:  { lat: s.lat, lng: s.lng },
+        // Persisted so later reads (e.g. re-pricing on a failed_dropoff edit)
+        // never need a fresh reverse-geocode call just to recover this.
+        city:         sanitizeStr(s.city) || null,
         contactName:  sanitizeStr(s.contactName),
         companyName:  sanitizeStr(s.companyName),
         postalCode:   sanitizeStr(s.postalCode),
