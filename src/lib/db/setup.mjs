@@ -36,6 +36,9 @@ async function setup() {
     { key: { assignedDriverId: 1, status: 1, updatedAt: -1 }, name: 'driver_status_updated' },
     // Covers getDashboardStats trailing-window $match on createdAt alone
     { key: { createdAt: -1 }, name: 'createdAt_desc' },
+    // Covers the admin History page's excludeHiddenFromHistory filter
+    // (status_date/status_updated above don't include this field)
+    { key: { status: 1, hiddenFromHistory: 1 }, name: 'status_hidden_from_history' },
   ])
   console.log('✓ bookings indexes')
 

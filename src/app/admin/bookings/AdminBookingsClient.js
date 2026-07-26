@@ -39,9 +39,15 @@ function todayYMD() {
   return `${y}-${m}-${day}`
 }
 
+// Default assignment kind per booking status, before the admin overrides it
+// per-row. pending/failed_pickup default to pickup_and_dropoff (client
+// preference — most bookings are handled by one driver end-to-end); the
+// per-row Select still lets the admin switch to pickup_only when needed.
+// picked_up/failed_dropoff have no such choice — delivery_only is the only
+// valid kind once a booking has already been picked up.
 const ASSIGN_KIND_BY_STATUS = {
-  pending:        'pickup_only',
-  failed_pickup:  'pickup_only',
+  pending:        'pickup_and_dropoff',
+  failed_pickup:  'pickup_and_dropoff',
   picked_up:      'delivery_only',
   failed_dropoff: 'delivery_only',
 }

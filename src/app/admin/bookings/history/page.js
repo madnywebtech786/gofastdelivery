@@ -29,8 +29,8 @@ export default async function AdminBookingHistoryPage({ searchParams }) {
   const statusArg = statusFilter ? [statusFilter] : HISTORY_STATUSES
 
   const [bookings, total] = await Promise.all([
-    findAllBookings({ status: statusArg, sinceDate, untilDate, search: rawSearch || undefined, limit: PAGE_SIZE, skip }),
-    countAllBookings({ status: statusArg, sinceDate, untilDate, search: rawSearch || undefined }),
+    findAllBookings({ status: statusArg, sinceDate, untilDate, search: rawSearch || undefined, excludeHiddenFromHistory: true, limit: PAGE_SIZE, skip }),
+    countAllBookings({ status: statusArg, sinceDate, untilDate, search: rawSearch || undefined, excludeHiddenFromHistory: true }),
   ])
 
   return (

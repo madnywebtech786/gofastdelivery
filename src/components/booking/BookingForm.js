@@ -63,7 +63,7 @@ function isPickupDateDisabled(date) {
 }
 
 function emptyPackage() {
-  return { kind: '', weightLbs: '' }
+  return { id: crypto.randomUUID(), kind: '', weightLbs: '' }
 }
 
 function SectionHeading({ children }) {
@@ -269,9 +269,9 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess, init
   // Package details — one or more packages, each with its own kind + weight.
   const [packages, setPackages] = useState(
     initialBooking?.packageDetails?.packages?.length > 0
-      ? initialBooking.packageDetails.packages.map((p) => ({ kind: p.kind ?? '', weightLbs: p.weightLbs ?? '' }))
+      ? initialBooking.packageDetails.packages.map((p) => ({ id: crypto.randomUUID(), kind: p.kind ?? '', weightLbs: p.weightLbs ?? '' }))
       : initialBooking?.packageDetails?.kind
-        ? [{ kind: initialBooking.packageDetails.kind, weightLbs: initialBooking.packageDetails.weightLbs ?? '' }]
+        ? [{ id: crypto.randomUUID(), kind: initialBooking.packageDetails.kind, weightLbs: initialBooking.packageDetails.weightLbs ?? '' }]
         : [emptyPackage()]
   )
   // One error string per package (by index), shown at the bottom of that
@@ -725,7 +725,7 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess, init
         </SectionHeading>
         <div className="space-y-3">
           {packages.map((p, i) => (
-            <div key={i} className="rounded-lg border border-border p-3 space-y-2">
+            <div key={p.id} className="rounded-lg border border-border p-3 space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold text-muted">Package {i + 1}</span>
                 {packages.length > 1 && !isPickupLocked && (

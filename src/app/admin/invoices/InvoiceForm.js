@@ -172,7 +172,7 @@ export default function InvoiceForm({ initial = {}, onSubmit, onCancel, submitti
               className={inputCls}
               value={form.invoiceNumber}
               onChange={disableInvoiceNumber ? undefined : e => set('invoiceNumber', e.target.value)}
-              placeholder="INV0001"
+              placeholder="INV0001/26"
               required
               readOnly={disableInvoiceNumber}
               style={disableInvoiceNumber ? { background: 'var(--surface-2)', color: 'var(--fg-3)', cursor: 'not-allowed' } : undefined}

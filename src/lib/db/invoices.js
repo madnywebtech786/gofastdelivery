@@ -237,22 +237,32 @@ export async function getInvoiceStats({ year, month } = {}) {
   return { byDay, byMonth, byYear, statusBreakdown, year: targetYear, month: targetMonth, daysInMonth }
 }
 
+// Format: INV0001/26 — 4-digit zero-padded sequence, '/' + 2-digit year.
+// The sequence resets each year: getNextInvoiceNumber() only ever looks at
+// invoices already stamped with the CURRENT 2-digit year suffix, so a new
+// year naturally starts back at INV0001/YY the first time it's called that
+// year — no separate reset step needed.
+function currentYearSuffix() {
+  return String(new Date().getFullYear() % 100).padStart(2, '0')
+}
+
 export async function getNextInvoiceNumber() {
   const db = await getDb()
-  // invoiceNumber is a zero-padded string ("INV003"), so a Mongo-side
+  const yy = currentYearSuffix()
+  // invoiceNumber is a zero-padded string ("INV0003/26"), so a Mongo-side
   // { invoiceNumber: -1 } sort is lexicographic, not numeric — it would pick
-  // "INV999" over "INV1000" once numbers cross a digit-width boundary.
+  // "INV0999/26" over "INV1000/26" once numbers cross a digit-width boundary.
   // Numbers stay small (hundreds, not millions) and the field is indexed, so
-  // fetching just the numeric suffix for every INV\d+ doc and taking the max
-  // in JS is cheap and always correct regardless of digit width.
+  // fetching just the numeric prefix for every INV\d+/YY doc THIS YEAR and
+  // taking the max in JS is cheap and always correct regardless of digit width.
   const docs = await db.collection('invoices')
-    .find({ invoiceNumber: /^INV\d+$/ }, { projection: { invoiceNumber: 1 } })
+    .find({ invoiceNumber: new RegExp(`^INV\\d+/${yy}$`) }, { projection: { invoiceNumber: 1 } })
     .toArray()
 
   let next = 1
   for (const doc of docs) {
-    const num = parseInt(doc.invoiceNumber.replace('INV', ''), 10)
+    const num = parseInt(doc.invoiceNumber.slice(3, doc.invoiceNumber.indexOf('/')), 10)
     if (!isNaN(num) && num + 1 > next) next = num + 1
   }
-  return `INV${String(next).padStart(3, '0')}`
+  return `INV${String(next).padStart(4, '0')}/${yy}`
 }

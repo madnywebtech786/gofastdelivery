@@ -15,10 +15,13 @@ export default function NewInvoicePage() {
   const [invoiceNumber, setInvoiceNumber] = useState(null)
 
   useEffect(() => {
+    // Fallback only used if the /next-number fetch itself fails — format must
+    // match getNextInvoiceNumber() (src/lib/db/invoices.js): INV0001/YY.
+    const fallback = `INV0001/${String(new Date().getFullYear() % 100).padStart(2, '0')}`
     fetch('/api/invoices/next-number')
       .then(r => r.json())
-      .then(d => { setInvoiceNumber(d.invoiceNumber || 'INV001') })
-      .catch(() => { setInvoiceNumber('INV001') })
+      .then(d => { setInvoiceNumber(d.invoiceNumber || fallback) })
+      .catch(() => { setInvoiceNumber(fallback) })
   }, [])
 
   async function handleSubmit(data) {

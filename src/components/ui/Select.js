@@ -56,6 +56,13 @@ export default function Select({
   const triggerRef = useRef(null)
   const menuRef    = useRef(null)
   const triggerId  = useId()
+  // Only auto-scroll the highlighted option into view when the highlight
+  // moved via keyboard (ArrowUp/ArrowDown) — a mouse-driven open/hover
+  // already shows the option the user is looking at, so scrollIntoView had
+  // nothing useful to do there. Running it unconditionally on every open
+  // (including a plain click) was snapping the whole PAGE scroll position
+  // back to the field every time this Select was opened.
+  const scrollOnHighlightRef = useRef(false)
 
   const selected = options.find((o) => o.value === value) ?? null
 
@@ -83,9 +90,11 @@ export default function Select({
     if (e.key === 'Escape') { setOpen(false); return }
     if (e.key === 'ArrowDown') {
       e.preventDefault()
+      scrollOnHighlightRef.current = true
       setHighlighted((h) => Math.min(h + 1, options.length - 1))
     } else if (e.key === 'ArrowUp') {
       e.preventDefault()
+      scrollOnHighlightRef.current = true
       setHighlighted((h) => Math.max(h - 1, 0))
     } else if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault()
@@ -101,9 +110,12 @@ export default function Select({
     setHighlighted(-1)
   }
 
-  // Scroll highlighted item into view
+  // Scroll highlighted item into view — only for keyboard-driven highlight
+  // changes (see scrollOnHighlightRef above), never on open/hover.
   useEffect(() => {
     if (!open || highlighted < 0 || !menuRef.current) return
+    if (!scrollOnHighlightRef.current) return
+    scrollOnHighlightRef.current = false
     const item = menuRef.current.querySelectorAll('[role="option"]')[highlighted]
     item?.scrollIntoView({ block: 'nearest' })
   }, [highlighted, open])

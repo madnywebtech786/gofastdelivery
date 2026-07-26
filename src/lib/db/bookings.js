@@ -173,7 +173,7 @@ function escapeRegex(str) {
  * string-prefix match, not a Date range query. Only the pickup stop ever has
  * pickupTime, so this can't accidentally match a dropoff stop.
  */
-function buildAdminFilter({ status, hasDriver, sinceDate, untilDate, pickupDate, search }) {
+function buildAdminFilter({ status, hasDriver, sinceDate, untilDate, pickupDate, search, excludeHiddenFromHistory }) {
   const filter = Array.isArray(status)
     ? (status.length > 0 ? { status: { $in: status } } : {})
     : (status ? { status } : {})
@@ -186,6 +186,13 @@ function buildAdminFilter({ status, hasDriver, sinceDate, untilDate, pickupDate,
   }
   if (pickupDate) {
     filter['stops.pickupTime'] = { $regex: '^' + escapeRegex(pickupDate) }
+  }
+  // Only the admin History page passes this — every other caller (dashboard
+  // stats, the main admin bookings list, driver stats, tracking) intentionally
+  // keeps reading hidden bookings, since hiding is a History-page-only view
+  // concern, not a real deletion (see hideBookingsFromHistory doc comment).
+  if (excludeHiddenFromHistory) {
+    filter.hiddenFromHistory = { $ne: true }
   }
   if (search) {
     const re = new RegExp(escapeRegex(search), 'i')
@@ -208,24 +215,24 @@ function buildAdminFilter({ status, hasDriver, sinceDate, untilDate, pickupDate,
 function buildAdminQuery(params) {
   const { combine, ...flat } = params
   if (!Array.isArray(combine)) return buildAdminFilter(flat)
-  return { $or: combine.map((sub) => buildAdminFilter({ ...sub, search: flat.search })) }
+  return { $or: combine.map((sub) => buildAdminFilter({ ...sub, search: flat.search, excludeHiddenFromHistory: flat.excludeHiddenFromHistory })) }
 }
 
-export async function findAllBookings({ status, hasDriver, sinceDate, untilDate, pickupDate, search, combine, limit = 50, skip = 0 } = {}) {
+export async function findAllBookings({ status, hasDriver, sinceDate, untilDate, pickupDate, search, combine, excludeHiddenFromHistory, limit = 50, skip = 0 } = {}) {
   const db = await getDb()
   return db
     .collection('bookings')
-    .find(buildAdminQuery({ status, hasDriver, sinceDate, untilDate, pickupDate, search, combine }))
+    .find(buildAdminQuery({ status, hasDriver, sinceDate, untilDate, pickupDate, search, combine, excludeHiddenFromHistory }))
     .sort({ createdAt: -1 })
     .skip(skip)
     .limit(limit)
     .toArray()
 }
 
-export async function countAllBookings({ status, hasDriver, sinceDate, untilDate, pickupDate, search, combine } = {}) {
+export async function countAllBookings({ status, hasDriver, sinceDate, untilDate, pickupDate, search, combine, excludeHiddenFromHistory } = {}) {
   const db = await getDb()
   return db.collection('bookings').countDocuments(
-    buildAdminQuery({ status, hasDriver, sinceDate, untilDate, pickupDate, search, combine })
+    buildAdminQuery({ status, hasDriver, sinceDate, untilDate, pickupDate, search, combine, excludeHiddenFromHistory })
   )
 }
 
@@ -593,6 +600,49 @@ export async function cancelBooking(bookingId, { customerId, allowedStatuses = [
     $set: { status: 'cancelled', updatedAt: new Date() },
     $push: { statusHistory: { status: 'cancelled', timestamp: new Date(), note: 'Booking cancelled' } },
   })
+}
+
+// Statuses eligible for the admin history soft-delete actions below — the
+// same set the History page itself lists (src/app/admin/bookings/history/
+// page.js's own HISTORY_STATUSES). Scoping the update filter to these
+// statuses is a safety guard: it makes it impossible for "delete selected" or
+// "clear history" to ever hide a booking that's still active, even if a
+// stale/tampered bookingId were passed in.
+const ADMIN_HISTORY_STATUSES = ['delivered', 'cancelled']
+
+/**
+ * Soft-delete (hide from the admin History page) one or more bookings by ID.
+ * Does NOT remove the document — "we will be computing many values from
+ * them" (dashboard stats, revenue, driver stats all read the full bookings
+ * collection regardless of this flag) — it only sets a flag the History
+ * page's own query excludes on. Scoped to ADMIN_HISTORY_STATUSES so this can
+ * never hide a booking that isn't actually a completed/cancelled history
+ * entry. No restore path — this is intentionally one-way from the admin's
+ * point of view (the data itself is still in Mongo for anyone who needs it).
+ */
+export async function hideBookingsFromHistory(bookingIds) {
+  const db = await getDb()
+  return db.collection('bookings').updateMany(
+    {
+      _id: { $in: bookingIds.map((id) => new ObjectId(id)) },
+      status: { $in: ADMIN_HISTORY_STATUSES },
+    },
+    { $set: { hiddenFromHistory: true, hiddenFromHistoryAt: new Date() } }
+  )
+}
+
+/**
+ * "Clear History" — soft-delete every booking currently eligible to appear
+ * on the admin History page, regardless of any status/date/search filter the
+ * admin has applied in the UI at the time (confirmed behavior: this is a
+ * full reset, not scoped to the current view).
+ */
+export async function hideAllHistoryFromView() {
+  const db = await getDb()
+  return db.collection('bookings').updateMany(
+    { status: { $in: ADMIN_HISTORY_STATUSES }, hiddenFromHistory: { $ne: true } },
+    { $set: { hiddenFromHistory: true, hiddenFromHistoryAt: new Date() } }
+  )
 }
 
 // Statuses a customer may still edit their own booking's details from —

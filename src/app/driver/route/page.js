@@ -189,14 +189,23 @@ export default function DriverRoutePage() {
   const [sheetOpen, setSheetOpen] = useState(true)
   const [activeStopIndex, setActiveStopIndex] = useState(0)
   const [completing, setCompleting] = useState(false)
-  // Failed-stop modal state — open when driver taps Failed Pickup/Dropoff.
-  const [failedModal, setFailedModal] = useState(null) // { stopIndex, stop } | null
+  // Failed-stop modal state — open when driver taps Failed Pickup/Dropoff
+  // (single stop) or Fail Selected (batch). `stopIndexes`/`stops` always hold
+  // one entry for a single-stop fail — the same modal/handler serves both.
+  const [failedModal, setFailedModal] = useState(null) // { stopIndexes: number[], stops: object[] } | null
   const [failureReason, setFailureReason] = useState('')
   const [submittingFailure, setSubmittingFailure] = useState(false)
 
   // ETA timeline: which stop is currently expanded in the sheet
   // null = show timeline list, number = show that stop's detail view
   const [expandedStopIndex, setExpandedStopIndex] = useState(null)
+
+  // Batch-select mode — driver can check off several not-yet-completed stops
+  // (typically sharing one address) and confirm/fail them together instead of
+  // one at a time. Only meaningful in the timeline list view.
+  const [batchMode, setBatchMode] = useState(false)
+  const [selectedStopIndexes, setSelectedStopIndexes] = useState(new Set())
+  const [batchSubmitting, setBatchSubmitting] = useState(false)
 
   const [endPointStep, setEndPointStep] = useState('idle')  // 'idle'|'modal'|'ready'|'loaded'
   const [endPoint, setEndPoint] = useState(null)
@@ -529,10 +538,12 @@ export default function DriverRoutePage() {
       setActiveStopIndex(resumeIndex)
     }
 
-    // Show a toast + voice announcement when stops were added mid-route
+    // Show a toast + chime + voice announcement when stops were added mid-route
     if (newlyAddedStops.length > 0 && prevRoute) {
       const n = newlyAddedStops.length
       toast?.info?.('Route updated', `${n} new stop${n > 1 ? 's' : ''} added by dispatch.`)
+      // Chime first so the driver notices the phone before the spoken line starts.
+      voiceRef.current?.chime()
       voiceRef.current?.speak(
         n === 1
           ? 'A new stop has been added to your route.'
@@ -756,9 +767,60 @@ export default function DriverRoutePage() {
     }
   }
 
+  // Confirm several stops at once (batch mode) — same idempotency-key
+  // approach as the single-stop path, keyed off the sorted index set so a
+  // retry of the same batch matches. Not queued offline on failure (mirrors
+  // handleStopFailed below, which also doesn't queue — batch actions are
+  // deliberate multi-item submissions, not something to silently replay
+  // later with a stale selection).
+  async function handleBatchStopComplete() {
+    if (!driverId || batchSubmitting || selectedStopIndexes.size === 0) return
+    const stopIndexes = [...selectedStopIndexes].sort((a, b) => a - b)
+
+    setBatchSubmitting(true)
+    try {
+      const pos = driverPos
+      const drivenMeters = flushAndResetDist()
+      const res = await fetch(`/api/drivers/${driverId}/batch-stop-complete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          stopIndexes,
+          drivenMeters,
+          currentLng: pos?.lng ?? null,
+          currentLat: pos?.lat ?? null,
+        }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        toast?.error?.('Could not confirm stops', data?.error ?? 'Try again.')
+        return
+      }
+      const data = await res.json().catch(() => ({}))
+      const updatedRoute = data?.route ?? null
+      if (updatedRoute) {
+        routeRef.current = updatedRoute
+        setRoute(updatedRoute)
+        const allStops = updatedRoute.optimizedStops ?? []
+        const nextIndex = allStops.findIndex((s) => !s.completedAt)
+        setActiveStopIndex(nextIndex === -1 ? allStops.length : nextIndex)
+      }
+      const n = stopIndexes.length
+      toast?.success?.(`${n} stop${n > 1 ? 's' : ''} confirmed`, '')
+      voiceRef.current?.speak(n === 1 ? 'Stop complete.' : `${n} stops complete.`)
+      setBatchMode(false)
+      setSelectedStopIndexes(new Set())
+    } catch {
+      toast?.error?.('Could not confirm stops', 'Check your connection and try again.')
+    } finally {
+      setBatchSubmitting(false)
+    }
+  }
+
   async function handleStopFailed() {
     if (!driverId || !failedModal || submittingFailure) return
-    const { stopIndex, stop } = failedModal
+    const { stopIndexes, stops: failingStops } = failedModal
+    const isBatch = stopIndexes.length > 1
     const reason = failureReason.trim()
     if (!reason) {
       toast?.warning?.('Reason required', 'Please describe why this stop failed.')
@@ -768,10 +830,16 @@ export default function DriverRoutePage() {
     setSubmittingFailure(true)
     try {
       const drivenMeters = flushAndResetDist()
-      const res = await fetch(`/api/drivers/${driverId}/stop-failed`, {
+      const url = isBatch
+        ? `/api/drivers/${driverId}/batch-stop-failed`
+        : `/api/drivers/${driverId}/stop-failed`
+      const body = isBatch
+        ? { stopIndexes, reason, drivenMeters }
+        : { stopIndex: stopIndexes[0], reason, drivenMeters }
+      const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ stopIndex, reason, drivenMeters }),
+        body: JSON.stringify(body),
       })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
@@ -787,8 +855,14 @@ export default function DriverRoutePage() {
         const nextIndex = allStops.findIndex((s) => !s.completedAt)
         setActiveStopIndex(nextIndex === -1 ? allStops.length : nextIndex)
       }
-      const label = stop.stopType === 'dropoff' ? 'Dropoff' : 'Pickup'
-      toast?.success?.(`${label} marked failed`, 'Admin can re-assign this booking.')
+      if (isBatch) {
+        toast?.success?.(`${failingStops.length} stops marked failed`, 'Admin can re-assign these bookings.')
+        setBatchMode(false)
+        setSelectedStopIndexes(new Set())
+      } else {
+        const label = failingStops[0].stopType === 'dropoff' ? 'Dropoff' : 'Pickup'
+        toast?.success?.(`${label} marked failed`, 'Admin can re-assign this booking.')
+      }
       setFailedModal(null)
       setFailureReason('')
       // Return to timeline view
@@ -1119,7 +1193,7 @@ export default function DriverRoutePage() {
           type="button"
           onClick={() => {
             setSheetOpen((p) => !p)
-            // Unlock speech synthesis on first user tap (required by mobile browsers)
+            // Unlock speech synthesis + audio chime on first user tap (required by mobile browsers)
             voiceRef.current?.unlock()
           }}
           className="w-full bg-white rounded-t-3xl shadow-2xl px-4 flex items-center justify-between gap-3 focus:outline-none active:bg-gray-50"
@@ -1286,7 +1360,7 @@ export default function DriverRoutePage() {
                         <button
                           onClick={() => {
                             setFailureReason('')
-                            setFailedModal({ stopIndex, stop })
+                            setFailedModal({ stopIndexes: [stopIndex], stops: [stop] })
                           }}
                           disabled={completing || submittingFailure}
                           className="w-full mt-2 rounded-2xl py-2.5 text-sm font-semibold border border-red-200 bg-white text-red-600 active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
@@ -1307,18 +1381,45 @@ export default function DriverRoutePage() {
                 <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
                   {activeStopIndex} of {stops.length} done
                 </span>
-                <div className="flex gap-1">
-                  {stops.map((s, i) => (
-                    <div
-                      key={i}
-                      className="w-1.5 h-1.5 rounded-full"
-                      style={{
-                        backgroundColor: i < activeStopIndex ? '#22c55e' : i === activeStopIndex ? '#2563eb' : '#e5e7eb',
+                <div className="flex items-center gap-3">
+                  <div className="flex gap-1">
+                    {stops.map((s, i) => (
+                      <div
+                        key={i}
+                        className="w-1.5 h-1.5 rounded-full"
+                        style={{
+                          backgroundColor: i < activeStopIndex ? '#22c55e' : i === activeStopIndex ? '#2563eb' : '#e5e7eb',
+                        }}
+                      />
+                    ))}
+                  </div>
+                  {/* Batch-select toggle — only worth showing when there's more
+                      than one confirmable stop left (a single pending stop has
+                      nothing to batch). */}
+                  {stops.filter((s) => !s.completedAt && s.stopType !== 'endpoint').length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBatchMode((p) => !p)
+                        setSelectedStopIndexes(new Set())
                       }}
-                    />
-                  ))}
+                      className="text-[11px] font-bold uppercase tracking-wide px-2 py-1 rounded-full"
+                      style={{
+                        color: batchMode ? '#fff' : 'var(--accent)',
+                        backgroundColor: batchMode ? 'var(--accent)' : 'var(--accent-dim)',
+                      }}
+                    >
+                      {batchMode ? 'Cancel' : 'Select'}
+                    </button>
+                  )}
                 </div>
               </div>
+
+              {batchMode && (
+                <p className="text-[11px] px-1 mb-2" style={{ color: 'var(--fg-3)' }}>
+                  Tap stops sharing the same address to confirm or fail them together.
+                </p>
+              )}
 
               {/* Timeline rows */}
               <div className="relative">
@@ -1328,6 +1429,8 @@ export default function DriverRoutePage() {
                   const isNext = !isDone && i > activeStopIndex
                   const eta = formatETA(stop.estimatedArrivalAt)
                   const isNew = newStopIds?.has(String(stop.bookingId))
+                  const isSelectable = batchMode && !isDone && stop.stopType !== 'endpoint'
+                  const isSelected = selectedStopIndexes.has(i)
 
                   const dotColor = isDone
                     ? '#22c55e'
@@ -1345,27 +1448,65 @@ export default function DriverRoutePage() {
                         />
                       )}
 
-                      {/* Dot */}
+                      {/* Dot — replaced by a checkbox for selectable stops in batch mode */}
                       <div className="shrink-0 flex flex-col items-center pt-1" style={{ width: '32px' }}>
-                        <div
-                          className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold shadow-sm border-2"
-                          style={{
-                            backgroundColor: dotColor,
-                            borderColor: isActive ? dotColor : 'transparent',
-                            boxShadow: isActive ? `0 0 0 3px ${dotColor}33` : undefined,
-                            fontSize: isDone ? '16px' : '12px',
-                          }}
-                        >
-                          {isDone ? '✓' : stop.stopType === 'endpoint' ? 'E' : i + 1}
-                        </div>
+                        {isSelectable ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedStopIndexes((prev) => {
+                                const next = new Set(prev)
+                                if (next.has(i)) next.delete(i)
+                                else next.add(i)
+                                return next
+                              })
+                            }}
+                            aria-pressed={isSelected}
+                            aria-label={isSelected ? `Deselect stop ${i + 1}` : `Select stop ${i + 1}`}
+                            className="w-8 h-8 rounded-full flex items-center justify-center font-bold shadow-sm border-2 transition-colors"
+                            style={{
+                              backgroundColor: isSelected ? 'var(--accent)' : '#fff',
+                              borderColor: isSelected ? 'var(--accent)' : '#d1d5db',
+                              color: isSelected ? '#fff' : 'transparent',
+                            }}
+                          >
+                            ✓
+                          </button>
+                        ) : (
+                          <div
+                            className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold shadow-sm border-2"
+                            style={{
+                              backgroundColor: dotColor,
+                              borderColor: isActive ? dotColor : 'transparent',
+                              boxShadow: isActive ? `0 0 0 3px ${dotColor}33` : undefined,
+                              fontSize: isDone ? '16px' : '12px',
+                              opacity: batchMode ? 0.5 : 1,
+                            }}
+                          >
+                            {isDone ? '✓' : stop.stopType === 'endpoint' ? 'E' : i + 1}
+                          </div>
+                        )}
                       </div>
 
-                      {/* Row content — tappable */}
+                      {/* Row content — tappable: opens detail normally, toggles
+                          selection in batch mode (only for selectable stops) */}
                       <button
                         type="button"
-                        onClick={() => setExpandedStopIndex(i)}
+                        onClick={() => {
+                          if (batchMode) {
+                            if (!isSelectable) return
+                            setSelectedStopIndexes((prev) => {
+                              const next = new Set(prev)
+                              if (next.has(i)) next.delete(i)
+                              else next.add(i)
+                              return next
+                            })
+                          } else {
+                            setExpandedStopIndex(i)
+                          }
+                        }}
                         className="flex-1 flex items-start justify-between gap-2 py-1.5 min-w-0 text-left"
-                        style={{ paddingBottom: i < stops.length - 1 ? '12px' : '4px' }}
+                        style={{ paddingBottom: i < stops.length - 1 ? '12px' : '4px', opacity: batchMode && !isSelectable ? 0.5 : 1 }}
                       >
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1.5 flex-wrap">
@@ -1398,27 +1539,61 @@ export default function DriverRoutePage() {
                           ) : eta ? (
                             <span className={`text-[11px] font-bold ${isActive ? 'text-blue-600' : 'text-gray-500'}`}>{eta}</span>
                           ) : null}
-                          <svg width="12" height="12" viewBox="0 0 14 14" fill="none" className="mt-1 ml-auto">
-                            <path d="M5 2l5 5-5 5" stroke="#d1d5db" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                          </svg>
+                          {!batchMode && (
+                            <svg width="12" height="12" viewBox="0 0 14 14" fill="none" className="mt-1 ml-auto">
+                              <path d="M5 2l5 5-5 5" stroke="#d1d5db" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                          )}
                         </div>
                       </button>
                     </div>
                   )
                 })}
               </div>
+
+              {/* Batch action bar — appears once at least one stop is selected */}
+              {batchMode && selectedStopIndexes.size > 0 && (
+                <div className="sticky bottom-0 left-0 right-0 mt-3 -mx-3 px-3 pt-3 pb-1 bg-white border-t border-border flex items-center gap-2">
+                  <span className="text-xs font-semibold shrink-0" style={{ color: 'var(--fg-2)' }}>
+                    {selectedStopIndexes.size} selected
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const idxs = [...selectedStopIndexes].sort((a, b) => a - b)
+                      setFailureReason('')
+                      setFailedModal({ stopIndexes: idxs, stops: idxs.map((i) => stops[i]) })
+                    }}
+                    disabled={batchSubmitting}
+                    className="flex-1 rounded-2xl py-2.5 text-sm font-bold border border-red-200 bg-white text-red-600 active:scale-[0.98] transition-all disabled:opacity-40"
+                  >
+                    Fail Selected
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleBatchStopComplete}
+                    disabled={batchSubmitting}
+                    className="flex-1 rounded-2xl py-2.5 text-sm font-bold text-white active:scale-[0.98] transition-all disabled:opacity-40 flex items-center justify-center gap-2"
+                    style={{ backgroundColor: 'var(--accent)' }}
+                  >
+                    {batchSubmitting ? <Spinner size="sm" /> : `Confirm ${selectedStopIndexes.size}`}
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
       </div>
 
-      {/* Failed-stop reason modal */}
+      {/* Failed-stop reason modal — shared by single-stop and batch fail */}
       {failedModal && (
         <div className="fixed inset-0 z-100 flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4">
           <div className="w-full sm:max-w-md bg-white rounded-t-2xl sm:rounded-2xl shadow-xl overflow-hidden">
             <div className="px-5 py-4 border-b border-border flex items-center justify-between">
               <h3 className="text-base font-bold" style={{ color: 'var(--fg-1)' }}>
-                {failedModal.stop.stopType === 'pickup' ? 'Mark pickup failed' : 'Mark dropoff failed'}
+                {failedModal.stops.length > 1
+                  ? `Mark ${failedModal.stops.length} stops failed`
+                  : failedModal.stops[0].stopType === 'pickup' ? 'Mark pickup failed' : 'Mark dropoff failed'}
               </h3>
               <button
                 onClick={() => { setFailedModal(null); setFailureReason('') }}
@@ -1430,9 +1605,22 @@ export default function DriverRoutePage() {
               </button>
             </div>
             <div className="px-5 py-4 space-y-3">
-              <p className="text-xs" style={{ color: 'var(--fg-3)' }}>
-                {failedModal.stop.address}
-              </p>
+              {failedModal.stops.length > 1 ? (
+                <ul className="text-xs space-y-1" style={{ color: 'var(--fg-3)' }}>
+                  {failedModal.stops.map((s, i) => (
+                    <li key={i}>
+                      <span className="font-semibold" style={{ color: 'var(--fg-2)' }}>
+                        {s.stopType === 'pickup' ? 'Pickup' : 'Drop-off'}:
+                      </span>{' '}
+                      {s.address}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-xs" style={{ color: 'var(--fg-3)' }}>
+                  {failedModal.stops[0].address}
+                </p>
+              )}
               <div>
                 <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--fg-2)' }}>
                   Reason <span className="text-red-500">*</span>
@@ -1448,7 +1636,8 @@ export default function DriverRoutePage() {
                   style={{ color: 'var(--fg-1)' }}
                 />
                 <p className="text-[11px] mt-1" style={{ color: 'var(--fg-3)' }}>
-                  {failureReason.length}/500 — admin will see this and can re-assign the booking.
+                  {failureReason.length}/500 — admin will see this and can re-assign the
+                  {failedModal.stops.length > 1 ? ' bookings.' : ' booking.'}
                 </p>
               </div>
             </div>

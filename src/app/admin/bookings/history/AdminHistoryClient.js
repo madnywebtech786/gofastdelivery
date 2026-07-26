@@ -6,10 +6,29 @@ import Link from 'next/link'
 import Badge from '@/components/ui/Badge'
 import Select from '@/components/ui/Select'
 import DatePicker from '@/components/ui/DatePicker'
+import { useToast } from '@/components/ui/Toast'
 import {
   MapPin, Clock, ChevronRight, ChevronLeft,
-  PackageCheck, Search, X, Circle,
+  PackageCheck, Search, X, Circle, Trash2,
 } from 'lucide-react'
+
+function Modal({ title, onClose, children }) {
+  return (
+    <div className="fixed inset-0 flex items-start justify-center z-50 p-4 overflow-y-auto"
+      style={{ background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(4px)' }}
+      onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-xl my-8 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+        <div className="sticky top-0 flex items-center justify-between px-6 py-4 border-b border-border rounded-t-2xl bg-white z-10">
+          <h2 className="text-base font-bold" style={{ color: 'var(--fg)' }}>{title}</h2>
+          <button onClick={onClose} className="p-1.5 rounded-lg transition-colors" style={{ color: 'var(--fg-3)' }}>
+            <X size={16} />
+          </button>
+        </div>
+        <div className="px-6 py-5">{children}</div>
+      </div>
+    </div>
+  )
+}
 
 const STATUS_FILTER_OPTIONS = [
   { value: '',           label: 'All completed' },
@@ -97,12 +116,85 @@ export default function AdminHistoryClient({
   const pathname     = usePathname()
   const searchParams = useSearchParams()
   const [isPending, startTransition] = useTransition()
+  const toast = useToast()
 
   const [statusFilter, setStatusFilter] = useState(initialStatusFilter ?? '')
   const [dateFrom,     setDateFrom]     = useState(initialDateFrom ?? '')
   const [dateTo,       setDateTo]       = useState(initialDateTo ?? '')
   const [search,       setSearch]       = useState(initialSearch ?? '')
   const debounceRef = useRef(null)
+
+  // Select mode — driver-side equivalent doesn't apply here; this is the
+  // admin "delete selected history entries" checkbox flow. Selection is
+  // per-page only (not persisted across pagination like the main bookings
+  // page's cross-filter selection — history deletion is a lighter-weight,
+  // occasional cleanup action, not a workflow tool).
+  const [selectMode, setSelectMode]           = useState(false)
+  const [selectedIds, setSelectedIds]         = useState(new Set())
+  const [deleteConfirm, setDeleteConfirm]     = useState(null) // 'selected' | 'all' | null
+  const [deleting, setDeleting]               = useState(false)
+
+  function toggleSelectMode() {
+    setSelectMode((p) => !p)
+    setSelectedIds(new Set())
+  }
+
+  function toggleSelected(id) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  async function handleDeleteSelected() {
+    if (selectedIds.size === 0) return
+    setDeleting(true)
+    try {
+      const res = await fetch('/api/bookings/history/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bookingIds: [...selectedIds] }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        toast?.error?.('Could not delete', data?.error ?? 'Try again.')
+        return
+      }
+      const n = selectedIds.size
+      toast?.success?.(`${n} booking${n > 1 ? 's' : ''} deleted`, '')
+      setSelectMode(false)
+      setSelectedIds(new Set())
+      setDeleteConfirm(null)
+      router.refresh()
+    } catch {
+      toast?.error?.('Could not delete', 'Check your connection and try again.')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  async function handleClearHistory() {
+    setDeleting(true)
+    try {
+      const res = await fetch('/api/bookings/history/clear', { method: 'POST' })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        toast?.error?.('Could not clear history', data?.error ?? 'Try again.')
+        return
+      }
+      toast?.success?.('History cleared', '')
+      setSelectMode(false)
+      setSelectedIds(new Set())
+      setDeleteConfirm(null)
+      router.refresh()
+    } catch {
+      toast?.error?.('Could not clear history', 'Check your connection and try again.')
+    } finally {
+      setDeleting(false)
+    }
+  }
 
   const buildUrl = useCallback((updates) => {
     const params = new URLSearchParams(searchParams.toString())
@@ -252,6 +344,39 @@ export default function AdminHistoryClient({
               <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" strokeDasharray="25 10" />
             </svg>
           )}
+          <div className="ml-auto flex items-center gap-2">
+            {selectMode && selectedIds.size > 0 && (
+              <button
+                onClick={() => setDeleteConfirm('selected')}
+                className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-lg"
+                style={{ color: 'var(--danger)', background: 'var(--danger-bg)' }}
+              >
+                <Trash2 size={12} /> Delete {selectedIds.size} selected
+              </button>
+            )}
+            {bookings.length > 0 && (
+              <button
+                onClick={toggleSelectMode}
+                className="text-xs font-bold uppercase tracking-wide px-2.5 py-1.5 rounded-lg"
+                style={{
+                  color: selectMode ? '#fff' : 'var(--accent)',
+                  background: selectMode ? 'var(--accent)' : 'var(--accent-dim)',
+                }}
+              >
+                {selectMode ? 'Cancel' : 'Select'}
+              </button>
+            )}
+            {total > 0 && (
+              <button
+                onClick={() => setDeleteConfirm('all')}
+                className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-border"
+                style={{ color: 'var(--fg-3)' }}
+                title="Permanently hide every booking from this history view"
+              >
+                <Trash2 size={12} /> Clear History
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Empty state */}
@@ -275,8 +400,33 @@ export default function AdminHistoryClient({
             {bookings.map((b) => {
               const pickup  = b.stops?.find((s) => s.type === 'pickup')
               const dropoff = b.stops?.find((s) => s.type === 'dropoff')
+              const isSelected = selectedIds.has(b._id)
               return (
-                <div key={b._id} className="flex items-start gap-4 px-5 py-4 transition-all">
+                <div
+                  key={b._id}
+                  className="flex items-start gap-4 px-5 py-4 transition-all"
+                  style={{ background: isSelected ? 'var(--accent-dim)' : 'transparent' }}
+                >
+                  {selectMode && (
+                    <button
+                      type="button"
+                      onClick={() => toggleSelected(b._id)}
+                      aria-pressed={isSelected}
+                      aria-label={isSelected ? 'Deselect booking' : 'Select booking'}
+                      className="shrink-0 mt-1 w-5 h-5 rounded-md flex items-center justify-center border-2 transition-colors"
+                      style={{
+                        backgroundColor: isSelected ? 'var(--accent)' : '#fff',
+                        borderColor: isSelected ? 'var(--accent)' : '#d1d5db',
+                        color: '#fff',
+                      }}
+                    >
+                      {isSelected && (
+                        <svg width="11" height="11" viewBox="0 0 14 14" fill="none">
+                          <path d="M3 7l3 3 5-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      )}
+                    </button>
+                  )}
 
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap mb-1.5">
@@ -327,13 +477,15 @@ export default function AdminHistoryClient({
                     )}
                   </div>
 
-                  <Link
-                    href={`/admin/bookings/${b._id}`}
-                    className="shrink-0 mt-1 p-1.5 rounded-lg transition-colors hover:bg-(--surface-2)"
-                    style={{ color: 'var(--fg-3)' }}
-                  >
-                    <ChevronRight size={14} />
-                  </Link>
+                  {!selectMode && (
+                    <Link
+                      href={`/admin/bookings/${b._id}`}
+                      className="shrink-0 mt-1 p-1.5 rounded-lg transition-colors hover:bg-(--surface-2)"
+                      style={{ color: 'var(--fg-3)' }}
+                    >
+                      <ChevronRight size={14} />
+                    </Link>
+                  )}
                 </div>
               )
             })}
@@ -342,6 +494,38 @@ export default function AdminHistoryClient({
 
         <Pagination page={initialPage} total={total} pageSize={pageSize} onNavigate={onPageChange} />
       </div>
+
+      {/* Delete-selected / Clear-history confirm modal */}
+      {deleteConfirm && (
+        <Modal
+          title={deleteConfirm === 'all' ? 'Clear History?' : 'Delete Selected?'}
+          onClose={() => !deleting && setDeleteConfirm(null)}
+        >
+          <p className="text-sm mb-6" style={{ color: 'var(--fg-2)' }}>
+            {deleteConfirm === 'all'
+              ? <>This will hide <strong>every booking</strong> from this History page, regardless of the current filters — not just the ones shown here. The bookings are not deleted from the system; they simply won&apos;t appear in this list anymore. This action cannot be undone.</>
+              : <>This will hide <strong>{selectedIds.size}</strong> selected booking{selectedIds.size > 1 ? 's' : ''} from this History page. The bookings are not deleted from the system; they simply won&apos;t appear in this list anymore. This action cannot be undone.</>}
+          </p>
+          <div className="flex gap-3 justify-end">
+            <button
+              onClick={() => setDeleteConfirm(null)}
+              disabled={deleting}
+              className="px-4 py-2 rounded-xl text-sm font-semibold border border-border disabled:opacity-50"
+              style={{ color: 'var(--fg-2)' }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={deleteConfirm === 'all' ? handleClearHistory : handleDeleteSelected}
+              disabled={deleting}
+              className="px-4 py-2 rounded-xl text-sm font-bold transition-all disabled:opacity-60"
+              style={{ background: 'var(--danger)', color: 'white' }}
+            >
+              {deleting ? 'Working…' : deleteConfirm === 'all' ? 'Clear History' : 'Delete Selected'}
+            </button>
+          </div>
+        </Modal>
+      )}
     </div>
   )
 }
