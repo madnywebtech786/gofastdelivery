@@ -31,9 +31,17 @@ export async function pushRouteUpdate(driverId, routeData) {
 }
 
 /**
- * Trigger a booking status change event.
+ * Trigger a booking update event on the public/private booking channel.
+ * Two independent uses share this one event, both consumed by
+ * BookingStatusListener (src/components/realtime/BookingStatusListener.js):
+ *   - Real status transitions (stop-complete, stop-failed, bulk-assign, etc.)
+ *     pass { status, updatedAt }.
+ *   - ETA-only pushes (reoptimizeRoute → syncBookingEtas, on an actual
+ *     reroute — never per GPS tick) pass { pickupEta, dropoffEta } and
+ *     deliberately OMIT `status` so listeners don't mistake a route
+ *     recalculation for a real status change.
  * @param {string} bookingId
- * @param {{ status: string, updatedAt: string, etaSeconds: number|null }} data
+ * @param {{ status?: string, updatedAt?: string, pickupEta?: string|null, dropoffEta?: string|null }} data
  */
 export async function pushBookingStatusChange(bookingId, data) {
   await pusherServer.trigger(`private-booking-${bookingId}`, 'booking:status_changed', data)

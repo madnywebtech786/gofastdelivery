@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import BookingStatusListener from '@/components/realtime/BookingStatusListener'
 import OnlineIndicator from '@/components/ui/OnlineIndicator'
-import { User, Phone } from 'lucide-react'
+import { User, Phone, MapPin } from 'lucide-react'
 
 /* ── Brand-aligned status palette ───────────────────────────────────── */
 const STATUS_STYLES = {
@@ -59,22 +59,54 @@ function formatDate(dateStr) {
   })
 }
 
+// ETA shown as a clock time ("Arriving ~3:45 PM") — this is the same number
+// the driver's own app is using (see reoptimizeRoute/syncBookingEtas in
+// src/lib/routing/reoptimize.js), refreshed only when the driver's route is
+// actually recomputed (reroute/off-route/merge/endpoint-confirm), not on
+// every GPS tick, so it can be a little behind reality between reroutes —
+// hence "~" rather than a false-precision countdown.
+function formatEta(dateStr) {
+  if (!dateStr) return ''
+  return new Date(dateStr).toLocaleTimeString('en-CA', {
+    timeZone: 'America/Edmonton',
+    hour: '2-digit', minute: '2-digit',
+  })
+}
+
 /* Compact step label */
 const STEP_LABELS = ['Placed', 'Pickup', 'Picked Up', 'En Route', 'Delivered']
 
 export default function TrackingClient({ initialBooking }) {
   const [booking, setBooking] = useState(initialBooking)
 
-  function handleStatusChange({ status, updatedAt }) {
-    setBooking(prev => ({
-      ...prev,
-      status,
-      updatedAt,
-      statusHistory: [
-        ...(prev.statusHistory ?? []),
-        { status, timestamp: updatedAt, note: 'Live update' },
-      ],
-    }))
+  function handleStatusChange({ status, updatedAt, pickupEta, dropoffEta }) {
+    setBooking(prev => {
+      // ETA-only pushes (a reroute recomputed this booking's ETA — see
+      // reoptimizeRoute/syncBookingEtas) omit `status` entirely so they never
+      // get mistaken for a real transition here. Merge the ETA fields onto
+      // the matching stop without touching status/statusHistory.
+      if (status == null) {
+        if (pickupEta == null && dropoffEta == null) return prev
+        return {
+          ...prev,
+          stops: (prev.stops ?? []).map((s) => {
+            if (s.type === 'pickup'  && pickupEta  !== undefined) return { ...s, estimatedArrivalAt: pickupEta }
+            if (s.type === 'dropoff' && dropoffEta !== undefined) return { ...s, estimatedArrivalAt: dropoffEta }
+            return s
+          }),
+        }
+      }
+
+      return {
+        ...prev,
+        status,
+        updatedAt,
+        statusHistory: [
+          ...(prev.statusHistory ?? []),
+          { status, timestamp: updatedAt, note: 'Live update' },
+        ],
+      }
+    })
   }
 
   const status      = booking.status
@@ -298,6 +330,67 @@ export default function TrackingClient({ initialBooking }) {
           </div>
         </div>
       )}
+
+      {/* ── Route / Stops ── */}
+      <div
+        className="rounded-2xl overflow-hidden"
+        style={{ background: '#ffffff', border: '1px solid rgba(0,0,0,0.07)', boxShadow: '0 4px 24px rgba(0,0,0,0.06)' }}
+      >
+        <div className="p-5 sm:p-6">
+          <p className="text-[10px] font-black tracking-[0.18em] uppercase mb-5" style={{ color: 'rgba(0,0,0,0.35)' }}>
+            Route
+          </p>
+          <ol className="space-y-0">
+            {(booking.stops ?? []).map((stop, i) => {
+              const isPickup = stop.type === 'pickup'
+              const isLast   = i === (booking.stops?.length ?? 0) - 1
+              // Only a not-yet-completed stop has a meaningful ETA — once
+              // completedAt is set the stop already happened.
+              const showEta  = !stop.completedAt && stop.estimatedArrivalAt
+              return (
+                <li key={i} className="flex gap-4 relative">
+                  {!isLast && (
+                    <div className="absolute w-0.5 z-0"
+                      style={{
+                        left: '15px', top: '32px', bottom: '-8px',
+                        background: isPickup
+                          ? 'linear-gradient(180deg, var(--accent), rgba(229,28,28,0.3))'
+                          : 'var(--border)',
+                      }} />
+                  )}
+                  <div className={`shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-black mt-0.5 z-10 ${isPickup ? 'bg-accent shadow-[0_2px_10px_var(--accent-glow)]' : 'bg-danger shadow-[0_2px_10px_var(--danger-bg)]'}`}>
+                    {isPickup ? 'P' : 'D'}
+                  </div>
+                  <div className="flex-1 min-w-0 pb-6">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="text-sm font-bold text-foreground">
+                        {isPickup ? 'Pickup' : 'Drop-off'}
+                      </p>
+                      {stop.completedAt && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-accent/10 text-accent border border-accent/15">
+                          ✓ {formatDate(stop.completedAt)}
+                        </span>
+                      )}
+                      {showEta && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: 'rgba(255,88,13,0.1)', color: '#c43d00' }}>
+                          ETA ~{formatEta(stop.estimatedArrivalAt)}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm mt-0.5 flex items-start gap-1.5 text-muted">
+                      <MapPin size={12} strokeWidth={2} className={`mt-0.5 shrink-0 ${isPickup ? 'text-accent' : 'text-danger'}`} />
+                      {stop.address}
+                    </p>
+                    {stop.contactName && (
+                      <p className="text-xs mt-0.5 text-muted">{stop.contactName}</p>
+                    )}
+                  </div>
+                </li>
+              )
+            })}
+          </ol>
+        </div>
+      </div>
     </>
   )
 }

@@ -5,7 +5,13 @@ import { usePusher } from './PusherProvider'
 
 /**
  * BookingStatusListener — subscribes to private-booking-{bookingId} channel.
- * Calls onStatusChange({ status, updatedAt, etaSeconds }) on updates.
+ * Calls onStatusChange(data) on updates — two independent payload shapes
+ * share this one event (see pushBookingStatusChange in src/lib/pusher.js):
+ *   - Real status transitions: { status, updatedAt }
+ *   - ETA-only pushes (a reroute recomputed this booking's ETA, status
+ *     unchanged): { pickupEta, dropoffEta }, no `status` key present.
+ * Consumers must check `data.status != null` before treating an update as a
+ * real transition (e.g. before appending a statusHistory entry).
  * Used by both customer and receiver pages.
  */
 export default function BookingStatusListener({ bookingId, onStatusChange }) {

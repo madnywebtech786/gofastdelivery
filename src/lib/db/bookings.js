@@ -295,6 +295,40 @@ export async function updateBookingStatus(id, status, { note = '', driverId, cle
 }
 
 /**
+ * Stamp a fresh ETA onto one or both of a booking's stops (pickup/dropoff),
+ * called from reoptimizeRoute() every time it recomputes route.optimizedStops
+ * — this is what lets the public tracking page and customer dashboard show
+ * the SAME live ETA the driver's app is using, instead of nothing. Only
+ * updates the stop(s) actually passed in — a reroute mid-shift may only
+ * affect the dropoff leg (pickup already completed), so pickupEta/dropoffEta
+ * are independently optional.
+ *
+ * Uses positional array filters (same technique as markBookingItems above) so
+ * this is a targeted two-field update, not a full booking rewrite.
+ */
+export async function updateStopEtas(bookingId, { pickupEta, dropoffEta } = {}) {
+  if (!pickupEta && !dropoffEta) return { matchedCount: 0, modifiedCount: 0 }
+  const db = await getDb()
+
+  const setFields = {}
+  const arrayFilters = []
+  if (pickupEta) {
+    setFields['stops.$[pickup].estimatedArrivalAt'] = pickupEta
+    arrayFilters.push({ 'pickup.type': 'pickup' })
+  }
+  if (dropoffEta) {
+    setFields['stops.$[dropoff].estimatedArrivalAt'] = dropoffEta
+    arrayFilters.push({ 'dropoff.type': 'dropoff' })
+  }
+
+  return db.collection('bookings').updateOne(
+    { _id: new ObjectId(bookingId) },
+    { $set: setFields },
+    { arrayFilters }
+  )
+}
+
+/**
  * Assign a driver to a booking for either pickup or delivery.
  * newStatus must be 'assigned_pickup' or 'assigned_delivery'.
  * allowedFromStatus is the status the booking must currently be in.

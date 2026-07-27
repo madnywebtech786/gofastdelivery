@@ -4,7 +4,7 @@ import { findBookingByToken } from '@/lib/db/bookings'
 import { checkRateLimit } from '@/lib/redis'
 import Image from 'next/image'
 import Link from 'next/link'
-import { ArrowRight, MapPin, Clock, Package } from 'lucide-react'
+import { ArrowRight, Clock, Package } from 'lucide-react'
 import TrackingClient from './TrackingClient'
 
 export const metadata = { title: 'Track Your Delivery — GoFastDelivery' }
@@ -89,57 +89,8 @@ export default async function TrackingPage({ params }) {
           </div>
         </div>
 
-        {/* Live status + stepper (client) */}
+        {/* Live status + stepper + route/stops (client — needs live ETA updates) */}
         <TrackingClient initialBooking={b} />
-
-        {/* Route / Stops */}
-        <div className="rounded-2xl overflow-hidden bg-surface border border-border shadow-sm">
-          <div className="h-[3px] bg-[linear-gradient(90deg,var(--accent),var(--accent-hover))]" />
-          <div className="p-5 sm:p-6">
-            <p className="text-[10px] font-black tracking-[0.18em] uppercase mb-5 text-muted">Route</p>
-            <ol className="space-y-0">
-              {b.stops?.map((stop, i) => {
-                const isPickup = stop.type === 'pickup'
-                const isLast   = i === (b.stops?.length ?? 0) - 1
-                return (
-                  <li key={i} className="flex gap-4 relative">
-                    {!isLast && (
-                      <div className="absolute w-0.5 z-0"
-                        style={{
-                          left: '15px', top: '32px', bottom: '-8px',
-                          background: isPickup
-                            ? 'linear-gradient(180deg, var(--accent), rgba(229,28,28,0.3))'
-                            : 'var(--border)',
-                        }} />
-                    )}
-                    <div className={`shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-black mt-0.5 z-10 ${isPickup ? 'bg-accent shadow-[0_2px_10px_var(--accent-glow)]' : 'bg-danger shadow-[0_2px_10px_var(--danger-bg)]'}`}>
-                      {isPickup ? 'P' : 'D'}
-                    </div>
-                    <div className="flex-1 min-w-0 pb-6">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className="text-sm font-bold text-foreground">
-                          {isPickup ? 'Pickup' : 'Drop-off'}
-                        </p>
-                        {stop.completedAt && (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-accent/10 text-accent border border-accent/15">
-                            ✓ {formatDate(stop.completedAt)}
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-sm mt-0.5 flex items-start gap-1.5 text-muted">
-                        <MapPin size={12} strokeWidth={2} className={`mt-0.5 shrink-0 ${isPickup ? 'text-accent' : 'text-danger'}`} />
-                        {stop.address}
-                      </p>
-                      {stop.contactName && (
-                        <p className="text-xs mt-0.5 text-muted">{stop.contactName}</p>
-                      )}
-                    </div>
-                  </li>
-                )
-              })}
-            </ol>
-          </div>
-        </div>
 
         {/* Footer */}
         <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 pb-6">

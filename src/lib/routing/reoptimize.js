@@ -1,5 +1,6 @@
 import { findActiveRoute, updateRoute } from '@/lib/db/drivers'
-import { pushRouteUpdate } from '@/lib/pusher'
+import { updateStopEtas } from '@/lib/db/bookings'
+import { pushRouteUpdate, pushBookingStatusChange } from '@/lib/pusher'
 import redis from '@/lib/redis'
 import { hydrateRouteItems } from './hydrate'
 
@@ -425,6 +426,51 @@ async function getDirectionsPolyline(coords) {
 }
 
 /**
+ * Push each affected booking's freshly-recomputed pickup/dropoff ETA onto the
+ * booking doc + its public Pusher channel. Called once per reoptimizeRoute()
+ * run (i.e. on an actual reroute), never per GPS tick.
+ *
+ * `stops` is newOptimizedStops — may contain multiple stops per booking
+ * (pickup_and_dropoff) or stops from many different bookings interleaved.
+ * Groups by bookingId first so each booking gets exactly one DB write + one
+ * Pusher event even when both its stops changed in the same reroute.
+ */
+async function syncBookingEtas(stops) {
+  const etaByBooking = new Map() // bookingId -> { pickupEta?, dropoffEta? }
+
+  for (const s of stops) {
+    if (!s.bookingId || !s.estimatedArrivalAt || s.completedAt) continue
+    if (s.stopType !== 'pickup' && s.stopType !== 'dropoff') continue // skip endpoint
+    const key = String(s.bookingId)
+    const entry = etaByBooking.get(key) ?? {}
+    if (s.stopType === 'pickup') entry.pickupEta = s.estimatedArrivalAt
+    else entry.dropoffEta = s.estimatedArrivalAt
+    etaByBooking.set(key, entry)
+  }
+
+  if (etaByBooking.size === 0) return
+
+  await Promise.all(
+    [...etaByBooking.entries()].map(async ([bookingId, eta]) => {
+      const result = await updateStopEtas(bookingId, eta)
+      // matchedCount 0 means the booking no longer exists / was reassigned —
+      // not worth pushing a Pusher event for a booking we didn't actually update.
+      if (!result?.matchedCount) return
+      try {
+        // status/updatedAt are NOT re-sent here — this push is ETA-only and
+        // must not look like a real status transition to listeners (see
+        // TrackingClient.js: it only appends a statusHistory entry when
+        // status is present AND different from the booking's current one).
+        await pushBookingStatusChange(bookingId, {
+          pickupEta:  eta.pickupEta  ?? null,
+          dropoffEta: eta.dropoffEta ?? null,
+        })
+      } catch { /* non-fatal — tracking page will still show the old ETA until next reroute */ }
+    })
+  )
+}
+
+/**
  * Re-optimize the driver's active route given their current GPS.
  *
  * Completed stops stay frozen at the front of optimizedStops.
@@ -568,6 +614,16 @@ export async function reoptimizeRoute({ driverId, currentLng, currentLat, endPoi
     totalDistanceMeters:  distanceMeters,
     totalDurationSeconds: durationSeconds,
     endPoint:             endPoint ?? null,
+  })
+
+  // Sync the freshly-computed ETA onto each affected booking so the public
+  // tracking page / customer dashboard show the SAME number the driver's app
+  // is using — only on a real reroute (this function), never on every GPS
+  // tick. Fire-and-forget in parallel per booking: a Mongo/Pusher hiccup here
+  // must never block or fail the driver-facing route update above, which has
+  // already succeeded by this point.
+  syncBookingEtas(newOptimizedStops).catch((err) => {
+    console.warn('[reoptimize] booking ETA sync failed (non-fatal):', err.message)
   })
 
   const updatedRoute = {
