@@ -1,4 +1,5 @@
 import { Montserrat, JetBrains_Mono } from 'next/font/google'
+import { GoogleAnalytics } from '@next/third-parties/google'
 import './globals.css'
 import { ToastProvider } from '@/components/ui/Toast'
 
@@ -39,6 +40,7 @@ export default function RootLayout({ children }) {
           {children}
         </ToastProvider>
       </body>
+      <GoogleAnalytics gaId="G-5V6JH8YH0N" />
     </html>
   )
 }
