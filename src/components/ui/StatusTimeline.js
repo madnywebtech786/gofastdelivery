@@ -1,12 +1,9 @@
 import Badge from './Badge'
 import { CheckCircle2, Circle } from 'lucide-react'
+import { formatDateTime } from '@/lib/dateFormat'
 
 function formatDate(dateStr) {
-  if (!dateStr) return ''
-  return new Date(dateStr).toLocaleString('en-PK', {
-    month: 'short', day: 'numeric',
-    hour: '2-digit', minute: '2-digit',
-  })
+  return dateStr ? formatDateTime(dateStr, { fallback: '', includeYear: false }) : ''
 }
 
 export default function StatusTimeline({ statusHistory = [] }) {

@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation'
 import { headers } from 'next/headers'
 import { findBookingByToken } from '@/lib/db/bookings'
 import { checkRateLimit } from '@/lib/redis'
+import { formatDateTime } from '@/lib/dateFormat'
 import Image from 'next/image'
 import Link from 'next/link'
 import { ArrowRight, Clock, Package } from 'lucide-react'
@@ -10,12 +11,7 @@ import TrackingClient from './TrackingClient'
 export const metadata = { title: 'Track Your Delivery — GoFastDelivery' }
 
 function formatDate(dateStr) {
-  if (!dateStr) return ''
-  return new Date(dateStr).toLocaleString('en-CA', {
-    timeZone: 'America/Edmonton',
-    month: 'short', day: 'numeric',
-    hour: '2-digit', minute: '2-digit',
-  })
+  return formatDateTime(dateStr, { fallback: '', includeYear: false })
 }
 
 export default async function TrackingPage({ params }) {

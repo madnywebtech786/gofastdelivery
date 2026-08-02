@@ -1,15 +1,10 @@
 'use client'
 
+import { formatDateLong as formatDate } from '@/lib/dateFormat'
+
 const BRAND_GREEN      = '#1bb908'
 const BRAND_GREEN_DARK = '#15960a'
 const BRAND_DARK       = '#071407'
-
-function formatDate(val) {
-  if (!val) return '—'
-  return new Date(val).toLocaleDateString('en-CA', {
-    year: 'numeric', month: 'long', day: 'numeric',
-  })
-}
 
 function calcSubtotal(items) {
   return items.reduce((sum, item) => sum + (item.rate ?? 0) * (item.quantity ?? 0), 0)
@@ -314,7 +309,7 @@ export default function InvoicePDF({ invoice }) {
           <span style={{ fontWeight: 700, color: '#475569' }}>GoFastDelivery</span> · Calgary, AB · Same-day courier services
         </div>
         <div style={{ fontSize: '11px', color: '#94a3b8' }}>
-          gofastdelivery2024@gmail.com · hello@gofastdelivery.ca
+          gofastdelivery2024@gmail.com · info@gfdelivery.ca
         </div>
       </div>
     </div>

@@ -9,6 +9,7 @@ import Select from '@/components/ui/Select'
 import DatePicker from '@/components/ui/DatePicker'
 import { useToast } from '@/components/ui/Toast'
 import { FILTER_QUERY_MAP } from '@/lib/bookingStatusFilters'
+import { formatPickupTime as formatPickupTimeShared } from '@/lib/dateFormat'
 import {
   MapPin, Clock, ChevronRight, UserCheck, AlertCircle,
   PackageCheck, CheckCircle2, Search, X,
@@ -137,15 +138,11 @@ function formatTimeAgo(d) {
   return `${Math.floor(h / 24)}d ago`
 }
 
-// pickupTime is a raw "YYYY-MM-DDTHH:mm" local string (see BookingForm.js) —
-// new Date() parses it as local time directly, no timezone conversion needed.
+// pickupTime is a raw "YYYY-MM-DDTHH:mm" wall-clock string, already Calgary
+// local time as typed by the customer — see src/lib/dateFormat.js header for
+// why this can't just be routed through `new Date(pickupTime)`.
 function formatPickupTime(pickupTime) {
-  if (!pickupTime) return null
-  const d = new Date(pickupTime)
-  if (isNaN(d.getTime())) return null
-  const date = d.toLocaleDateString('en-CA', { month: 'short', day: 'numeric' })
-  const time = d.toLocaleTimeString('en-CA', { hour: 'numeric', minute: '2-digit' })
-  return `${date}, ${time}`
+  return formatPickupTimeShared(pickupTime)
 }
 
 export default function AdminBookingsClient({ initialStatusFilter, initialPickupDate, initialPage, bookings, total, pageSize }) {

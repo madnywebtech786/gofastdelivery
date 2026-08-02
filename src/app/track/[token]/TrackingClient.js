@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import BookingStatusListener from '@/components/realtime/BookingStatusListener'
 import OnlineIndicator from '@/components/ui/OnlineIndicator'
+import { formatDateTime, formatTime } from '@/lib/dateFormat'
 import { User, Phone, MapPin } from 'lucide-react'
 
 /* ── Brand-aligned status palette ───────────────────────────────────── */
@@ -51,12 +52,7 @@ const STATUS_ICONS = {
 }
 
 function formatDate(dateStr) {
-  if (!dateStr) return ''
-  return new Date(dateStr).toLocaleString('en-CA', {
-    timeZone: 'America/Edmonton',
-    month: 'short', day: 'numeric',
-    hour: '2-digit', minute: '2-digit',
-  })
+  return formatDateTime(dateStr, { fallback: '', includeYear: false })
 }
 
 // ETA shown as a clock time ("Arriving ~3:45 PM") — this is the same number
@@ -66,11 +62,7 @@ function formatDate(dateStr) {
 // every GPS tick, so it can be a little behind reality between reroutes —
 // hence "~" rather than a false-precision countdown.
 function formatEta(dateStr) {
-  if (!dateStr) return ''
-  return new Date(dateStr).toLocaleTimeString('en-CA', {
-    timeZone: 'America/Edmonton',
-    hour: '2-digit', minute: '2-digit',
-  })
+  return formatTime(dateStr, { fallback: '' })
 }
 
 /* Compact step label */

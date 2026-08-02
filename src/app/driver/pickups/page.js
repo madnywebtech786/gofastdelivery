@@ -3,11 +3,11 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Spinner from '@/components/ui/Spinner'
+import { formatTime as formatTimeShared } from '@/lib/dateFormat'
 import { CheckCircle2, Navigation, RefreshCw, PackageCheck, User, Phone, FileText } from 'lucide-react'
 
 function formatTime(iso) {
-  if (!iso) return null
-  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  return formatTimeShared(iso, { fallback: null })
 }
 
 const STOP_META = {

@@ -11,14 +11,10 @@ import Link from 'next/link'
 import Select from '@/components/ui/Select'
 import ResetPasswordButton from './ResetPasswordButton'
 import EditDriverButton from './EditDriverButton'
+import { formatDateTime as formatDate } from '@/lib/dateFormat'
 
 const BRAND       = '#1bb908'
 const MONTHS      = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
-
-function formatDate(d) {
-  if (!d) return '—'
-  return new Date(d).toLocaleString('en-CA', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })
-}
 
 // ── Stat card ──────────────────────────────────────────────────────────────────
 function StatCard({ icon: Icon, label, value, sub, accent = BRAND }) {
@@ -41,8 +37,11 @@ function StatCard({ icon: Icon, label, value, sub, accent = BRAND }) {
 }
 
 // ── Bar chart ──────────────────────────────────────────────────────────────────
-function DriverBars({ data, height = 120 }) {
-  const maxCount = Math.max(...data.map(d => d.count), 1)
+// Generic value-per-bucket bar chart, used by both the Deliveries chart
+// (data[].count) and the Miles chart (data[].value) via the `getValue`/
+// `tooltip` props — same visual, different metric.
+function DriverBars({ data, height = 120, color = BRAND, getValue = (d) => d.count, tooltip = (v) => String(v) }) {
+  const maxVal = Math.max(...data.map(getValue), 1)
   // Bar area gets a fixed pixel height of its own (separate from the label
   // row below) so each bar's `height: ${pct}%` resolves against a real,
   // definite box — a flex child with no explicit height (the old layout)
@@ -52,27 +51,28 @@ function DriverBars({ data, height = 120 }) {
   return (
     <div className="flex items-end gap-0.5">
       {data.map((d, i) => {
-        const pct = d.count > 0 ? Math.max((d.count / maxCount) * 100, 6) : 0
+        const val = getValue(d)
+        const pct = val > 0 ? Math.max((val / maxVal) * 100, 6) : 0
         return (
           <div key={i} className="flex-1 flex flex-col items-center gap-1 group relative min-w-0">
             <div className="w-full flex flex-col justify-end" style={{ height: barAreaHeight }}>
-              {d.count > 0 && (
+              {val > 0 && (
                 <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 z-10 pointer-events-none
                   opacity-0 group-hover:opacity-100 transition-opacity duration-150">
                   <div className="px-2.5 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap shadow-xl text-center"
                     style={{ background: 'var(--fg)', color: 'white' }}>
-                    {d.count} {d.count === 1 ? 'delivery' : 'deliveries'}
+                    {tooltip(val)}
                   </div>
                 </div>
               )}
               <div className="w-full rounded-t-sm transition-all duration-500"
                 style={{
                   height: `${pct}%`,
-                  minHeight: d.count > 0 ? '4px' : '0',
-                  background: d.count > 0
-                    ? `linear-gradient(to top, ${BRAND}, ${BRAND}cc)`
+                  minHeight: val > 0 ? '4px' : '0',
+                  background: val > 0
+                    ? `linear-gradient(to top, ${color}, ${color}cc)`
                     : 'var(--border)',
-                  opacity: d.count > 0 ? 1 : 0.3,
+                  opacity: val > 0 ? 1 : 0.3,
                 }} />
             </div>
             <span className="text-[9px] font-semibold truncate w-full text-center"
@@ -150,7 +150,69 @@ function DriverChart({ stats, selectedYear, selectedMonth, onYearChange, onMonth
       </div>
 
       <p className="text-xs font-semibold mb-4 capitalize" style={{ color: 'var(--fg-3)' }}>{chartTitle}</p>
-      <DriverBars data={chartData} height={130} />
+      <DriverBars
+        data={chartData}
+        height={130}
+        tooltip={(v) => `${v} ${v === 1 ? 'delivery' : 'deliveries'}`}
+      />
+    </div>
+  )
+}
+
+// ── Miles chart section — day/week/month/year range picker, matching the
+// D/W/M/Y granularity that used to live (badly) on the stat card. Fetches
+// its own data server-side via the ?distanceRange= URL param, same
+// navigate-on-change pattern as the Deliveries chart's year/month pickers.
+const DISTANCE_RANGE_OPTIONS = [
+  { value: 'day',   label: 'Today' },
+  { value: 'week',  label: 'This Week' },
+  { value: 'month', label: 'This Month' },
+  { value: 'year',  label: 'This Year' },
+]
+const DISTANCE_RANGE_UNIT_LABEL = {
+  day: 'today',
+  week: 'this week',
+  month: 'this month',
+  year: 'this year',
+}
+const MILES_COLOR = '#2563eb'
+
+function DriverMilesChart({ stats, distanceRange, onRangeChange }) {
+  const series = stats.distanceSeries ?? []
+  const chartData = series.map((s) => ({ label: s.label, miles: s.meters * 0.000621371 }))
+  const totalMiles = (stats.distanceRangeMeters ?? 0) * 0.000621371
+  const rangeLabel = DISTANCE_RANGE_OPTIONS.find((o) => o.value === distanceRange)?.label ?? 'This Month'
+
+  return (
+    <div className="rounded-2xl border border-border bg-white p-5">
+      {/* Controls */}
+      <div className="flex flex-wrap items-center gap-3 mb-5">
+        <div className="shrink-0" style={{ width: '150px' }}>
+          <Select
+            value={distanceRange}
+            onChange={onRangeChange}
+            options={DISTANCE_RANGE_OPTIONS}
+          />
+        </div>
+
+        <div className="ml-auto text-right">
+          <span className="text-2xl font-black" style={{ color: MILES_COLOR }}>{totalMiles.toFixed(1)}</span>
+          <span className="text-xs ml-1.5 font-semibold" style={{ color: 'var(--fg-3)' }}>
+            mi {DISTANCE_RANGE_UNIT_LABEL[distanceRange] ?? 'this month'}
+          </span>
+        </div>
+      </div>
+
+      <p className="text-xs font-semibold mb-4" style={{ color: 'var(--fg-3)' }}>
+        {rangeLabel} — miles driven {distanceRange === 'day' ? 'per hour' : distanceRange === 'year' ? 'per month' : 'per day'}
+      </p>
+      <DriverBars
+        data={chartData}
+        height={130}
+        color={MILES_COLOR}
+        getValue={(d) => d.miles}
+        tooltip={(v) => `${v.toFixed(1)} mi`}
+      />
     </div>
   )
 }
@@ -177,6 +239,7 @@ export default function DriverDetailClient({ driver: d, route: r, stats, booking
 
   const [selectedYear, setSelectedYear]   = useState(stats?.year  ?? new Date().getFullYear())
   const [selectedMonth, setSelectedMonth] = useState(stats?.month ?? new Date().getMonth() + 1)
+  const [distanceRange, setDistanceRange] = useState(stats?.distanceRange ?? 'month')
 
   const buildUrl = useCallback((updates) => {
     const params = new URLSearchParams(searchParams.toString())
@@ -198,11 +261,15 @@ export default function DriverDetailClient({ driver: d, route: r, stats, booking
     setSelectedMonth(mo)
     navigate({ month: mo })
   }
+  function handleDistanceRangeChange(range) {
+    setDistanceRange(range)
+    navigate({ distanceRange: range })
+  }
 
   const [page, setPage] = useState(1)
 
   // 1 metre = 0.000621371 miles
-  const milesDriven = ((stats?.totalDistanceDrivenMeters ?? 0) * 0.000621371).toFixed(1)
+  const milesAllTime = ((stats?.totalDistanceDrivenMeters ?? 0) * 0.000621371).toFixed(1)
   const isOnDuty   = d.driverProfile?.isOnDuty ?? false
   const totalPages = Math.max(1, Math.ceil(bookings.length / PAGE_SIZE))
   const pageItems  = bookings.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
@@ -250,7 +317,7 @@ export default function DriverDetailClient({ driver: d, route: r, stats, booking
         <StatCard
           icon={Truck}
           label="Miles Driven"
-          value={`${milesDriven}`}
+          value={`${milesAllTime} mi`}
           sub="total distance"
           accent="#2563eb"
         />
@@ -270,7 +337,7 @@ export default function DriverDetailClient({ driver: d, route: r, stats, booking
         />
       </div>
 
-      {/* ── Chart ── */}
+      {/* ── Deliveries chart ── */}
       <div className="anim-fade-up s2">
         <DriverChart
           stats={stats}
@@ -278,6 +345,15 @@ export default function DriverDetailClient({ driver: d, route: r, stats, booking
           selectedMonth={selectedMonth}
           onYearChange={handleYearChange}
           onMonthChange={handleMonthChange}
+        />
+      </div>
+
+      {/* ── Miles chart ── */}
+      <div className="anim-fade-up s2">
+        <DriverMilesChart
+          stats={stats}
+          distanceRange={distanceRange}
+          onRangeChange={handleDistanceRangeChange}
         />
       </div>
 

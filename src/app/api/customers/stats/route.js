@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { requireCustomer } from '@/lib/dal'
 import { getDb } from '@/lib/db/client'
 import { ObjectId } from 'mongodb'
+import { CALGARY_TZ, calgaryDateKey, formatWeekdayShort } from '@/lib/dateFormat'
 
 export async function GET() {
   try {
@@ -28,13 +29,14 @@ export async function GET() {
       db.collection('bookings').countDocuments({ customerId: cid, status: { $in: ['assigned_pickup', 'picked_up', 'assigned_delivery'] } }),
       db.collection('bookings').countDocuments({ customerId: cid, status: 'delivered' }),
       db.collection('bookings').countDocuments({ customerId: cid, status: 'cancelled' }),
-      // Last 7 days per-day counts
+      // Last 7 days per-day counts — grouped by Calgary calendar day, not UTC
+      // (Mongo's $dateToString defaults to UTC unless a timezone is given).
       db.collection('bookings').aggregate([
         { $match: { customerId: cid, createdAt: { $gte: weekAgo } } },
         {
           $group: {
             _id: {
-              $dateToString: { format: '%Y-%m-%d', date: '$createdAt' },
+              $dateToString: { format: '%Y-%m-%d', date: '$createdAt', timezone: CALGARY_TZ },
             },
             count: { $sum: 1 },
           },
@@ -48,15 +50,16 @@ export async function GET() {
       ]).toArray(),
     ])
 
-    // Build 7-day chart — fill gaps with 0
+    // Build 7-day chart — fill gaps with 0. Keyed by Calgary calendar day to
+    // match the $dateToString timezone above.
     const chartData = []
     for (let i = 6; i >= 0; i--) {
       const d = new Date(Date.now() - i * 86400000)
-      const key = d.toISOString().slice(0, 10)
+      const key = calgaryDateKey(d)
       const day = recent7.find((r) => r._id === key)
       chartData.push({
         date: key,
-        label: d.toLocaleDateString('en-US', { weekday: 'short' }),
+        label: formatWeekdayShort(d),
         count: day?.count ?? 0,
       })
     }

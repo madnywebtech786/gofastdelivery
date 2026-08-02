@@ -4,8 +4,14 @@ import { useState } from 'react'
 import { Plus, Trash2, ChevronDown, ChevronUp, Loader2 } from 'lucide-react'
 import Select from '@/components/ui/Select'
 import DatePicker from '@/components/ui/DatePicker'
+import { calgaryDateKey } from '@/lib/dateFormat'
 
 const EMPTY_ITEM = { description: '', serviceDate: '', rate: '', quantity: '', details: '' }
+
+// Must match ITEM_DETAILS_MAX_CHARS in src/lib/db/invoices.js — client-side
+// limit shown to the admin as they type; the server independently truncates
+// to the same value as a backstop.
+const ITEM_DETAILS_MAX_CHARS = 20000
 
 const CURRENCY_OPTIONS = [
   { value: 'CAD', label: 'CAD — Canadian Dollar' },
@@ -55,8 +61,8 @@ export default function InvoiceForm({ initial = {}, onSubmit, onCancel, submitti
     companyPhone:   initial.companyPhone   ?? '4038905621',
     companyEmail:   initial.companyEmail   ?? 'gofastdelivery2024@gmail.com',
     invoiceNumber:  initial.invoiceNumber  ?? '',
-    invoiceDate:    initial.invoiceDate    ? new Date(initial.invoiceDate).toISOString().slice(0,10) : new Date().toISOString().slice(0,10),
-    dueDate:        initial.dueDate        ? new Date(initial.dueDate).toISOString().slice(0,10)     : '',
+    invoiceDate:    initial.invoiceDate    ? calgaryDateKey(initial.invoiceDate) : calgaryDateKey(),
+    dueDate:        initial.dueDate        ? calgaryDateKey(initial.dueDate)     : '',
     paymentTerms:   initial.paymentTerms   ?? 'On Receipt',
     currency:       initial.currency       ?? 'CAD',
     status:         initial.status         ?? 'draft',
@@ -278,9 +284,13 @@ export default function InvoiceForm({ initial = {}, onSubmit, onCancel, submitti
                         rows={6}
                         placeholder={"Tuesday, May 19, 2026\n1) Name, Address\n2) Name, Address\n\nWednesday, May 20, 2026\n..."}
                         value={item.details}
-                        onChange={e => setItem(i, 'details', e.target.value)}
+                        onChange={e => setItem(i, 'details', e.target.value.slice(0, ITEM_DETAILS_MAX_CHARS))}
+                        maxLength={ITEM_DETAILS_MAX_CHARS}
                         style={{ resize: 'vertical', fontFamily: 'monospace', fontSize: '12px' }}
                       />
+                      <p className="text-xs mt-1" style={{ color: item.details.length > ITEM_DETAILS_MAX_CHARS * 0.9 ? 'var(--danger)' : 'var(--fg-3)' }}>
+                        {item.details.length.toLocaleString()} / {ITEM_DETAILS_MAX_CHARS.toLocaleString()} characters
+                      </p>
                     </Field>
                   </div>
                 )}

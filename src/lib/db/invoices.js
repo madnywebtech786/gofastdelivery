@@ -34,13 +34,22 @@ export async function createInvoice(data) {
   return { ...doc, _id: result.insertedId }
 }
 
+// details holds a free-form list (e.g. "daily delivery details" — a
+// multi-day breakdown of names/addresses for a recurring-client invoice) that
+// can legitimately run to several thousand characters. 5000 was silently
+// truncating real admin input with no error shown — raised generously since
+// this is admin-only internal content, not user-facing input needing abuse
+// protection, and there's no real technical ceiling below MongoDB's 16MB
+// document limit at these sizes.
+const ITEM_DETAILS_MAX_CHARS = 20000
+
 function normalizeItem(item) {
   return {
     description:  String(item.description  ?? '').trim().slice(0, 1000),
     serviceDate:  item.serviceDate ? String(item.serviceDate).trim().slice(0, 100) : '',
     rate:         typeof item.rate === 'number'     ? item.rate     : 0,
     quantity:     typeof item.quantity === 'number' ? item.quantity : 0,
-    details:      String(item.details ?? '').trim().slice(0, 5000),
+    details:      String(item.details ?? '').trim().slice(0, ITEM_DETAILS_MAX_CHARS),
   }
 }
 

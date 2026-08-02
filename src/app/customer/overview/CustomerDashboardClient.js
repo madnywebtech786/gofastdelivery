@@ -4,13 +4,14 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import Badge from '@/components/ui/Badge'
 import Spinner from '@/components/ui/Spinner'
+import { formatDate as formatDateShared } from '@/lib/dateFormat'
 import {
   Package, Truck, CheckCircle2, XCircle, Clock, TrendingUp,
   ArrowRight, Plus, MapPin, DollarSign, Activity, BarChart3,
 } from 'lucide-react'
 
 function formatDate(d) {
-  return new Date(d).toLocaleDateString('en-PK', { month: 'short', day: 'numeric' })
+  return formatDateShared(d, { fallback: '', includeYear: false })
 }
 
 /* ── Tiny sparkline bar chart ─────────────────────────────────────── */

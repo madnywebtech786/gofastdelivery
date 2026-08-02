@@ -1,5 +1,6 @@
 import nodemailer from 'nodemailer'
 import { buildInvoicePdf } from './invoicePdf'
+import { formatDateTime as formatDate, formatDateLong as formatInvoiceDate } from './dateFormat'
 
 // ── Transport ─────────────────────────────────────────────────────────────────
 
@@ -12,15 +13,6 @@ const transporter = nodemailer.createTransport({
 })
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-function formatDate(dateStr) {
-  if (!dateStr) return '—'
-  return new Date(dateStr).toLocaleString('en-CA', {
-    timeZone: 'America/Edmonton',
-    year: 'numeric', month: 'short', day: 'numeric',
-    hour: '2-digit', minute: '2-digit',
-  })
-}
 
 function esc(str) {
   return String(str ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
@@ -428,11 +420,6 @@ export async function sendPasswordResetOtp({ to, otp, userName }) {
 }
 
 // ── Email: Invoice ────────────────────────────────────────────────────────────
-
-function formatInvoiceDate(val) {
-  if (!val) return '—'
-  return new Date(val).toLocaleDateString('en-CA', { year: 'numeric', month: 'long', day: 'numeric' })
-}
 
 function buildInvoiceEmailHtml(invoice) {
   const items    = invoice.items ?? []

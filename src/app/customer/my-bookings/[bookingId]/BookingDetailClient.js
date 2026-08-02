@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import Badge from '@/components/ui/Badge'
 import StatusTimeline from '@/components/ui/StatusTimeline'
 import { useToast } from '@/components/ui/Toast'
+import { formatDateTime } from '@/lib/dateFormat'
 import {
   ArrowLeft, Clock, MapPin, User, Phone, Link2, CheckCircle2,
   Copy, Trash2, Package, Ruler, ExternalLink, Loader2, Pencil,
@@ -27,10 +28,7 @@ function formatDuration(s) {
 }
 
 function formatDate(d) {
-  return new Date(d).toLocaleDateString('en-PK', {
-    weekday: 'short', day: 'numeric', month: 'short', year: 'numeric',
-    hour: '2-digit', minute: '2-digit',
-  })
+  return formatDateTime(d, { fallback: '', includeWeekday: true })
 }
 
 export default function BookingDetailClient({ booking: initial, origin }) {

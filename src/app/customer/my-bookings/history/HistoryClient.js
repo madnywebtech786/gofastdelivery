@@ -4,6 +4,7 @@ import { useState, useMemo } from 'react'
 import Link from 'next/link'
 import Badge from '@/components/ui/Badge'
 import DatePicker from '@/components/ui/DatePicker'
+import { formatDate as formatDateShared, formatTime as formatTimeShared } from '@/lib/dateFormat'
 import {
   Search, PackageOpen, MapPin, ArrowRight,
   ChevronLeft, ChevronRight, X, Filter,
@@ -19,13 +20,11 @@ const STATUS_FILTERS = [
 ]
 
 function formatDate(d) {
-  return new Date(d).toLocaleDateString('en-CA', {
-    day: 'numeric', month: 'short', year: 'numeric',
-  })
+  return formatDateShared(d)
 }
 
 function formatTime(d) {
-  return new Date(d).toLocaleTimeString('en-CA', { hour: '2-digit', minute: '2-digit' })
+  return formatTimeShared(d)
 }
 
 export default function HistoryClient({ bookings }) {

@@ -16,11 +16,13 @@ export default async function AdminDriverDetailPage({ params, searchParams }) {
   const now  = new Date()
   const year  = parseInt(sp?.year  ?? '') || now.getFullYear()
   const month = parseInt(sp?.month ?? '') || now.getMonth() + 1
+  const DISTANCE_RANGES = new Set(['day', 'week', 'month', 'year'])
+  const distanceRange = DISTANCE_RANGES.has(sp?.distanceRange) ? sp.distanceRange : 'month'
 
   const [driver, route, stats, bookings] = await Promise.all([
     findDriverById(driverId),
     findActiveRoute(driverId),
-    getDriverStats(driverId, { year, month }),
+    getDriverStats(driverId, { year, month, distanceRange }),
     findBookingsByDriver(driverId, { limit: 10000 }),
   ])
 

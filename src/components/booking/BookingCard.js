@@ -1,11 +1,10 @@
 import Link from 'next/link'
 import Badge from '@/components/ui/Badge'
 import { MapPin, ArrowRight, Clock, Package } from 'lucide-react'
+import { formatDateTime } from '@/lib/dateFormat'
 
 function formatDate(d) {
-  return new Date(d).toLocaleDateString('en-PK', {
-    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
-  })
+  return formatDateTime(d, { fallback: '', includeYear: false })
 }
 
 export default function BookingCard({ booking, href }) {

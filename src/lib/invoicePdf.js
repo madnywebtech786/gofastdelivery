@@ -1,5 +1,6 @@
 import PDFDocument from 'pdfkit'
 import path from 'path'
+import { formatDateLong as formatDate } from './dateFormat'
 
 const BRAND_GREEN  = '#1bb908'
 const DARK         = '#0f172a'
@@ -7,11 +8,6 @@ const MID          = '#475569'
 const LIGHT        = '#94a3b8'
 const BORDER       = '#e2e8f0'
 const BG_LIGHT     = '#f8fafc'
-
-function formatDate(val) {
-  if (!val) return '—'
-  return new Date(val).toLocaleDateString('en-CA', { year: 'numeric', month: 'long', day: 'numeric' })
-}
 
 function calcTotals(invoice) {
   const items    = invoice.items ?? []
@@ -150,7 +146,28 @@ export function buildInvoicePdf(invoice) {
     items.forEach((item, i) => {
       const amt        = (item.rate ?? 0) * (item.quantity ?? 0)
       const hasDetails = item.serviceDate || item.details
-      const rowH       = hasDetails ? (item.details ? 56 : 38) : 26
+
+      // Row height grows to fit the actual details text (previously a fixed
+      // 22px box with ellipsis:true silently cut off anything past ~3 lines
+      // — a real problem for multi-day delivery-detail lists). Measure the
+      // wrapped height with the same font/size/width used to draw it below,
+      // so the box is never smaller than what's about to be rendered.
+      let detailsHeight = 0
+      if (item.details) {
+        doc.font('Helvetica').fontSize(7.5)
+        detailsHeight = doc.heightOfString(item.details, { width: colDesc - 12, lineGap: 1 })
+      }
+      const baseH = hasDetails ? (item.serviceDate ? 31 : 20) : 26
+      const rowH  = item.details ? baseH + detailsHeight + 8 : baseH
+
+      // Start a new page if this row would overflow the current one — the
+      // rest of this document has no page-break handling, but a long
+      // details block is exactly the case most likely to need it.
+      const pageBottom = doc.page.height - doc.page.margins.bottom
+      if (y + rowH > pageBottom) {
+        doc.addPage()
+        y = doc.page.margins.top
+      }
 
       if (i % 2 !== 0) doc.rect(L, y, W, rowH).fill('#fafcff')
 
@@ -164,10 +181,13 @@ export function buildInvoicePdf(invoice) {
       if (item.details) {
         const detailsY = item.serviceDate ? y + 31 : y + 20
         doc.font('Helvetica').fontSize(7.5).fillColor(MID)
-           .text(item.details, L + 6, detailsY, { width: colDesc - 12, lineBreak: true, height: 22, ellipsis: true })
+           .text(item.details, L + 6, detailsY, { width: colDesc - 12, lineGap: 1 })
       }
 
-      const numY = y + (rowH / 2) - 5
+      // Rate/qty/amount stay vertically centred in the row's TOP portion
+      // (description + service date), never pulled down into a long details
+      // block below them.
+      const numY = y + baseH / 2 - 5
       doc.font('Helvetica').fontSize(9.5).fillColor(MID)
          .text(`$${Number(item.rate ?? 0).toFixed(2)}`, L + colDesc, numY, { width: colRate, align: 'right' })
          .text(String(item.quantity ?? ''), L + colDesc + colRate, numY, { width: colQty, align: 'right' })
@@ -178,6 +198,18 @@ export function buildInvoicePdf(invoice) {
       doc.moveTo(L, y + rowH).lineTo(L + W, y + rowH).lineWidth(0.3).strokeColor(BORDER).stroke()
       y += rowH
     })
+
+    // Totals/payment-instructions/notes below assume they fit under the
+    // items table without their own page-break check — add one here too,
+    // since a long details block can now push y much further down than
+    // before this fix.
+    {
+      const pageBottom = doc.page.height - doc.page.margins.bottom
+      if (y + 150 > pageBottom) {
+        doc.addPage()
+        y = doc.page.margins.top
+      }
+    }
 
     y += 16
 

@@ -1,6 +1,7 @@
 import { ObjectId } from 'mongodb'
 import { nanoid } from 'nanoid'
 import { getDb } from './client.js'
+import { calgaryStartOfToday, CALGARY_TZ } from './calgaryTime.js'
 
 const MAX_PACKAGES = 20
 
@@ -173,12 +174,23 @@ function escapeRegex(str) {
  * string-prefix match, not a Date range query. Only the pickup stop ever has
  * pickupTime, so this can't accidentally match a dropoff stop.
  */
-function buildAdminFilter({ status, hasDriver, sinceDate, untilDate, pickupDate, search, excludeHiddenFromHistory }) {
+function buildAdminFilter({ status, hasDriver, driverId, priceMin, priceMax, sinceDate, untilDate, pickupDate, search, excludeHiddenFromHistory }) {
   const filter = Array.isArray(status)
     ? (status.length > 0 ? { status: { $in: status } } : {})
     : (status ? { status } : {})
   if (hasDriver === true)  filter.assignedDriverId = { $ne: null }
   if (hasDriver === false) filter.assignedDriverId = null
+  // Matches the convention used everywhere else a booking is scoped to "a
+  // driver's bookings" (findBookingsByDriver, getDriverStats) — assignedDriverId
+  // is whoever last completed a leg, which is the whole driver for the common
+  // pickup_and_dropoff case. Doesn't separately match pickupDriverId/
+  // dropoffDriverId for split-driver bookings, consistent with those callers.
+  if (driverId) filter.assignedDriverId = new ObjectId(driverId)
+  if (priceMin != null || priceMax != null) {
+    filter.estimatedPrice = {}
+    if (priceMin != null) filter.estimatedPrice.$gte = priceMin
+    if (priceMax != null) filter.estimatedPrice.$lte = priceMax
+  }
   if (sinceDate || untilDate) {
     filter.createdAt = {}
     if (sinceDate) filter.createdAt.$gte = sinceDate
@@ -215,24 +227,33 @@ function buildAdminFilter({ status, hasDriver, sinceDate, untilDate, pickupDate,
 function buildAdminQuery(params) {
   const { combine, ...flat } = params
   if (!Array.isArray(combine)) return buildAdminFilter(flat)
-  return { $or: combine.map((sub) => buildAdminFilter({ ...sub, search: flat.search, excludeHiddenFromHistory: flat.excludeHiddenFromHistory })) }
+  return {
+    $or: combine.map((sub) => buildAdminFilter({
+      ...sub,
+      search: flat.search,
+      excludeHiddenFromHistory: flat.excludeHiddenFromHistory,
+      driverId: flat.driverId,
+      priceMin: flat.priceMin,
+      priceMax: flat.priceMax,
+    })),
+  }
 }
 
-export async function findAllBookings({ status, hasDriver, sinceDate, untilDate, pickupDate, search, combine, excludeHiddenFromHistory, limit = 50, skip = 0 } = {}) {
+export async function findAllBookings({ status, hasDriver, driverId, priceMin, priceMax, sinceDate, untilDate, pickupDate, search, combine, excludeHiddenFromHistory, limit = 50, skip = 0 } = {}) {
   const db = await getDb()
   return db
     .collection('bookings')
-    .find(buildAdminQuery({ status, hasDriver, sinceDate, untilDate, pickupDate, search, combine, excludeHiddenFromHistory }))
+    .find(buildAdminQuery({ status, hasDriver, driverId, priceMin, priceMax, sinceDate, untilDate, pickupDate, search, combine, excludeHiddenFromHistory }))
     .sort({ createdAt: -1 })
     .skip(skip)
     .limit(limit)
     .toArray()
 }
 
-export async function countAllBookings({ status, hasDriver, sinceDate, untilDate, pickupDate, search, combine, excludeHiddenFromHistory } = {}) {
+export async function countAllBookings({ status, hasDriver, driverId, priceMin, priceMax, sinceDate, untilDate, pickupDate, search, combine, excludeHiddenFromHistory } = {}) {
   const db = await getDb()
   return db.collection('bookings').countDocuments(
-    buildAdminQuery({ status, hasDriver, sinceDate, untilDate, pickupDate, search, combine, excludeHiddenFromHistory })
+    buildAdminQuery({ status, hasDriver, driverId, priceMin, priceMax, sinceDate, untilDate, pickupDate, search, combine, excludeHiddenFromHistory })
   )
 }
 
@@ -329,6 +350,29 @@ export async function updateStopEtas(bookingId, { pickupEta, dropoffEta } = {}) 
 }
 
 /**
+ * Stamp an optional driver-entered note onto one stop (pickup or dropoff) of
+ * a booking — the driver can add this in the app before confirming a stop,
+ * e.g. "left at front desk" / "gate code didn't work, called recipient".
+ * Distinct from `stops[].notes`, which is the customer's own note set at
+ * booking time and is read-only to the driver. Same positional-array-filter
+ * technique as updateStopEtas above. Persisted on the booking (not just the
+ * route stop) so it survives after the route is replaced/completed —
+ * matches how markBookingFailed's lastFailure.reason is durable, unlike
+ * route-only failureReason.
+ */
+export async function updateStopDriverNote(bookingId, { stopType, note } = {}) {
+  if (stopType !== 'pickup' && stopType !== 'dropoff') return { matchedCount: 0, modifiedCount: 0 }
+  const db = await getDb()
+  const trimmed = String(note ?? '').trim().slice(0, 500)
+
+  return db.collection('bookings').updateOne(
+    { _id: new ObjectId(bookingId) },
+    { $set: { 'stops.$[elem].driverNote': trimmed || null } },
+    { arrayFilters: [{ 'elem.type': stopType }] }
+  )
+}
+
+/**
  * Assign a driver to a booking for either pickup or delivery.
  * newStatus must be 'assigned_pickup' or 'assigned_delivery'.
  * allowedFromStatus is the status the booking must currently be in.
@@ -393,8 +437,7 @@ export async function findPickedUpBookings({ limit = 50 } = {}) {
  */
 export async function getBookingCounters() {
   const db = await getDb()
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
+  const today = calgaryStartOfToday()
 
   const [pending, active, todayDelivered] = await Promise.all([
     // Pending includes failed_pickup (retry) so admin sees the true to-do count
@@ -431,8 +474,7 @@ const FAILED_STATUSES  = ['failed_pickup', 'failed_dropoff']
  */
 export async function getDashboardStats({ days = 30 } = {}) {
   const db = await getDb()
-  const windowStart = new Date()
-  windowStart.setHours(0, 0, 0, 0)
+  const windowStart = calgaryStartOfToday()
   windowStart.setDate(windowStart.getDate() - (days - 1))
 
   const [windowResult] = await db.collection('bookings').aggregate([
@@ -443,7 +485,7 @@ export async function getDashboardStats({ days = 30 } = {}) {
         byDay: [
           {
             $group: {
-              _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+              _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt', timezone: CALGARY_TZ } },
               bookings: { $sum: 1 },
               delivered: { $sum: { $cond: [{ $eq: ['$status', 'delivered'] }, 1, 0] } },
               cancelled: { $sum: { $cond: [{ $eq: ['$status', 'cancelled'] }, 1, 0] } },
@@ -542,8 +584,7 @@ export async function findBookingsByDriver(driverId, { statusGroup = 'all', limi
 export async function getDriverStats(driverId) {
   const db = await getDb()
   const id = new ObjectId(driverId)
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
+  const today = calgaryStartOfToday()
 
   const [assigned, inProgress, completedToday, completedTotal] = await Promise.all([
     db.collection('bookings').countDocuments({ assignedDriverId: id, status: { $in: ['assigned_pickup', 'assigned_delivery'] } }),

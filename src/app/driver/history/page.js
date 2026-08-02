@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Spinner from '@/components/ui/Spinner'
+import { formatRelativeDayLabel, formatTime as formatTimeShared } from '@/lib/dateFormat'
 
 function formatDist(m) {
   if (!m) return null
@@ -18,17 +19,11 @@ function formatDur(s) {
 }
 
 function formatDate(iso) {
-  const d = new Date(iso)
-  const now = new Date()
-  const diffDays = Math.floor((now - d) / 86400000)
-  if (diffDays === 0) return 'Today'
-  if (diffDays === 1) return 'Yesterday'
-  if (diffDays < 7) return d.toLocaleDateString(undefined, { weekday: 'long' })
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  return formatRelativeDayLabel(iso)
 }
 
 function formatTime(iso) {
-  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  return formatTimeShared(iso, { fallback: '' })
 }
 
 // Group bookings by date label

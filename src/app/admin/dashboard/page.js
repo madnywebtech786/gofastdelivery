@@ -2,6 +2,7 @@ import { cacheLife, cacheTag } from 'next/cache'
 import { requireAdmin } from '@/lib/dal'
 import { getBookingCounters, getDashboardStats } from '@/lib/db/bookings'
 import { findAllDrivers } from '@/lib/db/drivers'
+import { formatDateFull } from '@/lib/dateFormat'
 import Link from 'next/link'
 import DashboardCharts from './DashboardCharts'
 import {
@@ -75,7 +76,7 @@ export default async function DashboardPage() {
       <div className="mb-8 anim-fade-up">
         <h1 className="text-2xl font-bold" style={{ color: 'var(--fg)' }}>Dashboard</h1>
         <p className="text-sm mt-1" style={{ color: 'var(--fg-3)' }}>
-          Live dispatch overview — {new Date().toLocaleDateString('en-PK', { weekday: 'long', month: 'long', day: 'numeric' })}
+          Live dispatch overview — {formatDateFull()}
         </p>
       </div>
 

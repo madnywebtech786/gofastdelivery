@@ -4,6 +4,7 @@ import { useState, useMemo, useEffect } from 'react'
 import Link from 'next/link'
 import Badge from '@/components/ui/Badge'
 import { useToast } from '@/components/ui/Toast'
+import { formatDate as formatDateShared, formatTime as formatTimeShared } from '@/lib/dateFormat'
 import {
   Plus, Search, Filter, PackageOpen, MapPin,
   Eye, ChevronLeft, ChevronRight, X, Trash2,
@@ -30,13 +31,11 @@ const STATUS_FILTERS = [
 const ACTIVE_STATUSES = ['assigned_pickup', 'picked_up', 'assigned_delivery']
 
 function formatDate(d) {
-  return new Date(d).toLocaleDateString('en-PK', {
-    day: 'numeric', month: 'short', year: 'numeric',
-  })
+  return formatDateShared(d, { fallback: '' })
 }
 
 function formatTime(d) {
-  return new Date(d).toLocaleTimeString('en-PK', { hour: '2-digit', minute: '2-digit' })
+  return formatTimeShared(d, { fallback: '' })
 }
 
 export default function MyBookingsClient({ bookings: initial }) {

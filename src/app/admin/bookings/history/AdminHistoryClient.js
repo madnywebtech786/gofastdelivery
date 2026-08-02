@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useTransition, useCallback } from 'react'
+import { useState, useRef, useEffect, useTransition, useCallback } from 'react'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import Badge from '@/components/ui/Badge'
@@ -8,8 +8,8 @@ import Select from '@/components/ui/Select'
 import DatePicker from '@/components/ui/DatePicker'
 import { useToast } from '@/components/ui/Toast'
 import {
-  MapPin, Clock, ChevronRight, ChevronLeft,
-  PackageCheck, Search, X, Circle, Trash2,
+  MapPin, Clock, ChevronRight, ChevronLeft, ChevronDown,
+  PackageCheck, Search, X, Circle, Trash2, DollarSign,
 } from 'lucide-react'
 
 function Modal({ title, onClose, children }) {
@@ -110,6 +110,7 @@ function Pagination({ page, total, pageSize, onNavigate }) {
 
 export default function AdminHistoryClient({
   initialStatusFilter, initialDateFrom, initialDateTo, initialSearch,
+  initialDriverId, initialPriceMin, initialPriceMax,
   initialPage, bookings, total, pageSize,
 }) {
   const router       = useRouter()
@@ -122,7 +123,30 @@ export default function AdminHistoryClient({
   const [dateFrom,     setDateFrom]     = useState(initialDateFrom ?? '')
   const [dateTo,       setDateTo]       = useState(initialDateTo ?? '')
   const [search,       setSearch]       = useState(initialSearch ?? '')
+  const [driverId,     setDriverId]     = useState(initialDriverId ?? '')
   const debounceRef = useRef(null)
+
+  // Price-range filter — only shown/applied once toggled on, matching the
+  // requested "if active, show min/max + Apply" behaviour rather than always
+  // taking up filter-row space.
+  const [priceFilterActive, setPriceFilterActive] = useState(!!(initialPriceMin || initialPriceMax))
+  const [priceMinInput, setPriceMinInput] = useState(initialPriceMin ?? '')
+  const [priceMaxInput, setPriceMaxInput] = useState(initialPriceMax ?? '')
+
+  // Driver list for the filter dropdown — fetched once on mount, same
+  // endpoint/shape the main admin bookings page's assign panel already uses.
+  const [drivers, setDrivers] = useState([])
+  const [loadingDrivers, setLoadingDrivers] = useState(true)
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/drivers')
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => { if (!cancelled) setDrivers(Array.isArray(data) ? data : []) })
+      .catch(() => { if (!cancelled) setDrivers([]) })
+      .finally(() => { if (!cancelled) setLoadingDrivers(false) })
+    return () => { cancelled = true }
+  }, [])
+  const driverOptions = drivers.map((d) => ({ value: d._id, label: d.name }))
 
   // Select mode — driver-side equivalent doesn't apply here; this is the
   // admin "delete selected history entries" checkbox flow. Selection is
@@ -238,13 +262,35 @@ export default function AdminHistoryClient({
     navigateTo({ page: p })
   }
 
-  function clearAll() {
-    clearTimeout(debounceRef.current)
-    setStatusFilter(''); setDateFrom(''); setDateTo(''); setSearch('')
-    navigateTo({ status: '', from: '', to: '', search: '', page: 1 })
+  function onDriverChange(next) {
+    setDriverId(next)
+    navigateTo({ driverId: next, page: 1 })
   }
 
-  const hasActiveFilters = statusFilter || dateFrom || dateTo || search.trim()
+  function applyPriceRange() {
+    const min = priceMinInput.trim()
+    const max = priceMaxInput.trim()
+    if (min !== '' && max !== '' && Number(min) > Number(max)) {
+      toast?.warning?.('Invalid range', 'Minimum price cannot be greater than maximum.')
+      return
+    }
+    navigateTo({ priceMin: min, priceMax: max, page: 1 })
+  }
+
+  function clearPriceRange() {
+    setPriceMinInput(''); setPriceMaxInput('')
+    setPriceFilterActive(false)
+    navigateTo({ priceMin: '', priceMax: '', page: 1 })
+  }
+
+  function clearAll() {
+    clearTimeout(debounceRef.current)
+    setStatusFilter(''); setDateFrom(''); setDateTo(''); setSearch(''); setDriverId('')
+    setPriceMinInput(''); setPriceMaxInput(''); setPriceFilterActive(false)
+    navigateTo({ status: '', from: '', to: '', search: '', driverId: '', priceMin: '', priceMax: '', page: 1 })
+  }
+
+  const hasActiveFilters = statusFilter || dateFrom || dateTo || search.trim() || driverId || initialPriceMin || initialPriceMax
 
   return (
     <div className="space-y-6">
@@ -302,24 +348,103 @@ export default function AdminHistoryClient({
           />
         </div>
 
-        {/* Row 2: date range + clear */}
+        {/* Row 2: driver + date range */}
+        <div className="grid md:grid-cols-[220px_1fr] gap-3 items-start">
+          <Select
+            value={driverId}
+            onChange={onDriverChange}
+            options={driverOptions}
+            placeholder="Filter by driver"
+            loading={loadingDrivers}
+            loadingMessage="Loading drivers…"
+            emptyMessage="No drivers found"
+          />
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs font-medium shrink-0" style={{ color: 'var(--fg-3)' }}>Date:</span>
+            <DatePicker
+              value={dateFrom}
+              onChange={onDateFrom}
+              placeholder="From"
+              clearable
+              className="flex-1 min-w-32"
+            />
+            <span className="text-xs shrink-0" style={{ color: 'var(--fg-3)' }}>—</span>
+            <DatePicker
+              value={dateTo}
+              onChange={onDateTo}
+              placeholder="To"
+              clearable
+              className="flex-1 min-w-32"
+            />
+          </div>
+        </div>
+
+        {/* Row 3: price range toggle + inputs + apply */}
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs font-medium shrink-0" style={{ color: 'var(--fg-3)' }}>Date:</span>
-          <DatePicker
-            value={dateFrom}
-            onChange={onDateFrom}
-            placeholder="From"
-            clearable
-            className="flex-1 min-w-32"
-          />
-          <span className="text-xs shrink-0" style={{ color: 'var(--fg-3)' }}>—</span>
-          <DatePicker
-            value={dateTo}
-            onChange={onDateTo}
-            placeholder="To"
-            clearable
-            className="flex-1 min-w-32"
-          />
+          <button
+            type="button"
+            onClick={() => {
+              const next = !priceFilterActive
+              setPriceFilterActive(next)
+              if (!next) clearPriceRange()
+            }}
+            className="group flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl border shrink-0 transition-all cursor-pointer"
+            style={{
+              color:       priceFilterActive ? '#fff' : 'var(--fg-2)',
+              background:  priceFilterActive ? 'var(--accent)' : '#fff',
+              borderColor: priceFilterActive ? 'var(--accent)' : 'var(--border)',
+              boxShadow:   priceFilterActive ? '0 2px 8px var(--accent-glow)' : 'none',
+            }}
+            onMouseEnter={(e) => { if (!priceFilterActive) e.currentTarget.style.borderColor = 'var(--accent)' }}
+            onMouseLeave={(e) => { if (!priceFilterActive) e.currentTarget.style.borderColor = 'var(--border)' }}
+          >
+            <DollarSign size={13} />
+            Price Range
+            <ChevronDown
+              size={13}
+              className="transition-transform"
+              style={{ transform: priceFilterActive ? 'rotate(180deg)' : 'rotate(0deg)', opacity: 0.7 }}
+            />
+          </button>
+
+          {priceFilterActive && (
+            <div
+              className="flex items-center gap-1.5 rounded-xl border px-2 py-1"
+              style={{ borderColor: 'var(--border)', background: '#fff' }}
+            >
+              <input
+                type="number"
+                min="0"
+                inputMode="decimal"
+                placeholder="Min"
+                value={priceMinInput}
+                onChange={(e) => setPriceMinInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && applyPriceRange()}
+                className="w-16 px-2 py-1 rounded-lg border-0 bg-transparent text-sm text-center focus:outline-none focus:ring-2 transition-all"
+                style={{ '--tw-ring-color': 'var(--accent-glow)', color: 'var(--fg)' }}
+              />
+              <span className="text-xs font-medium shrink-0" style={{ color: 'var(--fg-3)' }}>–</span>
+              <input
+                type="number"
+                min="0"
+                inputMode="decimal"
+                placeholder="Max"
+                value={priceMaxInput}
+                onChange={(e) => setPriceMaxInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && applyPriceRange()}
+                className="w-16 px-2 py-1 rounded-lg border-0 bg-transparent text-sm text-center focus:outline-none focus:ring-2 transition-all"
+                style={{ '--tw-ring-color': 'var(--accent-glow)', color: 'var(--fg)' }}
+              />
+              <button
+                onClick={applyPriceRange}
+                className="text-xs font-bold px-3 py-1.5 rounded-lg text-white transition-all active:scale-95 cursor-pointer shrink-0"
+                style={{ background: 'var(--accent)' }}
+              >
+                Apply
+              </button>
+            </div>
+          )}
+
           {hasActiveFilters && (
             <button onClick={clearAll}
               className="ml-auto flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-lg shrink-0"

@@ -2,6 +2,7 @@
 
 import { useState, useTransition, useCallback, useEffect, useRef } from 'react'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
+import { calgaryDateKey } from '@/lib/dateFormat'
 import { Users, Phone, Mail, Calendar, Search, X, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react'
 
 const PAGE_SIZE = 20
@@ -171,7 +172,7 @@ export default function CustomersClient({ customers, total, page, search: initia
                     <td className="hidden lg:table-cell">
                       <span className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--fg-3)' }}>
                         <Calendar size={11} />
-                        {new Date(c.createdAt).toLocaleDateString('en-CA')}
+                        {calgaryDateKey(c.createdAt)}
                       </span>
                     </td>
                   </tr>

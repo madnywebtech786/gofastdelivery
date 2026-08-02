@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { requireDriver, handleApiError } from '@/lib/dal'
 import { findActiveRoute, updateRoute, incrementDrivenDistance } from '@/lib/db/drivers'
-import { updateBookingStatus } from '@/lib/db/bookings'
+import { updateBookingStatus, updateStopDriverNote } from '@/lib/db/bookings'
 import { pushBookingStatusChange, pushRouteUpdate } from '@/lib/pusher'
 // import { sendStatusUpdate } from '@/lib/mailer'
 import { hydrateRouteItems } from '@/lib/routing/hydrate'
@@ -19,7 +19,7 @@ function nextBookingStatus(stop) {
 
 /**
  * POST /api/drivers/[driverId]/stop-complete
- * Body: { stopIndex: number }
+ * Body: { stopIndex: number, driverNote?: string }
  */
 export async function POST(request, { params }) {
   try {
@@ -30,7 +30,7 @@ export async function POST(request, { params }) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
-    const { stopIndex, drivenMeters } = await request.json()
+    const { stopIndex, drivenMeters, driverNote } = await request.json()
     if (typeof stopIndex !== 'number') {
       return NextResponse.json({ error: 'stopIndex is required' }, { status: 400 })
     }
@@ -65,8 +65,10 @@ export async function POST(request, { params }) {
       })
     }
 
+    const trimmedNote = typeof driverNote === 'string' ? driverNote.trim().slice(0, 500) : ''
+
     const updatedStops = stops.map((s, i) =>
-      i === stopIndex ? { ...s, completedAt: now } : s
+      i === stopIndex ? { ...s, completedAt: now, ...(trimmedNote ? { driverNote: trimmedNote } : {}) } : s
     )
     const allDone = updatedStops.every((s) => s.completedAt)
 
@@ -79,6 +81,14 @@ export async function POST(request, { params }) {
     // Persist distance driven on this leg (sent from client GPS accumulation)
     if (typeof drivenMeters === 'number' && drivenMeters > 0) {
       incrementDrivenDistance(driverId, String(route._id), Math.round(drivenMeters)).catch(() => {})
+    }
+
+    // Persist the driver's optional note onto the booking's matching stop too
+    // (durable — survives after this route is replaced/completed, matching
+    // how markBookingFailed's lastFailure is durable). Fire-and-forget: a
+    // note-write failure must never block the stop confirmation itself.
+    if (stop.bookingId && trimmedNote && (stop.stopType === 'pickup' || stop.stopType === 'dropoff')) {
+      updateStopDriverNote(String(stop.bookingId), { stopType: stop.stopType, note: trimmedNote }).catch(() => {})
     }
 
     const newBookingStatus = nextBookingStatus(stop)

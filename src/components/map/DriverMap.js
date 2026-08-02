@@ -1119,13 +1119,16 @@ export default function DriverMap({
               </p>
             </div>
 
-            {/* "Then" cue — next maneuver icon, small, right side */}
+            {/* "Then" cue — next maneuver icon, small, right side. Same size
+                as before, only the colors changed — solid higher-contrast
+                background + bold white glyph instead of a faint translucent
+                box (was hard to read in bright light). */}
             {banner.then && (
               <div className="flex shrink-0 flex-col items-center gap-0.5">
-                <span className="text-gray-400 text-[9px] sm:text-[10px] font-semibold">then</span>
+                <span className="text-gray-300 text-[9px] sm:text-[10px] font-bold">then</span>
                 <div
-                  className="flex items-center justify-center rounded-md sm:rounded-lg w-6 h-6 sm:w-8 sm:h-8 text-sm sm:text-lg"
-                  style={{ background: 'rgba(255,255,255,0.12)' }}
+                  className="flex items-center justify-center rounded-md sm:rounded-lg w-6 h-6 sm:w-8 sm:h-8 text-sm sm:text-lg font-bold"
+                  style={{ background: 'rgba(255,255,255,0.3)', color: '#ffffff' }}
                 >
                   {banner.then}
                 </div>

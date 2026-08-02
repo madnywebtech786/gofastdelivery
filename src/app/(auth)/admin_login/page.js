@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
+import { formatClock } from '@/lib/dateFormat'
 import { AlertCircle, ArrowRight, Eye, EyeOff, Shield, BarChart2, Users, Package } from 'lucide-react'
 
 
@@ -80,7 +81,7 @@ export default function AdminLoginPage() {
 
   useEffect(() => {
     setMounted(true)
-    const tick = () => setTime(new Date().toLocaleTimeString('en-CA', { hour12: false }))
+    const tick = () => setTime(formatClock())
     tick()
     const id = setInterval(tick, 1000)
     return () => clearInterval(id)

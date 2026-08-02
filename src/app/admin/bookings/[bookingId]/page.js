@@ -5,17 +5,10 @@ import { findBookingById } from '@/lib/db/bookings'
 import Badge from '@/components/ui/Badge'
 import StatusTimeline from '@/components/ui/StatusTimeline'
 import AssignDriverForm from '@/components/booking/AssignDriverForm'
+import { formatDateTime as formatDate } from '@/lib/dateFormat'
 import { ArrowLeft, MapPin, User, Phone, CheckCircle2, UserCheck } from 'lucide-react'
 
 export const metadata = { title: 'Booking Detail — Go Fast Delivery Admin' }
-
-function formatDate(d) {
-  if (!d) return '—'
-  return new Date(d).toLocaleString('en-PK', {
-    month: 'short', day: 'numeric', year: 'numeric',
-    hour: '2-digit', minute: '2-digit',
-  })
-}
 
 function formatDuration(s) {
   if (!s) return null
@@ -107,6 +100,11 @@ export default async function AdminBookingDetailPage({ params }) {
                       </div>
                     )}
                     {stop.notes && <p className="text-xs italic mt-0.5" style={{ color: 'var(--fg-3)' }}>{stop.notes}</p>}
+                    {stop.driverNote && (
+                      <p className="text-xs mt-1 px-2 py-1 rounded-lg inline-block" style={{ color: '#92400e', background: '#fef3c7' }}>
+                        Driver note: {stop.driverNote}
+                      </p>
+                    )}
                   </div>
                   <MapPin size={12} className="shrink-0 mt-1" style={{ color: stop.type === 'pickup' ? 'var(--success)' : 'var(--danger)', opacity: 0.5 }} />
                 </li>

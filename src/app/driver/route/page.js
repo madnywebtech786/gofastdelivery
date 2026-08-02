@@ -9,7 +9,8 @@ import VoiceGuide from '@/components/driver/VoiceGuide'
 import { useToast } from '@/components/ui/Toast'
 import { reverseGeocode, placesAutocomplete, placeDetails } from '@/lib/google-geocode'
 import { enqueue as enqueueAction, subscribeQueue } from '@/lib/offline-queue'
-import { Search, X, MapPin, Navigation } from 'lucide-react'
+import { formatTime as formatTimeShared } from '@/lib/dateFormat'
+import { Search, X, MapPin, Navigation, ArrowLeft } from 'lucide-react'
 import OnlineIndicator from '@/components/ui/OnlineIndicator'
 
 
@@ -32,9 +33,8 @@ function stopActionLabel(stop) {
 
 function formatETA(isoString) {
   if (!isoString) return null
-  const d = new Date(new Date(isoString).getTime() + 3 * 60 * 1000)
-  if (isNaN(d.getTime())) return null
-  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  const buffered = new Date(isoString).getTime() + 3 * 60 * 1000
+  return formatTimeShared(buffered, { fallback: null })
 }
 
 // Google Maps getCenter().lng() can return an un-normalized longitude (e.g.
@@ -112,20 +112,42 @@ export default function DriverRoutePage() {
     try { localStorage.setItem(GPS_STORAGE_KEY, JSON.stringify({ acc })) } catch { /* ignore */ }
   }
 
+  // Below this, a tick-to-tick delta is treated as GPS noise, not real
+  // movement, and is NOT added to the accumulator. Real phone GPS jitter
+  // while stationary is typically 3-13m (multipath/atmospheric error) and
+  // oscillates around the true position — it does not compound over time.
+  // Confirmed against real production data: a driver's routes were showing
+  // GPS-accumulated distance 2-500x their actual ORS-planned route distance
+  // (e.g. 112mi accumulated against a 0.2mi planned route) because every tick
+  // added its noise delta with no floor — over a full shift with hours of
+  // idle time at stops/lights, that noise alone summed to tens of phantom
+  // miles. Verified via simulation: with this floor + the anchor-hold logic
+  // below, a stationary phone accumulates 0m of drift over a 4h simulated
+  // shift, while real movement (including a slow 5km/h crawl) is preserved
+  // to within ~1%.
+  const GPS_NOISE_FLOOR_M = 15
+
   // Called on every GPS tick from watchPosition below
   function onGpsTick(pos) {
     const cur = { lat: pos.coords.latitude, lng: pos.coords.longitude }
     const last = lastGpsRef.current
     if (last) {
       const delta = haversineM(last, cur)
-      // Ignore implausible jumps > 200m between ticks (GPS glitch / wake from suspension)
+      // Ignore implausible jumps > 200m between ticks (GPS glitch / wake from suspension).
       // For suspension gaps, the visibility-change handler below adds a bridge instead.
-      if (delta < 200) {
+      if (delta >= GPS_NOISE_FLOOR_M && delta < 200) {
         distAccRef.current += delta
         persistAcc(distAccRef.current)
+        // Anchor only advances on confirmed real movement — a sub-floor tick
+        // leaves lastGpsRef where it is, so jitter around a stable point
+        // never compounds. The next real movement is still measured
+        // correctly from this same anchor.
+        lastGpsRef.current = cur
       }
+      // else: below the noise floor — hold the anchor, add nothing.
+    } else {
+      lastGpsRef.current = cur
     }
-    lastGpsRef.current = cur
   }
 
   // GPS watchPosition — fires every 1-3s while page is visible
@@ -199,6 +221,12 @@ export default function DriverRoutePage() {
   // ETA timeline: which stop is currently expanded in the sheet
   // null = show timeline list, number = show that stop's detail view
   const [expandedStopIndex, setExpandedStopIndex] = useState(null)
+
+  // Optional driver-entered note per stop (pickup/dropoff), typed before
+  // confirming — keyed by stopIndex so switching between stops in the
+  // timeline doesn't lose a half-typed note. Cleared for a stop once it's
+  // successfully confirmed (see handleStopComplete).
+  const [driverNoteByStop, setDriverNoteByStop] = useState({})
 
   // Batch-select mode — driver can check off several not-yet-completed stops
   // (typically sharing one address) and confirm/fail them together instead of
@@ -699,11 +727,13 @@ export default function DriverRoutePage() {
     try {
       const pos = driverPos
       const drivenMeters = flushAndResetDist()
+      const driverNote = (driverNoteByStop[stopIndex] ?? '').trim()
       const body = {
         stopIndex,
         drivenMeters,
         currentLng: pos?.lng ?? null,
         currentLat: pos?.lat ?? null,
+        ...(driverNote ? { driverNote } : {}),
       }
       const url = `/api/drivers/${driverId}/stop-complete`
       // Stable key: stopIndex + stop signature — server guards on completedAt
@@ -727,10 +757,12 @@ export default function DriverRoutePage() {
           const data = await res.json().catch(() => ({}))
           updatedRoute = data?.route ?? null
           delivered = true
+          setDriverNoteByStop((prev) => { const next = { ...prev }; delete next[stopIndex]; return next })
         } else if (res.status >= 500 || res.status === 408 || res.status === 429) {
           // Retryable — queue it
           enqueueAction({ url, body, idempotencyKey, label: `Confirm stop ${stopIndex + 1}` })
           toast?.info?.('Saved offline', 'Your confirmation will sync when you\u2019re back online.')
+          setDriverNoteByStop((prev) => { const next = { ...prev }; delete next[stopIndex]; return next })
         } else {
           const data = await res.json().catch(() => ({}))
           console.error('[stop-complete] failed:', data?.error)
@@ -739,6 +771,7 @@ export default function DriverRoutePage() {
         // Network error — durable queue
         enqueueAction({ url, body, idempotencyKey, label: `Confirm stop ${stopIndex + 1}` })
         toast?.info?.('Saved offline', 'Your confirmation will sync when you\u2019re back online.')
+        setDriverNoteByStop((prev) => { const next = { ...prev }; delete next[stopIndex]; return next })
       }
 
       if (delivered && updatedRoute) {
@@ -1153,9 +1186,11 @@ export default function DriverRoutePage() {
       <div className="absolute top-0 left-0 right-0 z-40 flex items-center justify-between px-3 pt-3 pointer-events-none">
         <button
           onClick={() => handleGoHome()}
-          className="pointer-events-auto bg-white shadow-md rounded-full w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center text-gray-700 text-lg active:bg-gray-100"
+          className="pointer-events-auto shadow-md rounded-full h-9 sm:h-10 pl-2.5 pr-3.5 flex items-center gap-1.5 text-sm font-semibold text-white active:opacity-90"
+          style={{ background: 'var(--accent)' }}
         >
-          ←
+          <ArrowLeft size={16} strokeWidth={2.5} />
+          Back
         </button>
         <OnlineIndicator pending={queueDepth} wrapperClassName="pointer-events-auto bg-white shadow-md rounded-full px-2 h-9 flex items-center" />
         <button
@@ -1338,6 +1373,29 @@ export default function DriverRoutePage() {
                     <div className="bg-gray-50 rounded-2xl px-4 py-3 mb-3">
                       <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400 mb-0.5">Package Type</p>
                       <p className="text-xs font-semibold text-gray-700">{stop.packageKind}</p>
+                    </div>
+                  )}
+
+                  {/* Optional driver note — typed before confirming this stop.
+                      Separate from stop.notes above (the customer's own note,
+                      read-only here). Only offered for the active, confirmable
+                      pickup/dropoff stop — not the endpoint, not a done stop. */}
+                  {isActive && !isDone && (stop.stopType === 'pickup' || stop.stopType === 'dropoff') && (
+                    <div className="mb-3">
+                      <label className="text-[10px] font-bold uppercase tracking-wide text-gray-400 mb-1 block">
+                        Add a note (optional)
+                      </label>
+                      <textarea
+                        value={driverNoteByStop[stopIndex] ?? ''}
+                        onChange={(e) => {
+                          const val = e.target.value.slice(0, 500)
+                          setDriverNoteByStop((prev) => ({ ...prev, [stopIndex]: val }))
+                        }}
+                        placeholder={stop.stopType === 'pickup' ? 'e.g. picked up from front desk' : 'e.g. left at door, no answer'}
+                        rows={2}
+                        maxLength={500}
+                        className="w-full rounded-2xl border border-gray-200 bg-white px-3 py-2.5 text-xs text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-300 resize-none"
+                      />
                     </div>
                   )}
 

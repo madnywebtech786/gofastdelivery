@@ -11,6 +11,7 @@ import {
 import { triggerPrint } from './InvoicePDF'
 import { useToast } from '@/components/ui/Toast'
 import Select from '@/components/ui/Select'
+import { formatDate as formatDateShared } from '@/lib/dateFormat'
 
 const PAGE_SIZE = 20
 
@@ -55,8 +56,7 @@ function calcTotals(invoice) {
 }
 
 function formatDate(val) {
-  if (!val) return '—'
-  return new Date(val).toLocaleDateString('en-CA', { year: 'numeric', month: 'short', day: 'numeric' })
+  return formatDateShared(val)
 }
 
 function Pagination({ page, total, pageSize, onNavigate }) {
