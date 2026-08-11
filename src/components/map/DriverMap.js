@@ -257,6 +257,22 @@ export default function DriverMap({
   const corridorCoordsRef  = useRef([])
   const legAbortRef        = useRef(null)
 
+  // ── Active-leg retry-on-failure ─────────────────────────────────────────
+  // /api/google/directions can transiently fail (upstream Google error, a
+  // Redis blip, or — the case that motivated this — the DB call inside an
+  // unrelated request stalling the server long enough that this fetch times
+  // out). Previously a single failure left the map with no polyline/banner
+  // and no way to recover short of the driver leaving and re-entering the
+  // page. Now we retry with backoff, and only surface anything to the driver
+  // if the FIRST retry also fails (a lone blip should never be visible).
+  // legTokenRef increments on every new renderActiveLeg call so a pending
+  // retry timer from a superseded leg (driver advanced to the next stop,
+  // or a reroute landed) can recognize it's stale and bail out instead of
+  // clobbering the newer leg's state.
+  const legTokenRef        = useRef(0)
+  const legRetryTimerRef   = useRef(null)
+  const LEG_RETRY_DELAYS_MS = [2000, 4000, 8000, 15000, 30000, 30000] // ~1.5min total before giving up
+
   // Off-route tracking
   const offRouteSinceRef   = useRef(null)
   const reroutingRef       = useRef(false)
@@ -365,6 +381,11 @@ export default function DriverMap({
   // ── Banner state ──────────────────────────────────────────────────────────
   const [banner, setBanner] = useState(null) // { icon, instruction, distance }
   const [offRoute, setOffRoute] = useState(false)
+  // Shown only once the FIRST retry also fails (see LEG_RETRY_DELAYS_MS above)
+  // so a single transient blip is invisible to the driver. true while
+  // auto-retrying in the background; 'exhausted' once retries are capped out
+  // and the driver needs to tap "Retry route" themselves.
+  const [legLoadFailed, setLegLoadFailed] = useState(false) // false | true | 'exhausted'
   // Seconds left before the off-route reroute fires. Counts 15→0 for clear UX
   // (GPS ticks alone are too sparse / pause when stationary, so we tick locally).
   const [offRouteCountdown, setOffRouteCountdown] = useState(OFF_ROUTE_DURATION_MS / 1000)
@@ -389,12 +410,45 @@ export default function DriverMap({
   // ── Active leg in blue + extract steps ───────────────────────────────────
   // Fires only when driver switches destination, reroutes, or map first mounts.
   // No periodic GPS-tick refetch — turn steps are advanced locally via Haversine.
-  const renderActiveLeg = useCallback(async (map, fromLng, fromLat, toStop, resetStepTracking = false) => {
+  //
+  // `retryCount` (internal — callers always omit it) tracks how many retry
+  // attempts have run for THIS leg. `token` pins this call to the leg that
+  // was current when it was scheduled; if a newer leg has started (driver
+  // advanced, or a reroute landed) by the time a retry timer fires, `token`
+  // no longer matches legTokenRef.current and the stale retry bails out
+  // silently instead of racing the newer leg's fetch/state.
+  const renderActiveLeg = useCallback(async (map, fromLng, fromLat, toStop, resetStepTracking = false, retryCount = 0, token = null) => {
     if (!toStop || !map || !mapsLibRef.current) return
+
+    // A fresh (non-retry) call starts a new leg — bump the token and clear
+    // any pending retry timer from whatever leg preceded it.
+    if (retryCount === 0) {
+      legTokenRef.current += 1
+      clearTimeout(legRetryTimerRef.current)
+    }
+    const myToken = token ?? legTokenRef.current
 
     legAbortRef.current?.abort()
     const ctrl = new AbortController()
     legAbortRef.current = ctrl
+
+    const scheduleRetry = () => {
+      if (myToken !== legTokenRef.current) return // superseded — a newer leg is in flight
+      if (retryCount >= LEG_RETRY_DELAYS_MS.length) {
+        setLegLoadFailed('exhausted')
+        return
+      }
+      // First failure is invisible to the driver — only surface state once
+      // the retry itself has also failed (i.e. we're about to schedule the
+      // SECOND attempt or later).
+      if (retryCount >= 1) setLegLoadFailed(true)
+      const delay = LEG_RETRY_DELAYS_MS[retryCount]
+      clearTimeout(legRetryTimerRef.current)
+      legRetryTimerRef.current = setTimeout(() => {
+        if (myToken !== legTokenRef.current) return
+        renderActiveLeg(map, fromLng, fromLat, toStop, resetStepTracking, retryCount + 1, myToken)
+      }, delay)
+    }
 
     try {
       const res = await fetch('/api/google/directions', {
@@ -407,9 +461,15 @@ export default function DriverMap({
         }),
         signal: ctrl.signal,
       })
-      if (!res.ok) return
+      if (!res.ok) { scheduleRetry(); return }
       const data = await res.json()
-      if (!data?.geometry) return
+      if (!data?.geometry) { scheduleRetry(); return }
+
+      // Success — this leg is now healthy. Clear any retry state/timer that
+      // belonged to it (a delayed timer from an earlier failed attempt on
+      // this same token, if any, must not fire after we've already succeeded).
+      clearTimeout(legRetryTimerRef.current)
+      setLegLoadFailed(false)
 
       // Polyline5 decode → [{ lat, lng }] for Google Maps Polyline
       const decoded = decodePolyline5(data.geometry)
@@ -473,11 +533,41 @@ export default function DriverMap({
         if (resetStepTracking) onStepUpdateRef.current?.(steps[nextStepIdxRef.current] ?? steps[0])
       }
     } catch (err) {
-      if (err?.name === 'AbortError') return
+      if (err?.name === 'AbortError') return // superseded by a newer leg — not a real failure
       console.warn('[DriverMap] active leg fetch failed:', err)
+      scheduleRetry()
     }
   }, [])
   renderActiveLegRef.current = renderActiveLeg
+
+  // Manual "Retry route" tap target — shown once auto-retry is exhausted.
+  // Re-derives the current leg exactly like the [activeStopIndex] effect does
+  // (driver pos → nextStop, falling back to the stop's own coords) and starts
+  // a brand-new retry cycle (retryCount 0) rather than resuming the old one.
+  // manualRetryPending guards against a driver double/triple-tapping the
+  // button — the token-guard elsewhere in this file already makes rapid taps
+  // SAFE (each new call just aborts+supersedes the previous one, no crash or
+  // duplicate polyline), but every tap still fires a real network request,
+  // so we disable the button while one is outstanding to avoid burning
+  // needless Directions API calls on a nervous repeated tap.
+  const [manualRetryPending, setManualRetryPending] = useState(false)
+  const handleManualLegRetry = useCallback(async () => {
+    if (manualRetryPending) return
+    const map = mapRef.current
+    const stops = routeRef.current?.optimizedStops ?? []
+    const nextStop = stops[activeStopIndexRef.current]
+    if (!map || !nextStop) return
+    const pos = driverPosRef.current
+    const fromLng = pos?.lng ?? nextStop.coordinates.lng
+    const fromLat = pos?.lat ?? nextStop.coordinates.lat
+    setLegLoadFailed(false)
+    setManualRetryPending(true)
+    try {
+      await renderActiveLeg(map, fromLng, fromLat, nextStop, false)
+    } finally {
+      setManualRetryPending(false)
+    }
+  }, [renderActiveLeg, manualRetryPending])
 
   // ── Core banner logic ────────────────────────────────────────────────────
   // Delegates the actual decision-making to computeTurnGuidance() (pure,
@@ -1000,6 +1090,7 @@ export default function DriverMap({
     return () => {
       destroyed = true
       legAbortRef.current?.abort()
+      clearTimeout(legRetryTimerRef.current)
       if (glideRafRef.current) { cancelAnimationFrame(glideRafRef.current); glideRafRef.current = null }
       if (watchIdRef.current != null) {
         navigator.geolocation.clearWatch(watchIdRef.current)
@@ -1138,14 +1229,48 @@ export default function DriverMap({
         </div>
       )}
 
-      {/* ── Off-route warning banner ────────────────────────────────────── */}
-      {offRoute && (
+      {/* ── Off-route warning banner ──────────────────────────────────────
+           Suppressed while legLoadFailed is showing — off-route detection
+           runs against corridorCoordsRef, which is stale/from the last
+           successful leg exactly when a reload is failing, so it can't be
+           trusted here, and the two banners share the same top-32 slot. ── */}
+      {offRoute && !legLoadFailed && (
         <div
           className="absolute top-32 left-3 right-3 z-30 flex items-center gap-2 rounded-2xl px-4 py-2.5 pointer-events-none"
           style={{ background: 'rgba(220,38,38,0.9)', backdropFilter: 'blur(8px)' }}
         >
           <span className="text-white text-lg">⚠️</span>
           <p className="text-white text-xs font-semibold">Off route — recalculating in {offRouteCountdown}s…</p>
+        </div>
+      )}
+
+      {/* ── Route-unavailable banner ──────────────────────────────────────
+           Only shown once the auto-retry has already failed once (see
+           LEG_RETRY_DELAYS_MS) — a lone transient blip never reaches here.
+           While retrying, purely informational (matches the off-route
+           banner's pointer-events-none). Once retries are exhausted, becomes
+           tappable so the driver has an explicit way to try again. ── */}
+      {legLoadFailed && (
+        <div
+          className={`absolute top-32 left-3 right-3 z-30 flex items-center gap-2 rounded-2xl px-4 py-2.5 ${legLoadFailed === 'exhausted' ? '' : 'pointer-events-none'}`}
+          style={{ background: 'rgba(220,38,38,0.9)', backdropFilter: 'blur(8px)' }}
+        >
+          <span className="text-white text-lg">⚠️</span>
+          {legLoadFailed === 'exhausted' ? (
+            <>
+              <p className="text-white text-xs font-semibold flex-1">Couldn't load route directions.</p>
+              <button
+                type="button"
+                onClick={handleManualLegRetry}
+                disabled={manualRetryPending}
+                className="pointer-events-auto shrink-0 text-xs font-bold px-3 py-1.5 rounded-full bg-white text-red-700 active:opacity-80 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {manualRetryPending ? 'Retrying…' : 'Retry route'}
+              </button>
+            </>
+          ) : (
+            <p className="text-white text-xs font-semibold">Reconnecting to route…</p>
+          )}
         </div>
       )}
 
