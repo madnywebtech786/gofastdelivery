@@ -207,6 +207,12 @@ export default function DriverMap({
   const carInnerRef        = useRef(null)
 
   const activeStopIndexRef = useRef(activeStopIndex)
+  // Tracks activeStopIndex as of the LAST time the [route] effect below ran —
+  // separate from activeStopIndexRef (which the OTHER sync effect keeps
+  // current) so the [route] effect can tell "did the stop advance alongside
+  // this route update, or is this a reroute-only change?" without racing
+  // against the other effect's own ref update in the same commit.
+  const routeEffectLastStopIdxRef = useRef(activeStopIndex)
   const driverPosRef       = useRef(driverPos)
   const routeRef           = useRef(route)
   const onStepUpdateRef    = useRef(onStepUpdate)
@@ -304,6 +310,24 @@ export default function DriverMap({
       reroutingRef.current = false
       setOffRoute(false)
 
+      // Did the active stop ALSO change alongside this route update (e.g. a
+      // stop was just confirmed)? If so, the [activeStopIndex] effect below
+      // already owns rendering the new leg — it reads the same fresh route/
+      // stop data. Calling renderActiveLeg here too would fire a SECOND,
+      // independent request for the same leg, each snapshotting
+      // driverPosRef.current at a slightly different instant (a GPS tick can
+      // land between the two effects) — two valid-but-different `from`
+      // coordinates racing, where the request that HAPPENS to resolve last
+      // wins, not the one computed from the freshest position. That produced
+      // exactly this bug: a good route flashing to a short, wrong stub a
+      // moment later. So this effect only renders the leg itself when the
+      // stop DIDN'T change — the reroute-only case the comment below still
+      // needs to handle (driver deviated, route geometry updated, but they're
+      // still headed to the same stop, so [activeStopIndex] won't fire).
+      const idx = activeStopIndexRef.current
+      const stopChanged = idx !== routeEffectLastStopIdxRef.current
+      routeEffectLastStopIdxRef.current = idx
+
       // CRITICAL: refresh the active-leg corridor against the NEW route geometry.
       // A reroute almost never changes activeStopIndex (the driver hasn't completed
       // a stop, just deviated), so the [activeStopIndex] effect won't fire and
@@ -315,11 +339,10 @@ export default function DriverMap({
       const map = mapRef.current
       if (map && markerLibRef.current && renderStopMarkersRef.current) {
         const stops = route?.optimizedStops ?? []
-        const idx   = activeStopIndexRef.current
         const nextStop = stops[idx]
         renderStopMarkersRef.current(map, stops, idx, newStopIdsRef.current)
         renderFullRouteGrayRef.current?.(map, route?.encodedPolyline)
-        if (nextStop) {
+        if (nextStop && !stopChanged) {
           const pos = driverPosRef.current
           renderActiveLegRef.current?.(
             map,
@@ -332,6 +355,7 @@ export default function DriverMap({
       }
     } else {
       routeSyncedOnceRef.current = true
+      routeEffectLastStopIdxRef.current = activeStopIndexRef.current
     }
   }, [route])
   useEffect(() => { if (driverPos) driverPosRef.current = driverPos }, [driverPos])
@@ -1131,6 +1155,17 @@ export default function DriverMap({
 
   // ── Active stop changed ───────────────────────────────────────────────────
   useEffect(() => {
+    // This effect owns rendering the leg whenever the stop advances, so keep
+    // the [route] effect's tracking ref in sync here too. Without this, the
+    // ref would only ever advance on commits where `route` ALSO changed —
+    // fine today (every setActiveStopIndex in page.js is paired with a
+    // setRoute), but a future bare setActiveStopIndex would desync it and
+    // make the [route] effect wrongly skip a genuine reroute-only refresh.
+    // Declaration order matters and is safe: the [route] effect is declared
+    // above, so on a commit where both fire it reads the PRE-update value
+    // (correctly detecting the stop changed) before this line runs.
+    routeEffectLastStopIdxRef.current = activeStopIndex
+
     const map = mapRef.current
     if (!map || !markerLibRef.current) return
 
