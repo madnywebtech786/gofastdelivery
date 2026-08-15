@@ -208,6 +208,12 @@ export default function DriverStopsPage() {
                       style={{ color: done ? 'var(--fg-3)' : 'var(--fg)' }}>
                       {stop.address}
                     </p>
+                    {/* Tracking ID — tells apart multiple orders sharing one address. */}
+                    {stop.trackingToken && (
+                      <p className="text-xs font-bold mt-0.5 tracking-wider" style={{ color: 'var(--fg-3)' }}>
+                        #{stop.trackingToken}
+                      </p>
+                    )}
 
                     {!done && (stop.contactName || stop.contactPhone || stop.notes) && (
                       <div className="mt-2 space-y-1">

@@ -7,6 +7,7 @@ import Badge from '@/components/ui/Badge'
 import StatusTimeline from '@/components/ui/StatusTimeline'
 import { useToast } from '@/components/ui/Toast'
 import { formatDateTime } from '@/lib/dateFormat'
+import { accountNumber } from '@/lib/accountLabel'
 import {
   ArrowLeft, Clock, MapPin, User, Phone, Link2, CheckCircle2,
   Copy, Trash2, Package, Ruler, ExternalLink, Loader2, Pencil,
@@ -180,6 +181,11 @@ export default function BookingDetailClient({ booking: initial, origin }) {
           style={{ background: 'var(--surface-2)' }}>
           <Link2 size={13} style={{ color: 'var(--fg-3)' }} />
           <h2 className="text-sm font-bold" style={{ color: 'var(--fg)' }}>Tracking Number</h2>
+          {accountNumber(b.customerAccount) && (
+            <span className="ml-auto text-xs font-semibold" style={{ color: 'var(--fg-3)' }}>
+              Account {accountNumber(b.customerAccount)}
+            </span>
+          )}
         </div>
         <div className="px-5 py-4 flex items-center justify-between gap-4">
           <p

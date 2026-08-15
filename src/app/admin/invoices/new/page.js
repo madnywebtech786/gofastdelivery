@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
 import InvoiceForm from '../InvoiceForm'
 import { useToast } from '@/components/ui/Toast'
+import { calgaryYearMonth } from '@/lib/dateFormat'
 
 export default function NewInvoicePage() {
   const router = useRouter()
@@ -17,11 +18,29 @@ export default function NewInvoicePage() {
   useEffect(() => {
     // Fallback only used if the /next-number fetch itself fails — format must
     // match getNextInvoiceNumber() (src/lib/db/invoices.js): INV0001/YY.
-    const fallback = `INV0001/${String(new Date().getFullYear() % 100).padStart(2, '0')}`
-    fetch('/api/invoices/next-number')
-      .then(r => r.json())
-      .then(d => { setInvoiceNumber(d.invoiceNumber || fallback) })
-      .catch(() => { setInvoiceNumber(fallback) })
+    const fallback = `INV0001/${String(calgaryYearMonth().year % 100).padStart(2, '0')}`
+    function loadNumber() {
+      fetch('/api/invoices/next-number', { cache: 'no-store' })
+        .then(r => r.json())
+        .then(d => { setInvoiceNumber(d.invoiceNumber || fallback) })
+        .catch(() => { setInvoiceNumber(fallback) })
+    }
+    loadNumber()
+
+    // Next's Cache Components can keep this page mounted in a hidden Activity
+    // boundary, so coming back to it does NOT remount and the number fetched
+    // the first time would be reused for every later invoice — already taken,
+    // and rejected by the unique index. Refetch whenever the page is shown
+    // again so the form displays the number that will actually be saved.
+    // (POST /api/invoices also retries on collision, so a stale number can
+    // never block creation — this only keeps the displayed number honest.)
+    function onVisible() { if (document.visibilityState === 'visible') loadNumber() }
+    window.addEventListener('focus', loadNumber)
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      window.removeEventListener('focus', loadNumber)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
   }, [])
 
   async function handleSubmit(data) {

@@ -1,5 +1,6 @@
 import { ObjectId } from 'mongodb'
 import { getDb } from './client.js'
+import { calgaryYearMonth, calgaryDateKey } from '../dateFormat.js'
 
 export const INVOICE_STATUSES = ['draft', 'sent', 'paid', 'overdue']
 
@@ -13,7 +14,11 @@ export async function createInvoice(data) {
     companyPhone:   data.companyPhone   ?? '',
     companyEmail:   data.companyEmail   ?? '',
     invoiceNumber:  data.invoiceNumber  ?? '',
-    invoiceDate:    data.invoiceDate    ? new Date(data.invoiceDate) : now,
+    // Date-only field: an explicit date arrives as "YYYY-MM-DD" and parses to
+    // UTC midnight, so the fallback must too — `now` would store a real
+    // timestamp, which reads back as the UTC date (already tomorrow after 5pm
+    // Calgary) instead of the date the invoice was actually raised.
+    invoiceDate:    data.invoiceDate    ? new Date(data.invoiceDate) : new Date(calgaryDateKey()),
     dueDate:        data.dueDate        ? new Date(data.dueDate)     : null,
     paymentTerms:   data.paymentTerms   ?? 'On Receipt',
     currency:       data.currency       ?? 'CAD',
@@ -172,9 +177,16 @@ const REVENUE_GROUP_FIELDS = {
  */
 export async function getInvoiceStats({ year, month } = {}) {
   const db = await getDb()
-  const now         = new Date()
-  const targetYear  = year  ?? now.getFullYear()
-  const targetMonth = month ?? now.getMonth() + 1  // 1-12
+  // Defaults are "the current year/month in Calgary" — not the server's, which
+  // is UTC on Vercel and rolls over to the next month/year hours early.
+  // NOTE: the $match bounds and $dayOfMonth/$month/$year groupings below are
+  // deliberately left UTC-based. invoiceDate is a DATE-ONLY field stored at
+  // UTC midnight (see src/lib/dateFormat.js header, kind 3), so UTC grouping
+  // returns exactly the date the admin picked — adding `timezone: CALGARY_TZ`
+  // here would shift every invoice back one day.
+  const nowInCalgary = calgaryYearMonth()
+  const targetYear  = year  ?? nowInCalgary.year
+  const targetMonth = month ?? nowInCalgary.month  // 1-12
 
   const daysInMonth = new Date(targetYear, targetMonth, 0).getDate()
 
@@ -221,7 +233,7 @@ export async function getInvoiceStats({ year, month } = {}) {
   ]).toArray()
 
   // Per-year totals for the last 4 years
-  const currentYear = now.getFullYear()
+  const currentYear = nowInCalgary.year
   const byYear = await db.collection('invoices').aggregate([
     {
       $match: {
@@ -252,7 +264,10 @@ export async function getInvoiceStats({ year, month } = {}) {
 // year naturally starts back at INV0001/YY the first time it's called that
 // year — no separate reset step needed.
 function currentYearSuffix() {
-  return String(new Date().getFullYear() % 100).padStart(2, '0')
+  // Calgary's year, not the server's — an invoice raised the evening of
+  // Dec 31 in Calgary is already Jan 1 in UTC, and would otherwise jump a
+  // year early into the next sequence.
+  return String(calgaryYearMonth().year % 100).padStart(2, '0')
 }
 
 export async function getNextInvoiceNumber() {

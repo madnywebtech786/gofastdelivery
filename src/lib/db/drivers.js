@@ -1,6 +1,6 @@
 import { ObjectId } from 'mongodb'
 import { getDb } from './client.js'
-import { calgaryStartOfToday, CALGARY_TZ } from './calgaryTime.js'
+import { calgaryStartOfToday, CALGARY_TZ } from '../dateFormat.js'
 
 const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
@@ -85,7 +85,7 @@ function distanceBucketSpec(range, start) {
 /**
  * Sum of routes.drivenDistanceMeters for routes STARTED (createdAt) within
  * the given Calgary-anchored range for this driver, plus a bucketed series
- * for the Miles chart (hourly for 'day', daily for 'week'/'month', monthly
+ * for the distance chart (hourly for 'day', daily for 'week'/'month', monthly
  * for 'year' — empty buckets included as 0 so the chart has a consistent
  * x-axis). Approximation: a route spanning midnight attributes its whole
  * distance to the day it started on — accurate for the common case (one
@@ -137,7 +137,7 @@ export async function incrementDrivenDistance(driverId, routeId, metres) {
  *   distanceRangeMeters       — total distance for the requested distanceRange
  *                               ('day'|'week'|'month'|'year'), Calgary-anchored
  *   distanceRange             — echoes back the resolved range
- *   distanceSeries            — [{label, meters}, ...] bucketed for the Miles
+ *   distanceSeries            — [{label, meters}, ...] bucketed for the distance
  *                               chart: hourly for 'day', daily for 'week'/
  *                               'month', monthly for 'year'; empty buckets
  *                               included as 0
@@ -172,7 +172,7 @@ export async function getDriverStats(driverId, { year, month, distanceRange = 'm
   // All-time routes
   const totalRoutes = await db.collection('routes').countDocuments({ driverId: objId })
 
-  // Miles-driven stat for the requested range (day/week/month/year, Calgary-anchored)
+  // Distance-driven stat for the requested range (day/week/month/year, Calgary-anchored)
   const distanceForRange = await getDriverDistanceForRange(driverId, distanceRange)
 
   // Per-day completed bookings for selected month+year — window boundaries

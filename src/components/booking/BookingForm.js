@@ -9,6 +9,7 @@ import DatePicker from '@/components/ui/DatePicker'
 import { useToast } from '@/components/ui/Toast'
 import { placesAutocomplete, placeDetails, reverseGeocode } from '@/lib/google-geocode'
 import { calculatePrice } from '@/lib/pricing'
+import { calgaryDateKey, calgaryTimeKey } from '@/lib/dateFormat'
 import { Plus, Trash2 } from 'lucide-react'
 
 const BookingMap = dynamic(() => import('@/components/map/BookingMap'), {
@@ -56,10 +57,14 @@ const PICKUP_TIME_SLOTS = [
 ]
 
 // react-day-picker Matcher — blocks all Sundays and any day before today.
+// "Today" is Calgary's date (the depot's), not the customer's device date —
+// otherwise someone booking from another timezone is offered a pickup day
+// that has already passed here, or loses a day that is still valid.
 function isPickupDateDisabled(date) {
-  const startOfToday = new Date()
-  startOfToday.setHours(0, 0, 0, 0)
-  return date.getDay() === 0 || date < startOfToday
+  // react-day-picker hands us a date built from the calendar's own local
+  // fields, so compare on calendar date strings rather than instants.
+  const ymd = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+  return date.getDay() === 0 || ymd < calgaryDateKey()
 }
 
 function emptyPackage() {
@@ -332,9 +337,12 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess, init
   // passed (mirrors the previous datetime-local input's `min={now+1min}`).
   const pickupDatePart = pickup.pickupTime.split('T')[0] || ''
   const availableTimeSlots = (() => {
-    const todayStr = new Date().toLocaleDateString('en-CA') // 'YYYY-MM-DD', local time
+    // Both sides Calgary: the slot values are Calgary wall-clock times, so
+    // "has this slot passed" must be judged against Calgary's clock, not the
+    // customer's device clock.
+    const todayStr = calgaryDateKey()
     if (pickupDatePart !== todayStr) return PICKUP_TIME_SLOTS
-    const nowHHMM = new Date(Date.now() + 60000).toTimeString().slice(0, 5)
+    const nowHHMM = calgaryTimeKey(new Date(Date.now() + 60000))
     return PICKUP_TIME_SLOTS.filter((slot) => slot.value > nowHHMM)
   })()
 

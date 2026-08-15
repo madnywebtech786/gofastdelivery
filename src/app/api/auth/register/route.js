@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import bcrypt from 'bcryptjs'
-import { createUser, emailExists } from '@/lib/db/users'
+import { createUser, emailExists, getNextAccountNumber } from '@/lib/db/users'
 import { createSession } from '@/lib/session'
 import { checkRateLimit } from '@/lib/redis'
 
@@ -59,13 +59,27 @@ export async function POST(request) {
 
     const passwordHash = await bcrypt.hash(password, 12)
 
-    const user = await createUser({
-      email,
-      passwordHash,
-      name: name.trim(),
-      role: 'customer',
-      phone: phone?.trim() || null,
-    })
+    // Account number is read-then-increment, so two simultaneous signups can
+    // land on the same value; the unique index rejects the loser, and we just
+    // take the next one. Registration must never fail over a number clash.
+    const MAX_ACCOUNT_RETRIES = 5
+    let user
+    for (let attempt = 0; ; attempt++) {
+      try {
+        user = await createUser({
+          email,
+          passwordHash,
+          name: name.trim(),
+          role: 'customer',
+          phone: phone?.trim() || null,
+          accountNumber: await getNextAccountNumber(),
+        })
+        break
+      } catch (err) {
+        const isDuplicateAccount = err?.code === 11000 && /accountNumber/.test(err?.message ?? '')
+        if (!isDuplicateAccount || attempt >= MAX_ACCOUNT_RETRIES) throw err
+      }
+    }
 
     // Auto sign-in after registration
     await createSession(user._id, 'customer')

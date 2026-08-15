@@ -21,6 +21,20 @@
 //      formatPickupTime(), which parses the string's own fields directly
 //      instead of routing it through `new Date(string)` (which would
 //      re-interpret it in whatever zone the JS engine defaults to).
+//   3. Date-only values (invoice `invoiceDate`/`dueDate`) — a calendar date
+//      the admin picked, with no meaningful time component. Stored as a real
+//      Date at UTC midnight (`new Date('2026-08-15')` parses as UTC per spec),
+//      so rendering them through CALGARY_TZ would shift them to 6pm the
+//      PREVIOUS day and print the wrong date. Use formatDateOnly/
+//      formatDateOnlyLong, which read the value's UTC fields back literally —
+//      same "display what was entered" principle as formatPickupTime.
+//
+// For day-boundary MATH (not display) — "what is today in Calgary", "the UTC
+// instant Calgary's calendar day starts at" — use calgaryDateKey /
+// calgaryStartOfToday / calgaryStartOfDay / calgaryEndOfDay / calgaryYearMonth
+// below. Never `new Date().setHours(0,0,0,0)` or `.getFullYear()`: those read
+// the SERVER's zone (UTC on Vercel) or the visitor's device zone, neither of
+// which is Calgary.
 
 export const CALGARY_TZ = 'America/Edmonton'
 
@@ -99,6 +113,36 @@ export function formatTime(val, { fallback = '—' } = {}) {
 }
 
 /**
+ * Date-only value → "Aug 15, 2026". For fields that are a calendar date with
+ * no meaningful time (invoice invoiceDate/dueDate — see file header, kind 3).
+ * These are stored at UTC midnight, so they're read back through their UTC
+ * fields rather than converted into Calgary time: converting would move UTC
+ * midnight to 6pm the previous day and display the date the admin picked
+ * minus one.
+ */
+export function formatDateOnly(val, { fallback = '—' } = {}) {
+  const d = toDate(val)
+  if (!d) return fallback
+  return d.toLocaleDateString('en-CA', {
+    timeZone: 'UTC',
+    year: 'numeric', month: 'short', day: 'numeric',
+  })
+}
+
+/**
+ * Long-form date-only value → "August 15, 2026" (invoices/PDFs). Same
+ * UTC-fields reasoning as formatDateOnly above.
+ */
+export function formatDateOnlyLong(val, { fallback = '—' } = {}) {
+  const d = toDate(val)
+  if (!d) return fallback
+  return d.toLocaleDateString('en-CA', {
+    timeZone: 'UTC',
+    year: 'numeric', month: 'long', day: 'numeric',
+  })
+}
+
+/**
  * Short weekday name, Calgary timezone. e.g. "Mon"
  */
 export function formatWeekdayShort(val) {
@@ -126,6 +170,94 @@ export function calgaryDateKey(val = new Date()) {
   const d = toDate(val) ?? new Date()
   // en-CA's toLocaleDateString with no format options is already YYYY-MM-DD.
   return d.toLocaleDateString('en-CA', { timeZone: CALGARY_TZ })
+}
+
+/**
+ * "HH:mm" (24h) for the given instant AS SEEN IN CALGARY — for comparing
+ * against wall-clock time strings such as the booking form's pickup slots.
+ * Pinned to hourCycle 'h23' so midnight is "00:xx" and never "24:xx", which
+ * would sort above every slot and silently filter all of them out.
+ */
+export function calgaryTimeKey(val = new Date()) {
+  const d = toDate(val) ?? new Date()
+  return d.toLocaleTimeString('en-CA', {
+    timeZone: CALGARY_TZ,
+    hourCycle: 'h23',
+    hour: '2-digit', minute: '2-digit',
+  })
+}
+
+// Returns a timezone's offset from UTC in minutes for a given instant
+// (negative = behind UTC, matching Calgary's MST -420 / MDT -360). Derived by
+// asking Intl to format the instant in that zone and reading the parts back,
+// rather than hardcoding a fixed offset that would be wrong half the year.
+function getTimezoneOffsetMinutes(date, timeZone) {
+  const dtf = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hour12: false,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  })
+  const parts = Object.fromEntries(dtf.formatToParts(date).map((p) => [p.type, p.value]))
+  const asUTC = Date.UTC(
+    Number(parts.year), Number(parts.month) - 1, Number(parts.day),
+    Number(parts.hour) % 24, Number(parts.minute), Number(parts.second)
+  )
+  return Math.round((asUTC - date.getTime()) / 60000)
+}
+
+/**
+ * The UTC Date instant at which the Calgary calendar day `ymd` ("YYYY-MM-DD")
+ * begins. Use this — never `new Date(ymd)` (UTC midnight) or
+ * `new Date(ymd); d.setHours(0,0,0,0)` (server/device midnight) — for the
+ * lower bound of any "this day onward" Mongo date filter.
+ */
+export function calgaryStartOfDay(ymd) {
+  // Probe at UTC midnight of the same date to read Calgary's offset on that
+  // day. Calgary is always behind UTC, so UTC midnight of `ymd` falls in the
+  // early evening of ymd-1 Calgary — on both DST transition days that is still
+  // the same offset the day's real midnight has (transitions happen at 2am
+  // local, after midnight), so this resolves correctly year-round.
+  const probe = new Date(`${ymd}T00:00:00.000Z`)
+  if (isNaN(probe.getTime())) return null
+  return new Date(probe.getTime() - getTimezoneOffsetMinutes(probe, CALGARY_TZ) * 60000)
+}
+
+/**
+ * The UTC Date instant corresponding to local midnight in Calgary for the
+ * given moment (defaults to now). Use this instead of
+ * `new Date().setHours(0,0,0,0)` in any Mongo query filter that means "today"
+ * for a Calgary-based user (customer/admin/driver).
+ */
+export function calgaryStartOfToday(now = new Date()) {
+  return calgaryStartOfDay(calgaryDateKey(now))
+}
+
+/**
+ * The last instant (…:59.999) of the Calgary calendar day `ymd` — the upper
+ * bound for an inclusive "through this day" Mongo date filter. Computed as
+ * "start of the next Calgary day minus 1ms" so it stays correct across DST
+ * transitions, where a calendar day is 23 or 25 hours long rather than 24.
+ */
+export function calgaryEndOfDay(ymd) {
+  const start = calgaryStartOfDay(ymd)
+  if (!start) return null
+  // Step the calendar date forward in UTC (pure date arithmetic, no zone
+  // involved) before resolving that next day's Calgary midnight.
+  const next = new Date(`${ymd}T00:00:00.000Z`)
+  next.setUTCDate(next.getUTCDate() + 1)
+  return new Date(calgaryStartOfDay(next.toISOString().slice(0, 10)).getTime() - 1)
+}
+
+/**
+ * The current calendar year + month (1-12) in Calgary — for defaulting a
+ * "this month" chart/report selector. `new Date().getFullYear()/.getMonth()`
+ * reads the server's or the visitor's device zone instead, which lands on the
+ * wrong month for several hours around every month boundary.
+ */
+export function calgaryYearMonth(val = new Date()) {
+  const [year, month] = calgaryDateKey(val).split('-').map(Number)
+  return { year, month }
 }
 
 /**

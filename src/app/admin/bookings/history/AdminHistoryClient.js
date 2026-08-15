@@ -7,6 +7,7 @@ import Badge from '@/components/ui/Badge'
 import Select from '@/components/ui/Select'
 import DatePicker from '@/components/ui/DatePicker'
 import { useToast } from '@/components/ui/Toast'
+import { accountLabel } from '@/lib/accountLabel'
 import {
   MapPin, Clock, ChevronRight, ChevronLeft, ChevronDown,
   PackageCheck, Search, X, Circle, Trash2, DollarSign,
@@ -132,6 +133,24 @@ export default function AdminHistoryClient({
   const [priceFilterActive, setPriceFilterActive] = useState(!!(initialPriceMin || initialPriceMax))
   const [priceMinInput, setPriceMinInput] = useState(initialPriceMin ?? '')
   const [priceMaxInput, setPriceMaxInput] = useState(initialPriceMax ?? '')
+
+  // Next's Cache Components keep an already-visited page mounted in a hidden
+  // Activity boundary, so navigating away and back re-runs the server component
+  // (fresh, unfiltered props) WITHOUT remounting this client component —
+  // useState initialisers don't re-run, so the controls would keep showing a
+  // driver/date/search that the list is no longer actually filtered by.
+  // Re-sync every filter to whatever the URL says.
+  useEffect(() => {
+    setStatusFilter(initialStatusFilter ?? '')
+    setDateFrom(initialDateFrom ?? '')
+    setDateTo(initialDateTo ?? '')
+    setSearch(initialSearch ?? '')
+    setDriverId(initialDriverId ?? '')
+    setPriceMinInput(initialPriceMin ?? '')
+    setPriceMaxInput(initialPriceMax ?? '')
+    setPriceFilterActive(!!(initialPriceMin || initialPriceMax))
+  }, [initialStatusFilter, initialDateFrom, initialDateTo, initialSearch,
+      initialDriverId, initialPriceMin, initialPriceMax])
 
   // Driver list for the filter dropdown — fetched once on mount, same
   // endpoint/shape the main admin bookings page's assign panel already uses.
@@ -566,8 +585,18 @@ export default function AdminHistoryClient({
                       )}
                     </div>
 
+                    {/* Account that placed the order — the stop contact below
+                        is whoever was at the pickup address, not the payer.
+                        Labelled inline so the two can't be misread as one
+                        name over another. */}
+                    <p className="text-xs font-semibold mb-0.5 truncate" style={{ color: 'var(--fg-2)' }}>
+                      <span className="font-medium" style={{ color: 'var(--fg-3)' }}>Acc: </span>
+                      {accountLabel(b.customerAccount)}
+                    </p>
+
                     {pickup?.contactName && (
                       <p className="text-xs font-medium mb-1 truncate" style={{ color: 'var(--fg-2)' }}>
+                        <span style={{ color: 'var(--fg-3)' }}>Name: </span>
                         {pickup.contactName}
                       </p>
                     )}

@@ -1,5 +1,5 @@
 import { requireAdmin } from '@/lib/dal'
-import { findAllBookings, countAllBookings } from '@/lib/db/bookings'
+import { findAllBookings, countAllBookings, attachCustomerAccounts } from '@/lib/db/bookings'
 import { VALID_STATUS_FILTERS, resolveFilterQuery } from '@/lib/bookingStatusFilters'
 import AdminBookingsClient from './AdminBookingsClient'
 
@@ -24,10 +24,12 @@ export default async function AdminBookingsPage({ searchParams }) {
   const pickupDateParam = typeof sp?.pickupDate === 'string' ? (sp.pickupDate || null) : undefined
   const query = resolveFilterQuery(statusFilter, pickupDateParam)
 
-  const [bookings, total] = await Promise.all([
+  const [rawBookings, total] = await Promise.all([
     findAllBookings({ ...query, limit: PAGE_SIZE, skip }),
     countAllBookings(query),
   ])
+  // Label each row with the account that placed it — one batched lookup.
+  const bookings = await attachCustomerAccounts(rawBookings)
 
   return (
     <AdminBookingsClient

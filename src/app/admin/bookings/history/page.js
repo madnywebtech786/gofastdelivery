@@ -1,5 +1,6 @@
 import { requireAdmin } from '@/lib/dal'
-import { findAllBookings, countAllBookings } from '@/lib/db/bookings'
+import { findAllBookings, countAllBookings, attachCustomerAccounts } from '@/lib/db/bookings'
+import { calgaryStartOfDay, calgaryEndOfDay } from '@/lib/dateFormat'
 import AdminHistoryClient from './AdminHistoryClient'
 
 export const metadata = { title: 'Booking History — Courier Admin' }
@@ -29,15 +30,19 @@ export default async function AdminBookingHistoryPage({ searchParams }) {
   const priceMin = Number.isFinite(rawPriceMin) && rawPriceMin >= 0 ? rawPriceMin : null
   const priceMax = Number.isFinite(rawPriceMax) && rawPriceMax >= 0 ? rawPriceMax : null
 
-  const sinceDate = rawFrom ? (() => { const d = new Date(rawFrom); d.setHours(0,0,0,0); return d })() : null
-  const untilDate = rawTo   ? (() => { const d = new Date(rawTo);   d.setHours(23,59,59,999); return d })() : null
+  // The admin picks these dates looking at a Calgary calendar, so the range
+  // has to span the Calgary day — not the server's (UTC on Vercel), which
+  // would shift both ends by 6-7 hours and pull in / drop a day's bookings.
+  const sinceDate = rawFrom ? calgaryStartOfDay(rawFrom) : null
+  const untilDate = rawTo   ? calgaryEndOfDay(rawTo)     : null
 
   const statusArg = statusFilter ? [statusFilter] : HISTORY_STATUSES
 
-  const [bookings, total] = await Promise.all([
+  const [rawBookings, total] = await Promise.all([
     findAllBookings({ status: statusArg, driverId: rawDriverId || undefined, priceMin, priceMax, sinceDate, untilDate, search: rawSearch || undefined, excludeHiddenFromHistory: true, limit: PAGE_SIZE, skip }),
     countAllBookings({ status: statusArg, driverId: rawDriverId || undefined, priceMin, priceMax, sinceDate, untilDate, search: rawSearch || undefined, excludeHiddenFromHistory: true }),
   ])
+  const bookings = await attachCustomerAccounts(rawBookings)
 
   return (
     <AdminHistoryClient

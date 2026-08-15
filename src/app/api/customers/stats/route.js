@@ -10,8 +10,6 @@ export async function GET() {
     const db = await getDb()
     const cid = new ObjectId(userId)
 
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
     const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
     const monthAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
 

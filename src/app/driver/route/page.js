@@ -1127,8 +1127,8 @@ export default function DriverRoutePage() {
           <span className="font-bold text-base" style={{ color: 'var(--fg)' }}>Navigation</span>
           <button
             onClick={handleSignOut}
-            className="text-xs font-medium px-3 py-1.5 rounded-full transition"
-            style={{ background: 'var(--surface-2)', color: 'var(--fg-2)', border: '1px solid var(--border)' }}
+            className="text-xs font-semibold px-3 py-1.5 rounded-full transition text-white active:opacity-90"
+            style={{ background: 'var(--accent)' }}
           >
             Sign out
           </button>
@@ -1195,7 +1195,8 @@ export default function DriverRoutePage() {
         <OnlineIndicator pending={queueDepth} wrapperClassName="pointer-events-auto bg-white shadow-md rounded-full px-2 h-9 flex items-center" />
         <button
           onClick={handleSignOut}
-          className="pointer-events-auto bg-white shadow-md rounded-full px-2.5 sm:px-3 h-9 text-xs font-medium text-gray-600 active:bg-gray-100"
+          className="pointer-events-auto shadow-md rounded-full px-3 sm:px-3.5 h-9 text-xs font-semibold text-white active:opacity-90"
+          style={{ background: 'var(--accent)' }}
         >
           Sign out
         </button>
@@ -1250,6 +1251,7 @@ export default function DriverRoutePage() {
                 <div className="min-w-0">
                   <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
                     {routePhase === 'pickup' ? 'Pickup run' : 'Delivery run'} · {activeStopIndex + 1}/{stops.length}
+                    {currentStop.trackingToken && <> · #{currentStop.trackingToken}</>}
                   </p>
                   <p className="text-sm font-semibold text-gray-900 truncate leading-tight">{currentStop.address}</p>
                 </div>
@@ -1343,6 +1345,11 @@ export default function DriverRoutePage() {
                         )}
                       </div>
                       <p className="text-sm font-semibold text-gray-900 mt-1 leading-snug">{stop.address}</p>
+                      {/* Tracking ID — the only way to tell apart two stops at
+                          the same address when one order has to be failed. */}
+                      {stop.trackingToken && (
+                        <p className="text-xs font-bold text-gray-500 mt-0.5 tracking-wider">#{stop.trackingToken}</p>
+                      )}
                       {stop.estimatedArrivalAt && !isDone && (
                         <p className="text-xs text-blue-600 font-semibold mt-0.5">ETA {formatETA(stop.estimatedArrivalAt)}</p>
                       )}
@@ -1586,6 +1593,11 @@ export default function DriverRoutePage() {
                           >
                             {stop.address}
                           </p>
+                          {/* Tracking ID — distinguishes multiple orders at the
+                              same address, so the driver can fail the right one. */}
+                          {stop.trackingToken && (
+                            <p className="text-[10px] font-bold text-gray-500 truncate tracking-wider">#{stop.trackingToken}</p>
+                          )}
                           {stop.contactName && (
                             <p className="text-[10px] text-gray-400 truncate">{stop.contactName}</p>
                           )}
@@ -1671,13 +1683,24 @@ export default function DriverRoutePage() {
                         {s.stopType === 'pickup' ? 'Pickup' : 'Drop-off'}:
                       </span>{' '}
                       {s.address}
+                      {/* Tracking ID is the confirmation that this is the right
+                          order — addresses alone are ambiguous when several
+                          bookings share one pickup point. */}
+                      {s.trackingToken && (
+                        <span className="font-bold tracking-wider" style={{ color: 'var(--fg-2)' }}> · #{s.trackingToken}</span>
+                      )}
                     </li>
                   ))}
                 </ul>
               ) : (
-                <p className="text-xs" style={{ color: 'var(--fg-3)' }}>
-                  {failedModal.stops[0].address}
-                </p>
+                <div className="text-xs" style={{ color: 'var(--fg-3)' }}>
+                  <p>{failedModal.stops[0].address}</p>
+                  {failedModal.stops[0].trackingToken && (
+                    <p className="font-bold tracking-wider mt-0.5" style={{ color: 'var(--fg-2)' }}>
+                      #{failedModal.stops[0].trackingToken}
+                    </p>
+                  )}
+                </div>
               )}
               <div>
                 <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--fg-2)' }}>

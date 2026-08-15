@@ -9,7 +9,7 @@ import {
 } from 'lucide-react'
 import { triggerPrint } from '../InvoicePDF'
 import { useToast } from '@/components/ui/Toast'
-import { formatDateLong as formatDate } from '@/lib/dateFormat'
+import { formatDateOnlyLong as formatDate } from '@/lib/dateFormat'
 
 const STATUS_CONFIG = {
   draft:   { label: 'Draft',   color: '#64748b', bg: 'rgba(100,116,139,0.08)', border: 'rgba(100,116,139,0.2)', icon: FileText },

@@ -21,6 +21,10 @@ async function setup() {
   await db.collection('users').createIndexes([
     { key: { email: 1 }, unique: true, name: 'email_unique' },
     { key: { role: 1 }, name: 'role' },
+    // Customers only. Sparse so drivers/admins (no account number) don't all
+    // collide on null; unique so the register retry can rely on the DB to
+    // reject a duplicate rather than trusting the read-then-increment.
+    { key: { accountNumber: 1 }, unique: true, sparse: true, name: 'accountNumber_unique' },
   ])
   console.log('✓ users indexes')
 

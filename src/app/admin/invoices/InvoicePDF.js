@@ -1,6 +1,6 @@
 'use client'
 
-import { formatDateLong as formatDate } from '@/lib/dateFormat'
+import { formatDateOnlyLong as formatDate } from '@/lib/dateFormat'
 
 const BRAND_GREEN      = '#1bb908'
 const BRAND_GREEN_DARK = '#15960a'

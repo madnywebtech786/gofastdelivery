@@ -1,6 +1,6 @@
 import nodemailer from 'nodemailer'
 import { buildInvoicePdf } from './invoicePdf'
-import { formatDateTime as formatDate, formatDateLong as formatInvoiceDate } from './dateFormat'
+import { formatDateTime as formatDate, formatDateOnlyLong as formatInvoiceDate } from './dateFormat'
 
 // ── Transport ─────────────────────────────────────────────────────────────────
 

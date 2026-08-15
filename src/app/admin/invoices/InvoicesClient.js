@@ -11,7 +11,7 @@ import {
 import { triggerPrint } from './InvoicePDF'
 import { useToast } from '@/components/ui/Toast'
 import Select from '@/components/ui/Select'
-import { formatDate as formatDateShared } from '@/lib/dateFormat'
+import { formatDateOnly as formatDateShared, calgaryYearMonth } from '@/lib/dateFormat'
 
 const PAGE_SIZE = 20
 
@@ -198,13 +198,13 @@ function InvoiceStats({ stats, selectedYear, selectedMonth, onYearChange, onMont
   const paidCount    = (stats.byMonth ?? []).reduce((s, m) => s + (m.paid    ?? 0), 0)
   const statusMap    = Object.fromEntries((stats.statusBreakdown ?? []).map(s => [s._id, s.count]))
 
-  const now          = new Date()
-  const currentYear  = now.getFullYear()
+  const nowInCalgary = calgaryYearMonth()
+  const currentYear  = nowInCalgary.year
   const yearOptions  = Array.from({ length: 4 }, (_, i) => currentYear - i)
 
   const chartData  = view === 'monthly' ? dailyData : monthlyData
   const chartTitle = view === 'monthly'
-    ? `${MONTHS_SHORT[(selectedMonth ?? now.getMonth() + 1) - 1]} ${selectedYear} — invoices per day`
+    ? `${MONTHS_SHORT[(selectedMonth ?? nowInCalgary.month) - 1]} ${selectedYear} — invoices per day`
     : `${selectedYear} — invoices per month`
 
   return (
@@ -286,8 +286,8 @@ export default function InvoicesClient({ initialInvoices, total, currentPage, cu
   const [error, setError]               = useState('')
   const [sendingId, setSendingId]       = useState(null)
   const [sentId, setSentId]             = useState(null)
-  const [selectedYear, setSelectedYear]   = useState(stats?.year  ?? new Date().getFullYear())
-  const [selectedMonth, setSelectedMonth] = useState(stats?.month ?? new Date().getMonth() + 1)
+  const [selectedYear, setSelectedYear]   = useState(stats?.year  ?? calgaryYearMonth().year)
+  const [selectedMonth, setSelectedMonth] = useState(stats?.month ?? calgaryYearMonth().month)
   const debounceRef                       = useRef(null)
 
   const buildUrl = useCallback((updates) => {

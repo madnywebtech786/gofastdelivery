@@ -4,7 +4,7 @@ import { useState, useMemo } from 'react'
 import Link from 'next/link'
 import Badge from '@/components/ui/Badge'
 import DatePicker from '@/components/ui/DatePicker'
-import { formatDate as formatDateShared, formatTime as formatTimeShared } from '@/lib/dateFormat'
+import { formatDate as formatDateShared, formatTime as formatTimeShared, calgaryStartOfDay, calgaryEndOfDay } from '@/lib/dateFormat'
 import {
   Search, PackageOpen, MapPin, ArrowRight,
   ChevronLeft, ChevronRight, X, Filter,
@@ -49,16 +49,17 @@ export default function HistoryClient({ bookings }) {
         : list.filter((b) => b.status === filter)
     }
 
+    // The dates are picked against a Calgary calendar and createdAt is a real
+    // instant, so the range must span the Calgary day — using the device's day
+    // would include or drop bookings near midnight for anyone not in Calgary.
     if (dateFrom) {
-      const from = new Date(dateFrom)
-      from.setHours(0, 0, 0, 0)
-      list = list.filter((b) => new Date(b.createdAt) >= from)
+      const from = calgaryStartOfDay(dateFrom)
+      if (from) list = list.filter((b) => new Date(b.createdAt) >= from)
     }
 
     if (dateTo) {
-      const to = new Date(dateTo)
-      to.setHours(23, 59, 59, 999)
-      list = list.filter((b) => new Date(b.createdAt) <= to)
+      const to = calgaryEndOfDay(dateTo)
+      if (to) list = list.filter((b) => new Date(b.createdAt) <= to)
     }
 
     if (search.trim()) {

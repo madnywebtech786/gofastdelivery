@@ -97,7 +97,7 @@ export default function CustomersClient({ customers, total, page, search: initia
             type="text"
             value={searchInput}
             onChange={e => setSearchInput(e.target.value)}
-            placeholder="Search name, email, phone…"
+            placeholder="Search name, email, phone, account…"
             className="pl-8 pr-8 py-2 rounded-xl border text-sm w-64 focus:outline-none focus:ring-2 transition-all"
             style={{
               borderColor: isPending ? 'var(--accent)' : 'var(--border-2)',
@@ -138,6 +138,7 @@ export default function CustomersClient({ customers, total, page, search: initia
               <thead>
                 <tr>
                   <th>Customer</th>
+                  <th>Account</th>
                   <th className="hidden md:table-cell">Phone</th>
                   <th className="hidden lg:table-cell">Contact Name</th>
                   <th className="hidden lg:table-cell">Joined</th>
@@ -159,6 +160,14 @@ export default function CustomersClient({ customers, total, page, search: initia
                           </span>
                         </div>
                       </div>
+                    </td>
+                    <td>
+                      {/* Accounts created before account numbers existed show
+                          a dash rather than an empty cell. */}
+                      <span className="text-xs mono font-semibold"
+                        style={{ color: c.accountNumber ? 'var(--fg-2)' : 'var(--fg-3)' }}>
+                        {c.accountNumber ?? '—'}
+                      </span>
                     </td>
                     <td className="hidden md:table-cell">
                       <span className="flex items-center gap-1.5 text-xs mono" style={{ color: 'var(--fg-2)' }}>
@@ -190,7 +199,15 @@ export default function CustomersClient({ customers, total, page, search: initia
                   {c.name.charAt(0).toUpperCase()}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold truncate" style={{ color: 'var(--fg)' }}>{c.name}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-semibold truncate" style={{ color: 'var(--fg)' }}>{c.name}</p>
+                    {c.accountNumber && (
+                      <span className="text-[10px] mono font-bold shrink-0 px-1.5 py-0.5 rounded"
+                        style={{ background: 'var(--surface-2)', color: 'var(--fg-2)' }}>
+                        {c.accountNumber}
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs truncate" style={{ color: 'var(--fg-3)' }}>{c.email}</p>
                   {c.phone && <p className="text-xs mono mt-0.5" style={{ color: 'var(--fg-3)' }}>{c.phone}</p>}
                 </div>

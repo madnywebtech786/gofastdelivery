@@ -11,7 +11,7 @@ import Link from 'next/link'
 import Select from '@/components/ui/Select'
 import ResetPasswordButton from './ResetPasswordButton'
 import EditDriverButton from './EditDriverButton'
-import { formatDateTime as formatDate } from '@/lib/dateFormat'
+import { formatDateTime as formatDate, calgaryYearMonth } from '@/lib/dateFormat'
 
 const BRAND       = '#1bb908'
 const MONTHS      = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
@@ -87,8 +87,7 @@ function DriverBars({ data, height = 120, color = BRAND, getValue = (d) => d.cou
 // ── Chart section ──────────────────────────────────────────────────────────────
 function DriverChart({ stats, selectedYear, selectedMonth, onYearChange, onMonthChange }) {
   const [view, setView] = useState('monthly')
-  const now = new Date()
-  const currentYear = now.getFullYear()
+  const currentYear = calgaryYearMonth().year
   const yearOptions = Array.from({ length: 4 }, (_, i) => ({ value: String(currentYear - i), label: String(currentYear - i) }))
   const monthOptions = MONTHS.map((m, i) => ({ value: String(i + 1), label: m }))
 
@@ -175,12 +174,12 @@ const DISTANCE_RANGE_UNIT_LABEL = {
   month: 'this month',
   year: 'this year',
 }
-const MILES_COLOR = '#2563eb'
+const DISTANCE_COLOR = '#2563eb'
 
-function DriverMilesChart({ stats, distanceRange, onRangeChange }) {
+function DriverDistanceChart({ stats, distanceRange, onRangeChange }) {
   const series = stats.distanceSeries ?? []
-  const chartData = series.map((s) => ({ label: s.label, miles: s.meters * 0.000621371 }))
-  const totalMiles = (stats.distanceRangeMeters ?? 0) * 0.000621371
+  const chartData = series.map((s) => ({ label: s.label, km: s.meters / 1000 }))
+  const totalKm = (stats.distanceRangeMeters ?? 0) / 1000
   const rangeLabel = DISTANCE_RANGE_OPTIONS.find((o) => o.value === distanceRange)?.label ?? 'This Month'
 
   return (
@@ -196,22 +195,22 @@ function DriverMilesChart({ stats, distanceRange, onRangeChange }) {
         </div>
 
         <div className="ml-auto text-right">
-          <span className="text-2xl font-black" style={{ color: MILES_COLOR }}>{totalMiles.toFixed(1)}</span>
+          <span className="text-2xl font-black" style={{ color: DISTANCE_COLOR }}>{totalKm.toFixed(1)}</span>
           <span className="text-xs ml-1.5 font-semibold" style={{ color: 'var(--fg-3)' }}>
-            mi {DISTANCE_RANGE_UNIT_LABEL[distanceRange] ?? 'this month'}
+            km {DISTANCE_RANGE_UNIT_LABEL[distanceRange] ?? 'this month'}
           </span>
         </div>
       </div>
 
       <p className="text-xs font-semibold mb-4" style={{ color: 'var(--fg-3)' }}>
-        {rangeLabel} — miles driven {distanceRange === 'day' ? 'per hour' : distanceRange === 'year' ? 'per month' : 'per day'}
+        {rangeLabel} — km driven {distanceRange === 'day' ? 'per hour' : distanceRange === 'year' ? 'per month' : 'per day'}
       </p>
       <DriverBars
         data={chartData}
         height={130}
-        color={MILES_COLOR}
-        getValue={(d) => d.miles}
-        tooltip={(v) => `${v.toFixed(1)} mi`}
+        color={DISTANCE_COLOR}
+        getValue={(d) => d.km}
+        tooltip={(v) => `${v.toFixed(1)} km`}
       />
     </div>
   )
@@ -237,8 +236,8 @@ export default function DriverDetailClient({ driver: d, route: r, stats, booking
   const searchParams = useSearchParams()
   const [, startTransition] = useTransition()
 
-  const [selectedYear, setSelectedYear]   = useState(stats?.year  ?? new Date().getFullYear())
-  const [selectedMonth, setSelectedMonth] = useState(stats?.month ?? new Date().getMonth() + 1)
+  const [selectedYear, setSelectedYear]   = useState(stats?.year  ?? calgaryYearMonth().year)
+  const [selectedMonth, setSelectedMonth] = useState(stats?.month ?? calgaryYearMonth().month)
   const [distanceRange, setDistanceRange] = useState(stats?.distanceRange ?? 'month')
 
   const buildUrl = useCallback((updates) => {
@@ -268,8 +267,7 @@ export default function DriverDetailClient({ driver: d, route: r, stats, booking
 
   const [page, setPage] = useState(1)
 
-  // 1 metre = 0.000621371 miles
-  const milesAllTime = ((stats?.totalDistanceDrivenMeters ?? 0) * 0.000621371).toFixed(1)
+  const kmAllTime = ((stats?.totalDistanceDrivenMeters ?? 0) / 1000).toFixed(1)
   const isOnDuty   = d.driverProfile?.isOnDuty ?? false
   const totalPages = Math.max(1, Math.ceil(bookings.length / PAGE_SIZE))
   const pageItems  = bookings.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
@@ -316,8 +314,8 @@ export default function DriverDetailClient({ driver: d, route: r, stats, booking
         />
         <StatCard
           icon={Truck}
-          label="Miles Driven"
-          value={`${milesAllTime} mi`}
+          label="Distance Driven"
+          value={`${kmAllTime} km`}
           sub="total distance"
           accent="#2563eb"
         />
@@ -348,9 +346,9 @@ export default function DriverDetailClient({ driver: d, route: r, stats, booking
         />
       </div>
 
-      {/* ── Miles chart ── */}
+      {/* ── Distance chart ── */}
       <div className="anim-fade-up s2">
-        <DriverMilesChart
+        <DriverDistanceChart
           stats={stats}
           distanceRange={distanceRange}
           onRangeChange={handleDistanceRangeChange}

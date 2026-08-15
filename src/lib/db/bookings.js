@@ -1,7 +1,8 @@
 import { ObjectId } from 'mongodb'
 import { nanoid } from 'nanoid'
 import { getDb } from './client.js'
-import { calgaryStartOfToday, CALGARY_TZ } from './calgaryTime.js'
+import { calgaryStartOfToday, CALGARY_TZ } from '../dateFormat.js'
+import { findAccountsByIds } from './users.js'
 
 const MAX_PACKAGES = 20
 
@@ -281,6 +282,32 @@ export async function findAllBookingsLean({ status, hasDriver, sinceDate, untilD
     .sort({ createdAt: -1 })
     .limit(SELECT_ALL_MAX_RESULTS)
     .toArray()
+}
+
+/**
+ * Attach `customerAccount` to each booking so the UI can show WHO placed the
+ * order, not just the contact name on a stop (those are often different — the
+ * contact is whoever is at the address, the account is who is billed).
+ *
+ * One batched lookup for the whole page, never per booking. Shape:
+ *   { name, companyName, accountNumber } — an account that predates account
+ *                                          numbers has accountNumber: null
+ *   null                                 — guest booking (customerId is null)
+ *
+ * Deliberately resolved at read time rather than snapshotted onto the booking
+ * at creation: every booking already written carries a customerId, so this
+ * works for the entire existing history with no migration, and a renamed
+ * account stays correct everywhere instead of leaving stale copies behind.
+ */
+export async function attachCustomerAccounts(bookings) {
+  const list = Array.isArray(bookings) ? bookings : []
+  if (list.length === 0) return list
+
+  const accounts = await findAccountsByIds(list.map((b) => b.customerId))
+  return list.map((b) => ({
+    ...b,
+    customerAccount: b.customerId ? (accounts.get(String(b.customerId)) ?? null) : null,
+  }))
 }
 
 /**
@@ -660,6 +687,16 @@ export async function markBookingFailed(bookingId, { stage, reason, driverId } =
 // failed_dropoff deliberately — the package is already picked up and sitting
 // with a driver at that point, so it can't simply be cancelled.
 export const CUSTOMER_CANCELLABLE_STATUSES = ['pending', 'failed_pickup']
+
+// Statuses an ADMIN may cancel from. Wider than the customer set: a failed
+// drop-off leaves a real package sitting with a driver, so a customer can't
+// call it off unilaterally — but the admin is the one who resolves that
+// situation (return to sender, write-off, re-book) and does need to be able
+// to close the order out. Still excludes in-flight states
+// (assigned_*/picked_up): those must go through the driver's stop-failed
+// flow first, so the route and the driver's app stay consistent with the
+// booking's status.
+export const ADMIN_CANCELLABLE_STATUSES = ['pending', 'failed_pickup', 'failed_dropoff']
 
 /**
  * Cancel a booking. `allowedStatuses` defaults to admin's original,

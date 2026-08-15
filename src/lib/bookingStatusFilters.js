@@ -1,3 +1,5 @@
+import { calgaryDateKey, calgaryStartOfToday } from '@/lib/dateFormat'
+
 // Maps the admin bookings page's status-filter URL values to the DB query
 // shape findAllBookings/countAllBookings expect. Single source of truth for
 // both src/app/admin/bookings/page.js (the list), src/app/api/bookings/
@@ -33,13 +35,10 @@ export const FILTER_QUERY_MAP = {
 
 export const VALID_STATUS_FILTERS = Object.keys(FILTER_QUERY_MAP)
 
-function todayYMD() {
-  const d = new Date()
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
-}
+// "Today" always means today IN CALGARY, never the server's day. This module
+// is resolved server-side (page.js / admin-select-all), and the server runs in
+// UTC on Vercel — computing the date from local getters would flip this filter
+// to tomorrow's pickups from ~5pm Calgary onward, every single evening.
 
 // Applies a pickupDate override to a single sub-query if it declares one.
 // pickupDateOverride: undefined = keep the sub-query's own default ('today'
@@ -49,7 +48,7 @@ function todayYMD() {
 function applyPickupDate(subQuery, pickupDateOverride) {
   if (subQuery.pickupDate == null) return subQuery
   const { pickupDate, ...rest } = subQuery
-  if (pickupDateOverride === undefined) return { ...rest, pickupDate: todayYMD() }
+  if (pickupDateOverride === undefined) return { ...rest, pickupDate: calgaryDateKey() }
   if (!pickupDateOverride) return rest // explicitly cleared — no date restriction
   return { ...rest, pickupDate: pickupDateOverride }
 }
@@ -71,9 +70,7 @@ export function resolveFilterQuery(filterKey, pickupDateOverride) {
   let query = applyPickupDate(rawQuery, pickupDateOverride)
 
   if (query.sinceDate === 'today') {
-    const d = new Date()
-    d.setHours(0, 0, 0, 0)
-    query = { ...query, sinceDate: d }
+    query = { ...query, sinceDate: calgaryStartOfToday() }
   }
 
   return query

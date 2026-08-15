@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { DollarSign, TrendingUp, PackageCheck, AlertTriangle } from 'lucide-react'
+import { calgaryDateKey } from '@/lib/dateFormat'
 
 // Reuses this app's own established status semantics (Badge.js STATUS_CONFIG):
 // delivered = green (good), cancelled/failed = red (critical). Revenue uses the
@@ -209,12 +210,16 @@ export default function DashboardCharts({ stats }) {
   const filledByDay = useMemo(() => {
     const map = new Map(byDay.map(d => [d._id, d]))
     const out = []
-    const start = new Date(stats.windowStart)
+    // Keys must match the server's grouping, which buckets by Calgary calendar
+    // day ($dateToString ... timezone: CALGARY_TZ in getDashboardStats), so the
+    // window starts from windowStart's Calgary date and then steps by whole
+    // calendar days in UTC — pure date arithmetic, immune to both the viewer's
+    // timezone and the 23h/25h days at a DST transition.
+    const cursor = new Date(`${calgaryDateKey(stats.windowStart)}T00:00:00.000Z`)
     for (let i = 0; i < days; i++) {
-      const dt = new Date(start)
-      dt.setDate(start.getDate() + i)
-      const key = dt.toISOString().slice(0, 10)
+      const key = cursor.toISOString().slice(0, 10)
       out.push(map.get(key) ?? { _id: key, bookings: 0, delivered: 0, cancelled: 0, failed: 0, revenue: 0 })
+      cursor.setUTCDate(cursor.getUTCDate() + 1)
     }
     return out
   }, [byDay, days, stats.windowStart])

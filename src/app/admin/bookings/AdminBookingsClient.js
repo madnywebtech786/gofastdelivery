@@ -9,7 +9,8 @@ import Select from '@/components/ui/Select'
 import DatePicker from '@/components/ui/DatePicker'
 import { useToast } from '@/components/ui/Toast'
 import { FILTER_QUERY_MAP } from '@/lib/bookingStatusFilters'
-import { formatPickupTime as formatPickupTimeShared } from '@/lib/dateFormat'
+import { accountLabel } from '@/lib/accountLabel'
+import { formatPickupTime as formatPickupTimeShared, calgaryDateKey } from '@/lib/dateFormat'
 import {
   MapPin, Clock, ChevronRight, UserCheck, AlertCircle,
   PackageCheck, CheckCircle2, Search, X,
@@ -32,13 +33,18 @@ const STATUS_FILTER_OPTIONS = [
 // since it's a fixed "today" snapshot, not an admin-adjustable view.
 const PICKUP_DATE_FILTER_TABS = new Set(['pending'])
 
-function todayYMD() {
-  const d = new Date()
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
-}
+// Mirrors ADMIN_CANCELLABLE_STATUSES in src/lib/db/bookings.js — duplicated
+// rather than imported because that module pulls in the MongoDB driver and
+// can't be bundled into a client component. Same convention the customer
+// pages already use for CUSTOMER_CANCELLABLE_STATUSES. The server re-checks
+// the status in the cancel query itself, so this list only controls whether
+// the button is offered, never whether the cancel is permitted.
+const ADMIN_CANCELLABLE_STATUSES = ['pending', 'failed_pickup', 'failed_dropoff']
+
+// Must resolve to the same day the server's filter uses (resolveFilterQuery in
+// src/lib/bookingStatusFilters.js) — both are Calgary's date, so an admin on a
+// device set to another timezone still sees the same "today" the query ran on.
+const todayYMD = calgaryDateKey
 
 // Default assignment kind per booking status, before the admin overrides it
 // per-row. pending/failed_pickup default to pickup_and_dropoff (client
@@ -176,6 +182,42 @@ export default function AdminBookingsClient({ initialStatusFilter, initialPickup
   const [assigning, setAssigning]       = useState(false)
   const [error, setError]               = useState('')
   const [detailBooking, setDetailBooking] = useState(null)
+
+  // Admin cancel — for orders that can't proceed (a duplicate the customer
+  // called in to kill, or a failed pickup/dropoff that won't be retried).
+  // Confirmation is required because cancelled is terminal: there is no
+  // un-cancel path for either role.
+  const [cancelTarget, setCancelTarget] = useState(null)
+  const [cancelling, setCancelling]     = useState(false)
+
+  async function confirmCancelBooking() {
+    if (!cancelTarget) return
+    setCancelling(true)
+    try {
+      const res = await fetch(`/api/bookings/${cancelTarget._id}`, { method: 'DELETE' })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast.error('Could not cancel', body.error ?? 'Please try again.')
+        return
+      }
+      toast.success('Booking cancelled', cancelTarget.trackingToken ?? '')
+      setCancelTarget(null)
+      setDetailBooking(null)
+      // Drop it from any pending selection so a later bulk-assign can't try
+      // to assign a driver to a booking that no longer accepts one.
+      setSelectedMap((prev) => {
+        if (!prev.has(cancelTarget._id)) return prev
+        const next = new Map(prev)
+        next.delete(cancelTarget._id)
+        return next
+      })
+      startTransition(() => router.refresh())
+    } catch {
+      toast.error('Network error', 'Could not reach the server.')
+    } finally {
+      setCancelling(false)
+    }
+  }
   const [confirmPayload, setConfirmPayload] = useState(null)
   // Per-row assignment kind overrides — only stored when admin explicitly changes the select
   const [rowKinds, setRowKinds] = useState({})
@@ -653,8 +695,18 @@ export default function AdminBookingsClient({ initialStatusFilter, initialPickup
                           )}
                         </div>
 
+                        {/* Who placed the order — distinct from the stop contact
+                            below, which is whoever is at the pickup address.
+                            Labelled inline so the two can't be misread as one
+                            name over another. */}
+                        <p className="text-xs font-semibold mb-0.5 truncate" style={{ color: 'var(--fg-2)' }}>
+                          <span className="font-medium" style={{ color: 'var(--fg-3)' }}>Acc: </span>
+                          {accountLabel(b.customerAccount)}
+                        </p>
+
                         {pickup?.contactName && (
                           <p className="text-xs font-medium mb-1 truncate" style={{ color: 'var(--fg-2)' }}>
+                            <span style={{ color: 'var(--fg-3)' }}>Name: </span>
                             {pickup.contactName}
                           </p>
                         )}
@@ -866,6 +918,41 @@ export default function AdminBookingsClient({ initialStatusFilter, initialPickup
         </div>
       </div>
 
+      {/* ── Cancel confirmation ────────────────────────────────────────── */}
+      {cancelTarget && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+          style={{ background: 'rgba(15,23,42,0.45)' }}
+          onClick={() => !cancelling && setCancelTarget(null)}>
+          <div className="bg-white rounded-2xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-base font-bold mb-1" style={{ color: 'var(--fg)' }}>Cancel this booking?</h3>
+            <p className="text-xs mb-1" style={{ color: 'var(--fg-3)' }}>
+              {cancelTarget.trackingToken ?? cancelTarget._id}
+            </p>
+            <p className="text-xs mb-5" style={{ color: 'var(--fg-3)' }}>
+              This is permanent — a cancelled booking can&apos;t be reopened or re-assigned to a driver.
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCancelTarget(null)}
+                disabled={cancelling}
+                className="flex-1 px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-60"
+                style={{ background: 'var(--surface-2)', color: 'var(--fg-2)' }}
+              >
+                Keep it
+              </button>
+              <button
+                onClick={confirmCancelBooking}
+                disabled={cancelling}
+                className="flex-1 px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-60"
+                style={{ background: 'var(--danger)' }}
+              >
+                {cancelling ? 'Cancelling…' : 'Cancel Booking'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Detail Modal ───────────────────────────────────────────────── */}
       {detailBooking && (
         <div
@@ -878,11 +965,16 @@ export default function AdminBookingsClient({ initialStatusFilter, initialPickup
           >
             <div className="sticky top-0 px-6 py-4 border-b border-border flex items-center justify-between rounded-t-2xl"
               style={{ background: 'var(--surface-2)' }}>
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-bold" style={{ color: 'var(--fg)' }}>
-                  {detailBooking.trackingToken ?? detailBooking._id}
-                </span>
-                <Badge status={detailBooking.status} />
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-bold" style={{ color: 'var(--fg)' }}>
+                    {detailBooking.trackingToken ?? detailBooking._id}
+                  </span>
+                  <Badge status={detailBooking.status} />
+                </div>
+                <p className="text-xs font-semibold mt-0.5 truncate" style={{ color: 'var(--fg-2)' }}>
+                  {accountLabel(detailBooking.customerAccount)}
+                </p>
               </div>
               <button
                 onClick={() => setDetailBooking(null)}
@@ -994,10 +1086,20 @@ export default function AdminBookingsClient({ initialStatusFilter, initialPickup
               </div>
             </div>
 
-            <div className="sticky bottom-0 px-6 py-3 border-t border-border bg-white rounded-b-2xl">
+            <div className="sticky bottom-0 px-6 py-3 border-t border-border bg-white rounded-b-2xl flex items-center gap-2">
+              {ADMIN_CANCELLABLE_STATUSES.includes(detailBooking.status) && (
+                <button
+                  onClick={() => setCancelTarget(detailBooking)}
+                  disabled={cancelling}
+                  className="px-4 py-2 rounded-lg text-sm font-semibold transition-colors disabled:opacity-60"
+                  style={{ background: 'var(--danger-bg)', color: 'var(--danger)' }}
+                >
+                  Cancel Booking
+                </button>
+              )}
               <button
                 onClick={() => setDetailBooking(null)}
-                className="w-full px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+                className="flex-1 px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
                 style={{ background: 'var(--accent)', color: 'white' }}
               >
                 Close

@@ -6,6 +6,7 @@ import {
   cancelBooking,
   BOOKING_STATUSES,
   CUSTOMER_CANCELLABLE_STATUSES,
+  ADMIN_CANCELLABLE_STATUSES,
 } from '@/lib/db/bookings'
 import { pushBookingStatusChange } from '@/lib/pusher'
 import { revalidateTag, revalidatePath } from 'next/cache'
@@ -83,7 +84,7 @@ export async function DELETE(request, { params }) {
 
     let result
     if (role === 'admin') {
-      result = await cancelBooking(bookingId)
+      result = await cancelBooking(bookingId, { allowedStatuses: ADMIN_CANCELLABLE_STATUSES })
     } else if (role === 'customer') {
       result = await cancelBooking(bookingId, { customerId: userId, allowedStatuses: CUSTOMER_CANCELLABLE_STATUSES })
     } else {

@@ -1,6 +1,6 @@
 import PDFDocument from 'pdfkit'
 import path from 'path'
-import { formatDateLong as formatDate } from './dateFormat'
+import { formatDateOnlyLong as formatDate } from './dateFormat'
 
 const BRAND_GREEN  = '#1bb908'
 const DARK         = '#0f172a'

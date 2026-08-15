@@ -1,7 +1,8 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { requireAdmin } from '@/lib/dal'
-import { findBookingById } from '@/lib/db/bookings'
+import { findBookingById, attachCustomerAccounts } from '@/lib/db/bookings'
+import { accountLabel } from '@/lib/accountLabel'
 import Badge from '@/components/ui/Badge'
 import StatusTimeline from '@/components/ui/StatusTimeline'
 import AssignDriverForm from '@/components/booking/AssignDriverForm'
@@ -36,7 +37,8 @@ export default async function AdminBookingDetailPage({ params }) {
   const booking = await findBookingById(bookingId)
   if (!booking) notFound()
 
-  const b = JSON.parse(JSON.stringify(booking))
+  const [withAccount] = await attachCustomerAccounts([booking])
+  const b = JSON.parse(JSON.stringify(withAccount))
   const canAssign = b.status === 'pending' || b.status === 'picked_up'
 
   return (
@@ -118,9 +120,10 @@ export default async function AdminBookingDetailPage({ params }) {
               <h2 className="text-sm font-bold" style={{ color: 'var(--fg)' }}>Details</h2>
             </div>
             <div className="px-5 py-1">
+              <MetaRow label="Account" value={accountLabel(b.customerAccount)} />
               <MetaRow label="Created" value={formatDate(b.createdAt)} />
               {b.estimatedDurationSeconds && <MetaRow label="Est. Duration" value={formatDuration(b.estimatedDurationSeconds)} />}
-              {b.estimatedDistanceMeters  && <MetaRow label="Est. Distance" value={`${(b.estimatedDistanceMeters * 0.000621371).toFixed(1)} mi`} />}
+              {b.estimatedDistanceMeters  && <MetaRow label="Est. Distance" value={`${(b.estimatedDistanceMeters / 1000).toFixed(1)} km`} />}
               <MetaRow label="Tracking Token" value={<span className="mono text-xs" style={{ color: 'var(--fg-2)' }}>{b.trackingToken}</span>} />
             </div>
           </div>

@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation'
 import { requireAdmin } from '@/lib/dal'
 import { findDriverById, findActiveRoute, getDriverStats } from '@/lib/db/drivers'
 import { findBookingsByDriver } from '@/lib/db/bookings'
+import { calgaryYearMonth } from '@/lib/dateFormat'
 import { Suspense } from 'react'
 import DriverDetailClient from './DriverDetailClient'
 
@@ -13,9 +14,9 @@ export default async function AdminDriverDetailPage({ params, searchParams }) {
 
   await requireAdmin()
 
-  const now  = new Date()
-  const year  = parseInt(sp?.year  ?? '') || now.getFullYear()
-  const month = parseInt(sp?.month ?? '') || now.getMonth() + 1
+  const nowInCalgary = calgaryYearMonth()
+  const year  = parseInt(sp?.year  ?? '') || nowInCalgary.year
+  const month = parseInt(sp?.month ?? '') || nowInCalgary.month
   const DISTANCE_RANGES = new Set(['day', 'week', 'month', 'year'])
   const distanceRange = DISTANCE_RANGES.has(sp?.distanceRange) ? sp.distanceRange : 'month'
 
