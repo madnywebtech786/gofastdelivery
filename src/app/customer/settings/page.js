@@ -2,7 +2,7 @@ import { requireCustomer } from '@/lib/dal'
 import { findUserById } from '@/lib/db/users'
 import SettingsClient from '@/app/settings/SettingsClient'
 
-export const metadata = { title: 'Settings — Go Fast Delivery' }
+export const metadata = { title: 'Settings — Go Fast Delivery Inc.' }
 
 export default async function CustomerSettingsPage() {
   const { userId } = await requireCustomer()

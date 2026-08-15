@@ -42,10 +42,10 @@ export const STATUS_COLORS = {
 
 const BRAND_GREEN      = '#1bb908'
 const BRAND_GREEN_DARK = '#15960a'
-const BRAND_NAME       = 'GoFastDelivery'
+const BRAND_NAME       = 'Go Fast Delivery Inc.'
 const BRAND_TAGLINE    = "Calgary's Same-Day Courier"
 const BRAND_EMAIL      = 'info@gfdelivery.ca'
-const BRAND_FROM       = `"GoFastDelivery" <gofastdelivery2024@gmail.com>`
+const BRAND_FROM       = `"Go Fast Delivery Inc." <gofastdelivery2024@gmail.com>`
 const BASE_URL         = process.env.APP_BASE_URL ?? 'https://gofastdelivery.ca'
 
 // ── Base template ─────────────────────────────────────────────────────────────
@@ -113,7 +113,7 @@ function baseTemplate({ title, preheader, body }) {
                         </td>
                         <td style="vertical-align:middle;">
                           <div style="font-size:22px;font-weight:800;color:#ffffff;letter-spacing:-0.5px;line-height:1;">
-                            GoFast<span style="color:${BRAND_GREEN};">Delivery</span>
+                            GoFast<span style="color:${BRAND_GREEN};">Delivery</span> Inc.
                           </div>
                           <div style="font-size:12px;color:#6b9e6b;margin-top:3px;letter-spacing:0.04em;">
                             ${BRAND_TAGLINE} &middot; Calgary, AB
@@ -281,7 +281,7 @@ export function buildBookingConfirmedEmail({ booking, trackingUrl, recipientType
     <p style="margin:0 0 28px;font-size:14px;color:#64748b;line-height:1.65;">
       ${isSender
         ? 'Your booking has been placed successfully. Use the tracking number below to follow your delivery in real time.'
-        : 'Someone has sent you a package via GoFastDelivery. Use the tracking number below to follow its journey.'}
+        : 'Someone has sent you a package via Go Fast Delivery Inc. Use the tracking number below to follow its journey.'}
     </p>
 
     ${trackingBoxHtml(token, trackingUrl)}
@@ -367,7 +367,7 @@ export function buildPasswordResetEmail({ otp, userName }) {
     </h1>
     <p style="margin:0 0 28px;font-size:14px;color:#64748b;line-height:1.65;">
       Hi ${name},<br /><br />
-      We received a request to reset the password for your GoFastDelivery account.
+      We received a request to reset the password for your Go Fast Delivery Inc. account.
       Use the verification code below — it expires in <strong style="color:#0f172a;">5 minutes</strong>.
     </p>
 
@@ -401,11 +401,11 @@ export function buildPasswordResetEmail({ otp, userName }) {
 
     <p style="margin:0;font-size:12px;color:#94a3b8;text-align:center;line-height:1.6;">
       For security, never share this code with anyone.<br />
-      GoFastDelivery will never ask for your verification code.
+      Go Fast Delivery Inc. will never ask for your verification code.
     </p>`
 
   return baseTemplate({
-    title:     `Password Reset Code — GoFastDelivery`,
+    title:     `Password Reset Code — Go Fast Delivery Inc.`,
     preheader: `Your password reset code is ${otp} — expires in 5 minutes.`,
     body,
   })
@@ -414,7 +414,7 @@ export function buildPasswordResetEmail({ otp, userName }) {
 export async function sendPasswordResetOtp({ to, otp, userName }) {
   await sendMail({
     to,
-    subject: `Your GoFastDelivery password reset code: ${otp}`,
+    subject: `Your Go Fast Delivery Inc. password reset code: ${otp}`,
     html: buildPasswordResetEmail({ otp, userName }),
   })
 }
@@ -475,7 +475,7 @@ function buildInvoiceEmailHtml(invoice) {
       <tr>
         <td width="50%" style="vertical-align:top;padding-right:16px;">
           <p style="margin:0 0 6px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#94a3b8;">From</p>
-          <p style="margin:0;font-weight:700;font-size:13px;color:#0f172a;">${esc(invoice.companyName || 'GoFastDelivery')}</p>
+          <p style="margin:0;font-weight:700;font-size:13px;color:#0f172a;">${esc(invoice.companyName || 'Go Fast Delivery Inc.')}</p>
           ${invoice.companyAddress ? `<p style="margin:3px 0 0;font-size:12px;color:#475569;">${esc(invoice.companyAddress)}</p>` : ''}
           ${invoice.companyCity    ? `<p style="margin:1px 0 0;font-size:12px;color:#475569;">${esc(invoice.companyCity)}</p>`    : ''}
           ${invoice.companyEmail   ? `<p style="margin:5px 0 0;font-size:12px;color:${BRAND_GREEN};font-weight:600;">${esc(invoice.companyEmail)}</p>` : ''}
@@ -572,8 +572,8 @@ function buildInvoiceEmailHtml(invoice) {
     </p>`
 
   return baseTemplate({
-    title:     `Invoice ${invoice.invoiceNumber} — GoFastDelivery`,
-    preheader: `Invoice ${invoice.invoiceNumber} from GoFastDelivery — Balance due: ${fmt(balance)}`,
+    title:     `Invoice ${invoice.invoiceNumber} — Go Fast Delivery Inc.`,
+    preheader: `Invoice ${invoice.invoiceNumber} from Go Fast Delivery Inc. — Balance due: ${fmt(balance)}`,
     body,
   })
 }
@@ -594,7 +594,7 @@ export async function sendInvoiceEmail(invoice) {
   await transporter.sendMail({
     from: BRAND_FROM,
     to,
-    subject: `Invoice ${invoice.invoiceNumber} from GoFastDelivery — Balance Due: ${currency} $${balance}`,
+    subject: `Invoice ${invoice.invoiceNumber} from Go Fast Delivery Inc. — Balance Due: ${currency} $${balance}`,
     html: buildInvoiceEmailHtml(invoice),
     attachments: [
       {

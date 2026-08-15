@@ -119,7 +119,7 @@ export default function AdminLoginPage() {
 
         {/* Top bar */}
         <div className="relative z-10 flex items-center justify-between px-8 pt-8 pb-6 border-b border-border">
-          <Image src="/images/logo.png" alt="GoFastDelivery" width={120} height={40} className="h-9 w-auto object-contain" />
+          <Image src="/images/logo.png" alt="Go Fast Delivery Inc." width={120} height={40} className="h-9 w-auto object-contain" />
           <div className="flex items-center gap-2">
             <div className="w-1.5 h-1.5 rounded-full bg-accent shadow-[0_0_6px_var(--accent)]" />
             <span className="text-[11px] font-black tabular-nums text-muted font-mono tracking-[0.08em]">{time}</span>
@@ -152,7 +152,7 @@ export default function AdminLoginPage() {
         <div className="relative z-10 mt-auto px-8 pb-8 pt-6">
           <div className="h-px mb-5 bg-border" />
           <p className="text-[10px] text-muted font-mono">
-            GoFastDelivery Admin Panel · v2.0<br />Authorized access only
+            Go Fast Delivery Inc. Admin Panel · v2.0<br />Authorized access only
           </p>
         </div>
       </div>
@@ -163,7 +163,7 @@ export default function AdminLoginPage() {
 
         {/* Mobile logo */}
         <div className="lg:hidden mb-9">
-          <Image src="/images/logo.png" alt="GoFastDelivery" width={120} height={40} className="h-9 w-auto object-contain" />
+          <Image src="/images/logo.png" alt="Go Fast Delivery Inc." width={120} height={40} className="h-9 w-auto object-contain" />
         </div>
 
         <div className="w-full max-w-sm mx-auto">

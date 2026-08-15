@@ -55,7 +55,7 @@ function SectionHeader({ title, subtitle }) {
 
 export default function InvoiceForm({ initial = {}, onSubmit, onCancel, submitting, disableInvoiceNumber = false }) {
   const [form, setForm] = useState({
-    companyName:    initial.companyName    ?? 'GoFastDelivery',
+    companyName:    initial.companyName    ?? 'Go Fast Delivery Inc.',
     companyAddress: initial.companyAddress ?? '23-9510 Bonaventure Drive SE',
     companyCity:    initial.companyCity    ?? 'Calgary, AB T2J 0E5',
     companyPhone:   initial.companyPhone   ?? '4038905621',

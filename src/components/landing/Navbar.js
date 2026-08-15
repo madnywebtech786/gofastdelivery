@@ -206,7 +206,7 @@ export default function Navbar() {
             <Link href="/" className="shrink-0">
               <Image
                 src="/images/logo.png"
-                alt="GoFastDelivery"
+                alt="Go Fast Delivery Inc."
                 width={130}
                 height={44}
                 priority
@@ -339,7 +339,7 @@ export default function Navbar() {
         {/* Header */}
         <div className="relative flex items-center justify-between px-7 h-14 shrink-0" style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
           <div className="inline-flex rounded-lg overflow-hidden" style={{ background: 'white', padding: '3px 7px' }}>
-            <Image src="/images/logo.png" alt="GoFastDelivery" width={100} height={32} className="h-7 w-auto object-contain" />
+            <Image src="/images/logo.png" alt="Go Fast Delivery Inc." width={100} height={32} className="h-7 w-auto object-contain" />
           </div>
           <button
             onClick={closeDrawer}

@@ -10,7 +10,7 @@ import {
   PackageOpen, UserPlus, ChevronRight,
 } from 'lucide-react'
 
-export const metadata = { title: 'Dashboard — Go Fast Delivery' }
+export const metadata = { title: 'Dashboard — Go Fast Delivery Inc.' }
 
 async function getStats() {
   'use cache'

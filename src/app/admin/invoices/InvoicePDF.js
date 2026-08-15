@@ -69,14 +69,14 @@ export default function InvoicePDF({ invoice }) {
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src="/images/logo.png"
-              alt="GoFastDelivery"
+              alt="Go Fast Delivery Inc."
               width={50}
               height={50}
               style={{ borderRadius: '10px', objectFit: 'contain', display: 'block' }}
             />
             <div>
               <div style={{ fontSize: '22px', fontWeight: 800, color: '#000000', letterSpacing: '-0.5px', lineHeight: 1 }}>
-                GoFast<span style={{ color: BRAND_GREEN }}>Delivery</span>
+                GoFast<span style={{ color: BRAND_GREEN }}>Delivery</span> Inc.
               </div>
               <div style={{ fontSize: '11px', color: '#000000', marginTop: '3px' }}>
                 Calgary&apos;s Same-Day Courier · Calgary, AB
@@ -126,7 +126,7 @@ export default function InvoicePDF({ invoice }) {
         {/* From */}
         <div style={{ padding: '20px 28px', borderRight: '1px solid #e2e8f0' }}>
           <div style={{ fontSize: '9px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#94a3b8', marginBottom: '8px' }}>From</div>
-          <div style={{ fontWeight: 700, fontSize: '13px', color: '#0f172a', marginBottom: '3px' }}>{invoice.companyName || 'GoFastDelivery'}</div>
+          <div style={{ fontWeight: 700, fontSize: '13px', color: '#0f172a', marginBottom: '3px' }}>{invoice.companyName || 'Go Fast Delivery Inc.'}</div>
           {invoice.companyAddress && <div style={{ color: '#475569', lineHeight: 1.5 }}>{invoice.companyAddress}</div>}
           {invoice.companyCity    && <div style={{ color: '#475569', lineHeight: 1.5 }}>{invoice.companyCity}</div>}
           {invoice.companyPhone   && <div style={{ color: '#475569', marginTop: '4px' }}>{invoice.companyPhone}</div>}
@@ -306,7 +306,7 @@ export default function InvoicePDF({ invoice }) {
         alignItems: 'center',
       }}>
         <div style={{ fontSize: '11px', color: '#94a3b8' }}>
-          <span style={{ fontWeight: 700, color: '#475569' }}>GoFastDelivery</span> · Calgary, AB · Same-day courier services
+          <span style={{ fontWeight: 700, color: '#475569' }}>Go Fast Delivery Inc.</span> · Calgary, AB · Same-day courier services
         </div>
         <div style={{ fontSize: '11px', color: '#94a3b8' }}>
           gofastdelivery2024@gmail.com · info@gfdelivery.ca

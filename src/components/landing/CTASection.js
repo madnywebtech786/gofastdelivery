@@ -113,7 +113,7 @@ export default function CTASection() {
             transition: 'opacity 0.6s ease 0.22s, transform 0.6s ease 0.22s',
           }}
         >
-          Join thousands of customers who trust GoFastDelivery for same-day courier service across the city.
+          Join thousands of customers who trust Go Fast Delivery Inc. for same-day courier service across the city.
         </p>
 
         {/* CTA buttons */}

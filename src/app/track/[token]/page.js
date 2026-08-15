@@ -8,7 +8,7 @@ import Link from 'next/link'
 import { ArrowRight, Clock, Package } from 'lucide-react'
 import TrackingClient from './TrackingClient'
 
-export const metadata = { title: 'Track Your Delivery — GoFastDelivery' }
+export const metadata = { title: 'Track Your Delivery — Go Fast Delivery Inc.' }
 
 function formatDate(dateStr) {
   return formatDateTime(dateStr, { fallback: '', includeYear: false })
@@ -47,7 +47,7 @@ export default async function TrackingPage({ params }) {
       <header className="bg-surface border-b border-border shadow-sm">
         <div className="max-w-2xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
           <Link href="/">
-            <Image src="/images/logo.png" alt="GoFastDelivery" width={120} height={40} className="h-8 w-auto object-contain" priority />
+            <Image src="/images/logo.png" alt="Go Fast Delivery Inc." width={120} height={40} className="h-8 w-auto object-contain" priority />
           </Link>
           <Link href="/track"
             className="inline-flex items-center gap-1.5 text-[12px] font-bold rounded-lg px-3 py-1.5 border border-border text-foreground hover:border-border-2 transition-colors">
@@ -91,7 +91,7 @@ export default async function TrackingPage({ params }) {
         {/* Footer */}
         <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 pb-6">
           <p className="text-[11px] font-semibold text-muted">
-            GoFastDelivery · Calgary, AB · This page auto-updates in real time.
+            Go Fast Delivery Inc. · Calgary, AB · This page auto-updates in real time.
           </p>
           <Link href="/track"
             className="inline-flex items-center gap-1.5 text-[11px] font-bold text-muted hover:text-accent transition-colors">

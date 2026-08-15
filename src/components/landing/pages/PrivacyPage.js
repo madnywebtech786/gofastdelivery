@@ -10,7 +10,7 @@ const SECTIONS = [
     num: '01',
     title: 'Purpose',
     body: [
-      { type: 'p', text: 'Go Fast Delivery ("Go Fast Delivery", "we", "our", or "us") is committed to protecting the privacy of our customers, recipients, business partners, and website and mobile application users.' },
+      { type: 'p', text: 'Go Fast Delivery Inc. ("Go Fast Delivery", "we", "our", or "us") is committed to protecting the privacy of our customers, recipients, business partners, and website and mobile application users.' },
       { type: 'p', text: 'This Privacy Policy explains how we collect, use, disclose, store, and protect personal information when providing courier and delivery services.' },
       { type: 'p', strong: true, text: "This Policy is intended to comply with Alberta's Personal Information Protection Act (PIPA), applicable provisions of Canada's Personal Information Protection and Electronic Documents Act (PIPEDA), and other applicable Canadian privacy laws." },
       { type: 'p', text: 'By using our services, website, or mobile application, you consent to the collection, use, and disclosure of your personal information as described in this Privacy Policy.' },
@@ -257,7 +257,7 @@ function ContactCard() {
         className="rounded-2xl p-5 sm:p-6"
         style={{ background: 'var(--brand-green-dim)', border: '1px solid rgba(27,185,8,0.25)' }}
       >
-        <p className="text-xs font-black" style={{ color: 'var(--landing-text)' }}>Go Fast Delivery</p>
+        <p className="text-xs font-black" style={{ color: 'var(--landing-text)' }}>Go Fast Delivery Inc.</p>
         <div className="grid sm:grid-cols-2 gap-3 mt-4">
           {CONTACT_ROWS.map(({ icon: Icon, label, value, href }) => {
             const content = (
@@ -283,7 +283,7 @@ function ContactCard() {
         </div>
       </div>
       <p className="text-sm leading-[1.75] font-semibold mt-6" style={{ color: 'var(--landing-text)' }}>
-        Go Fast Delivery is committed to protecting your privacy and handling your personal information
+        Go Fast Delivery Inc. is committed to protecting your privacy and handling your personal information
         responsibly, transparently, and in accordance with applicable Canadian privacy legislation.
       </p>
     </div>
@@ -299,7 +299,7 @@ export default function PrivacyPage() {
         { text: 'Privacy ', color: 'black' },
         { text: 'Policy', color: 'green', highlight: true },
       ]}
-      intro="This Privacy Policy explains how Go Fast Delivery collects, uses, discloses, and protects your personal information when you use our courier and delivery services."
+      intro="This Privacy Policy explains how Go Fast Delivery Inc. collects, uses, discloses, and protects your personal information when you use our courier and delivery services."
       lastUpdated={LAST_UPDATED}
       sections={SECTIONS}
       afterSections={<ContactCard />}

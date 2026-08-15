@@ -8,7 +8,7 @@ const ROLE_DASHBOARDS = {
   customer: '/customer/overview',
 }
 
-export const metadata = { title: 'Sign In — GoFastDelivery' }
+export const metadata = { title: 'Sign In — Go Fast Delivery Inc.' }
 
 export default async function LoginPage() {
   const session = await getSession()

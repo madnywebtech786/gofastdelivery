@@ -14,7 +14,7 @@ function getClient() {
   return client
 }
 
-const BRAND_NAME = 'GoFastDelivery'
+const BRAND_NAME = 'Go Fast Delivery Inc.'
 
 // ── Phone normalization ───────────────────────────────────────────────────────
 // Canadian/NANP numbers only (per the client's stated scope: Canada-only SMS).

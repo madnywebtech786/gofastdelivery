@@ -4,7 +4,7 @@ import { requireCustomer } from '@/lib/dal'
 import { findBookingById, CUSTOMER_EDITABLE_STATUSES } from '@/lib/db/bookings'
 import BookingForm from '@/components/booking/BookingForm'
 
-export const metadata = { title: 'Edit Booking — Go Fast Delivery' }
+export const metadata = { title: 'Edit Booking — Go Fast Delivery Inc.' }
 
 export default async function EditBookingPage({ params }) {
   const { bookingId } = await params

@@ -18,7 +18,7 @@ const jetbrainsMono = JetBrains_Mono({
 })
 
 export const metadata = {
-  title: 'Go Fast Delivery',
+  title: 'Go Fast Delivery Inc.',
   description: 'Same-day courier delivery serving Calgary and surrounding areas.',
 }
 

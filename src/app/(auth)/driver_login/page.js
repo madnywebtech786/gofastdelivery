@@ -78,7 +78,7 @@ export default function DriverLoginPage() {
           style={{ background: 'repeating-linear-gradient(105deg, transparent, transparent 60px, rgba(27,185,8,0.04) 60px, rgba(27,185,8,0.04) 61px)' }} />
 
         <div className="relative z-10 flex flex-col h-full px-10 py-10">
-          <Image src="/images/logo.png" alt="GoFastDelivery" width={130} height={44} className="h-10 w-auto object-contain mb-auto" />
+          <Image src="/images/logo.png" alt="Go Fast Delivery Inc." width={130} height={44} className="h-10 w-auto object-contain mb-auto" />
 
           <div className="my-auto">
             <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-8 bg-accent/8 border-2 border-accent/20 shadow-[0_4px_24px_var(--accent-dim)]">
@@ -121,7 +121,7 @@ export default function DriverLoginPage() {
 
         {/* Mobile logo */}
         <div className="lg:hidden mb-9">
-          <Image src="/images/logo.png" alt="GoFastDelivery" width={120} height={40} className="h-9 w-auto object-contain" />
+          <Image src="/images/logo.png" alt="Go Fast Delivery Inc." width={120} height={40} className="h-9 w-auto object-contain" />
         </div>
 
         <div className="w-full max-w-sm mx-auto">

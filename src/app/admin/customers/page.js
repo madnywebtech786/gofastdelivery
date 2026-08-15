@@ -2,7 +2,7 @@ import { requireAdmin } from '@/lib/dal'
 import { findCustomers, countCustomers } from '@/lib/db/users'
 import CustomersClient from './CustomersClient'
 
-export const metadata = { title: 'Customers — Go Fast Delivery' }
+export const metadata = { title: 'Customers — Go Fast Delivery Inc.' }
 
 const PAGE_SIZE = 20
 

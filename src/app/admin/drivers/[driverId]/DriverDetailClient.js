@@ -5,7 +5,7 @@ import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import { useCallback } from 'react'
 import {
   ArrowLeft, Mail, Phone, ChevronLeft, ChevronRight,
-  Truck, Package, Route, TrendingUp,
+  Truck, Package, Route, TrendingUp, Trash2,
 } from 'lucide-react'
 import Link from 'next/link'
 import Select from '@/components/ui/Select'
@@ -271,6 +271,11 @@ export default function DriverDetailClient({ driver: d, route: r, stats, booking
   const isOnDuty   = d.driverProfile?.isOnDuty ?? false
   const totalPages = Math.max(1, Math.ceil(bookings.length / PAGE_SIZE))
   const pageItems  = bookings.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+  // Bookings an admin deleted from the History page. The records are retained
+  // and still count in the stat cards above, which is exactly why the count is
+  // worth surfacing: it explains any gap between the Deliveries figure here
+  // and what the History page lists for this driver.
+  const hiddenCount = bookings.filter((b) => b.hiddenFromHistory).length
 
   return (
     <div className="space-y-6">
@@ -309,7 +314,12 @@ export default function DriverDetailClient({ driver: d, route: r, stats, booking
           icon={Package}
           label="Deliveries"
           value={stats?.totalCompletedBookings ?? 0}
-          sub="all-time completed"
+          // Spelling out the hidden count here is the point: this figure counts
+          // every delivery, while the Booking History page excludes hidden
+          // ones, so the two legitimately differ by exactly this number.
+          sub={hiddenCount > 0
+            ? `all-time completed · ${hiddenCount} deleted from history`
+            : 'all-time completed'}
           accent={BRAND}
         />
         <StatCard
@@ -384,10 +394,21 @@ export default function DriverDetailClient({ driver: d, route: r, stats, booking
       <div className="rounded-2xl border border-border bg-white overflow-hidden anim-fade-up s4">
         <div className="px-5 py-3.5 border-b border-border flex items-center justify-between" style={{ background: 'var(--surface-2)' }}>
           <h2 className="text-sm font-bold" style={{ color: 'var(--fg)' }}>Booking History</h2>
-          <span className="text-xs font-semibold px-2 py-0.5 rounded-full"
-            style={{ background: 'var(--surface-2)', color: 'var(--fg-3)', border: '1px solid var(--border)' }}>
-            {bookings.length} total
-          </span>
+          <div className="flex items-center gap-2">
+            {hiddenCount > 0 && (
+              <span
+                title="These bookings were deleted from the Booking History page by an admin. The records are retained and still count toward this driver's totals above."
+                className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full"
+                style={{ background: 'rgba(100,116,139,0.12)', color: '#475569' }}>
+                <Trash2 size={11} />
+                {hiddenCount} deleted
+              </span>
+            )}
+            <span className="text-xs font-semibold px-2 py-0.5 rounded-full"
+              style={{ background: 'var(--surface-2)', color: 'var(--fg-3)', border: '1px solid var(--border)' }}>
+              {bookings.length} total
+            </span>
+          </div>
         </div>
 
         {bookings.length === 0 ? (
@@ -422,6 +443,20 @@ export default function DriverDetailClient({ driver: d, route: r, stats, booking
                         {formatDate(b.updatedAt)}
                       </p>
                     </div>
+                    {/* Deleted from the admin Booking History page. The record
+                        is retained and still counts toward this driver's
+                        totals above — which is why the count is surfaced, so
+                        the gap against the History page reads as expected
+                        rather than as a miscount. */}
+                    {b.hiddenFromHistory && (
+                      <span
+                        title="Deleted from the Booking History page by an admin. The record is retained and still counts toward this driver's totals."
+                        className="shrink-0 inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full"
+                        style={{ background: 'rgba(100,116,139,0.12)', color: '#475569' }}>
+                        <Trash2 size={10} />
+                        Deleted
+                      </span>
+                    )}
                     <span className="shrink-0 text-[11px] font-bold px-2.5 py-1 rounded-full"
                       style={{ background: `${st.color}15`, color: st.color }}>
                       {st.label}

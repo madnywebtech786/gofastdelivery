@@ -69,7 +69,7 @@ export default function DriverShell({ children }) {
         >
           <Image
             src="/images/logo.png"
-            alt="GoFastDelivery"
+            alt="Go Fast Delivery Inc."
             width={110}
             height={34}
             className="h-8 w-auto object-contain"

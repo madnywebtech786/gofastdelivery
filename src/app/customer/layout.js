@@ -131,7 +131,7 @@ export default function CustomerLayout({ children }) {
     <>
       {/* Brand */}
       <div className="px-5 py-4 flex items-center justify-between border-b border-border">
-        <Image src="/images/logo.png" alt="GoFastDelivery" width={120} height={36} className="h-9 w-auto object-contain" priority />
+        <Image src="/images/logo.png" alt="Go Fast Delivery Inc." width={120} height={36} className="h-9 w-auto object-contain" priority />
         <span className="hidden sm:inline text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full shrink-0"
           style={{ background: 'var(--accent-dim)', color: 'var(--accent)' }}>
           Portal
@@ -243,7 +243,7 @@ export default function CustomerLayout({ children }) {
           >
             <Menu size={20} />
           </button>
-          <Image src="/images/logo.png" alt="GoFastDelivery" width={100} height={32} className="h-8 w-auto object-contain" />
+          <Image src="/images/logo.png" alt="Go Fast Delivery Inc." width={100} height={32} className="h-8 w-auto object-contain" />
           <div className="w-8" /> {/* spacer */}
         </header>
 

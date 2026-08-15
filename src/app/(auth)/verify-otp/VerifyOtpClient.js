@@ -177,7 +177,7 @@ export default function VerifyOtpClient() {
         <div className="absolute pointer-events-none -bottom-16 -right-16 w-[350px] h-[350px] rounded-full bg-accent/8 blur-[40px]" />
 
         <div className="relative">
-          <Image src="/images/logo.png" alt="GoFastDelivery" width={130} height={44} className="h-10 w-auto object-contain" />
+          <Image src="/images/logo.png" alt="Go Fast Delivery Inc." width={130} height={44} className="h-10 w-auto object-contain" />
         </div>
 
         <div className="relative">
@@ -214,7 +214,7 @@ export default function VerifyOtpClient() {
         {/* Top nav */}
         <div className="absolute top-5 left-6 right-6 flex items-center justify-between">
           <div className="lg:hidden">
-            <Image src="/images/logo.png" alt="GoFastDelivery" width={100} height={32} className="h-7 w-auto object-contain" />
+            <Image src="/images/logo.png" alt="Go Fast Delivery Inc." width={100} height={32} className="h-7 w-auto object-contain" />
           </div>
           <div className="hidden lg:block" />
           <Link href="/forgot-password" className="inline-flex items-center gap-1.5 text-xs font-bold text-secondary transition-colors">

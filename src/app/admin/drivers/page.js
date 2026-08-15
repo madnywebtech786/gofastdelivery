@@ -4,7 +4,7 @@ import { findAllDrivers } from '@/lib/db/drivers'
 import Button from '@/components/ui/Button'
 import { UserPlus, Truck, Phone, ChevronRight } from 'lucide-react'
 
-export const metadata = { title: 'Drivers — Go Fast Delivery' }
+export const metadata = { title: 'Drivers — Go Fast Delivery Inc.' }
 
 export default async function AdminDriversPage() {
   await requireAdmin()

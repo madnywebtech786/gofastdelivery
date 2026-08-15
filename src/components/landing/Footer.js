@@ -68,7 +68,7 @@ export default function Footer() {
             <div className="inline-flex  overflow-hidden" >
               <Image
                 src="/images/logo.png"
-                alt="GoFastDelivery"
+                alt="Go Fast Delivery Inc."
                 width={150}
                 height={80}
                 className="h-20 w-auto object-contain rounded-xl"
@@ -189,7 +189,7 @@ export default function Footer() {
       <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 flex flex-col sm:flex-row items-center justify-between gap-3">
           <p className="text-xs" style={{ color: 'rgb(107,114,128)' }}>
-            © 2026 GoFastDelivery. All rights reserved.
+            © 2026 Go Fast Delivery Inc. All rights reserved.
           </p>
           <p className="text-xs" style={{ color: 'rgb(75,85,99)' }}>
             Serving Calgary, Airdrie, Cochrane, Okotoks &amp; more

@@ -2,7 +2,7 @@ import { requireCustomer } from '@/lib/dal'
 import { findBookingsByCustomer } from '@/lib/db/bookings'
 import CustomerDashboardClient from './CustomerDashboardClient'
 
-export const metadata = { title: 'Dashboard — Go Fast Delivery' }
+export const metadata = { title: 'Dashboard — Go Fast Delivery Inc.' }
 
 export default async function CustomerDashboardPage() {
   const { userId } = await requireCustomer()

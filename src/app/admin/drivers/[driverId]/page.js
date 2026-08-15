@@ -6,7 +6,7 @@ import { calgaryYearMonth } from '@/lib/dateFormat'
 import { Suspense } from 'react'
 import DriverDetailClient from './DriverDetailClient'
 
-export const metadata = { title: 'Driver Detail — Go Fast Delivery' }
+export const metadata = { title: 'Driver Detail — Go Fast Delivery Inc.' }
 
 export default async function AdminDriverDetailPage({ params, searchParams }) {
   const { driverId } = await params

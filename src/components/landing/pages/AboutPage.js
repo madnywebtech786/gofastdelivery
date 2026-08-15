@@ -578,7 +578,7 @@ function TeamSection() {
             >
               <Image
                 src="/images/Our-Team-img.webp"
-                alt="GoFastDelivery driver at work"
+                alt="Go Fast Delivery Inc. driver at work"
                 fill className="object-cover"
                 sizes="(max-width: 1024px) 100vw, 50vw"
               />
@@ -621,7 +621,7 @@ function TeamSection() {
                 className="text-2xl sm:text-3xl lg:text-4xl mb-4"
               />
               <p className="text-sm leading-relaxed max-w-md" style={{ color: 'var(--landing-text-2)' }}>
-                Every driver in our network is personally vetted, background-checked, and trained to handle your deliveries with care. We don&apos;t just hire anyone with a vehicle. We build a team of reliable professionals who represent GoFastDelivery at every door.
+                Every driver in our network is personally vetted, background-checked, and trained to handle your deliveries with care. We don&apos;t just hire anyone with a vehicle. We build a team of reliable professionals who represent Go Fast Delivery Inc. at every door.
               </p>
             </div>
 
@@ -774,7 +774,7 @@ export default function AboutPage() {
                 className="inline-flex px-4 py-1.5 rounded-full text-xs font-bold tracking-widest uppercase w-fit"
                 style={{ background: 'var(--brand-green-dim)', color: 'var(--brand-green)' }}
               >
-                About GoFastDelivery
+                About Go Fast Delivery Inc.
               </span>
 
               <GradientHeading
@@ -788,7 +788,7 @@ export default function AboutPage() {
               />
 
               <p className="text-base leading-relaxed max-w-lg" style={{ color: 'var(--landing-text-2)' }}>
-                GoFastDelivery was built by Calgarians, for Everyone. Over a decade of same-day delivery across the city and surrounding communities, every order handled by a verified local driver, tracked live from pickup to drop-off, with zero hidden fees.
+                Go Fast Delivery Inc. was built by Calgarians, for Everyone. Over a decade of same-day delivery across the city and surrounding communities, every order handled by a verified local driver, tracked live from pickup to drop-off, with zero hidden fees.
               </p>
 
               {/* 10+ years callout — inline badge */}
@@ -850,7 +850,7 @@ export default function AboutPage() {
               >
                 <Image
                   src="/images/About-GoFastDelivery-img.webp"
-                  alt="GoFastDelivery courier on the road"
+                  alt="Go Fast Delivery Inc. courier on the road"
                   fill className="object-cover object-center"
                   sizes="(max-width: 1024px) 100vw, 50vw"
                   loading="lazy"

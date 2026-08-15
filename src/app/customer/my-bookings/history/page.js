@@ -2,7 +2,7 @@ import { requireCustomer } from '@/lib/dal'
 import { findBookingsByCustomer } from '@/lib/db/bookings'
 import HistoryClient from './HistoryClient'
 
-export const metadata = { title: 'Booking History — Go Fast Delivery' }
+export const metadata = { title: 'Booking History — Go Fast Delivery Inc.' }
 
 const HISTORY_STATUSES = ['delivered', 'cancelled', 'failed_pickup', 'failed_dropoff']
 

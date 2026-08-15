@@ -598,6 +598,12 @@ export async function findBookingsByDriver(driverId, { statusGroup = 'all', limi
       projection: {
         _id: 1, status: 1, stops: 1, assignedAt: 1,
         estimatedDistanceMeters: 1, estimatedDurationSeconds: 1, updatedAt: 1,
+        // Needed so the driver detail page can mark rows the admin hid from
+        // the History page. The driver's own counters deliberately still
+        // include these (hiding is a view concern, not a deletion — see
+        // hideBookingsFromHistory), so without this flag the totals look
+        // inconsistent with the History page for no visible reason.
+        hiddenFromHistory: 1,
       },
     })
     .sort({ updatedAt: -1 })

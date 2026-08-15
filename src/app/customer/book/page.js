@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { requireCustomer } from '@/lib/dal'
 import BookingForm from '@/components/booking/BookingForm'
 
-export const metadata = { title: 'New Booking — Go Fast Delivery' }
+export const metadata = { title: 'New Booking — Go Fast Delivery Inc.' }
 
 export default async function BookPage() {
   await requireCustomer()

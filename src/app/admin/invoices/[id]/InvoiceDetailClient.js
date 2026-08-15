@@ -200,7 +200,7 @@ export default function InvoiceDetailClient({ invoice }) {
             </div>
             <p className="text-xs font-bold uppercase tracking-wide" style={{ color: 'var(--fg-3)' }}>From</p>
           </div>
-          <p className="font-bold text-sm leading-snug" style={{ color: 'var(--fg)' }}>{invoice.companyName || 'GoFastDelivery'}</p>
+          <p className="font-bold text-sm leading-snug" style={{ color: 'var(--fg)' }}>{invoice.companyName || 'Go Fast Delivery Inc.'}</p>
           {invoice.companyAddress && <p className="text-xs mt-1.5 leading-relaxed" style={{ color: 'var(--fg-2)' }}>{invoice.companyAddress}</p>}
           {invoice.companyCity    && <p className="text-xs leading-relaxed" style={{ color: 'var(--fg-2)' }}>{invoice.companyCity}</p>}
           {invoice.companyPhone   && <p className="text-xs mt-2 font-medium" style={{ color: 'var(--fg-2)' }}>{invoice.companyPhone}</p>}

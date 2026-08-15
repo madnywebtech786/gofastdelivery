@@ -66,7 +66,7 @@ function NetworkSVG({ animate }) {
     <svg
       viewBox="0 0 440 440"
       className="w-full max-w-md mx-auto"
-      aria-label="GoFastDelivery network coverage diagram"
+      aria-label="Go Fast Delivery Inc. network coverage diagram"
     >
       {/* Topo contour rings — decorative */}
       {[180, 155, 130, 105, 80, 55].map((r, i) => (

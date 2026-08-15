@@ -9,7 +9,7 @@ const SECTIONS = [
     num: '01',
     title: 'Services',
     body: [
-      { type: 'p', text: "Go Fast Delivery ('Go Fast') provides ground courier and delivery services within Alberta, Canada. All services are subject to these Terms and Conditions." },
+      { type: 'p', text: "Go Fast Delivery Inc. ('Go Fast') provides ground courier and delivery services within Alberta, Canada. All services are subject to these Terms and Conditions." },
     ],
   },
   {
@@ -105,7 +105,7 @@ const SECTIONS = [
     num: '13',
     title: 'Intellectual Property',
     body: [
-      { type: 'p', text: 'All Go Fast trademarks, logos, website content, electronic systems, and branding remain the property of Go Fast Delivery.' },
+      { type: 'p', text: 'All Go Fast trademarks, logos, website content, electronic systems, and branding remain the property of Go Fast Delivery Inc.' },
     ],
   },
   {
@@ -155,7 +155,7 @@ export default function TermsPage() {
         { text: 'Terms & ', color: 'black' },
         { text: 'Conditions', color: 'green', highlight: true },
       ]}
-      intro="These Terms and Conditions govern the use of Go Fast Delivery's courier and delivery services. Please read them carefully before booking a shipment."
+      intro="These Terms and Conditions govern the use of Go Fast Delivery Inc.'s courier and delivery services. Please read them carefully before booking a shipment."
       lastUpdated={LAST_UPDATED}
       sections={SECTIONS}
     />

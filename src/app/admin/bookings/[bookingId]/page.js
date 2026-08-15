@@ -9,7 +9,7 @@ import AssignDriverForm from '@/components/booking/AssignDriverForm'
 import { formatDateTime as formatDate } from '@/lib/dateFormat'
 import { ArrowLeft, MapPin, User, Phone, CheckCircle2, UserCheck } from 'lucide-react'
 
-export const metadata = { title: 'Booking Detail — Go Fast Delivery Admin' }
+export const metadata = { title: 'Booking Detail — Go Fast Delivery Inc. Admin' }
 
 function formatDuration(s) {
   if (!s) return null

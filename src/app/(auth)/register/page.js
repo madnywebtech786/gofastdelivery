@@ -146,7 +146,7 @@ export default function RegisterPage() {
         {/* Top nav */}
         <div className="absolute top-6 left-6 right-6 flex items-center justify-between">
           <Link href="/">
-            <Image src="/images/logo.png" alt="GoFastDelivery" width={110} height={36} className="h-8 w-auto object-contain" />
+            <Image src="/images/logo.png" alt="Go Fast Delivery Inc." width={110} height={36} className="h-8 w-auto object-contain" />
           </Link>
           <Link href="/" className="inline-flex items-center gap-1.5 text-xs font-bold text-secondary transition-colors">
             <ArrowRight size={11} className="rotate-180" />Back to Home
@@ -273,7 +273,7 @@ export default function RegisterPage() {
             anywhere.
           </h2>
           <p className="text-sm leading-relaxed max-w-xs text-muted">
-            Join thousands of Calgarians who trust GoFastDelivery for same-day courier service.
+            Join thousands of Calgarians who trust Go Fast Delivery Inc. for same-day courier service.
           </p>
         </div>
 

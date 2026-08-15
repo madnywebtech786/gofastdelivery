@@ -3,7 +3,7 @@ import { findAllInvoices, countAllInvoices, getInvoiceStats } from '@/lib/db/inv
 import { calgaryYearMonth } from '@/lib/dateFormat'
 import InvoicesClient from './InvoicesClient'
 
-export const metadata = { title: 'Invoices — Go Fast Delivery' }
+export const metadata = { title: 'Invoices — Go Fast Delivery Inc.' }
 
 const PAGE_SIZE = 20
 

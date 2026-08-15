@@ -11,7 +11,7 @@ const REVIEWS = [
     role: 'Small Business Owner',
     initial: 'S',
     color: '#e51c1c',
-    quote: 'Absolutely incredible service. My package arrived two hours after pickup, faster than I expected. Will use GoFastDelivery for all my business deliveries from now on.',
+    quote: 'Absolutely incredible service. My package arrived two hours after pickup, faster than I expected. Will use Go Fast Delivery Inc. for all my business deliveries from now on.',
     highlight: 'two hours after pickup',
   },
   {

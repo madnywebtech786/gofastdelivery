@@ -108,7 +108,7 @@ export default function TrackSearchPage() {
       <header className="bg-surface border-b border-border shadow-sm">
         <div className="max-w-2xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
           <Link href="/">
-            <Image src="/images/logo.png" alt="GoFastDelivery" width={120} height={40} className="h-8 w-auto object-contain" priority />
+            <Image src="/images/logo.png" alt="Go Fast Delivery Inc." width={120} height={40} className="h-8 w-auto object-contain" priority />
           </Link>
           <Link href="/" className="inline-flex items-center gap-1.5 text-xs font-bold text-muted hover:text-accent transition-colors">
             <ArrowRight size={11} className="rotate-180" />

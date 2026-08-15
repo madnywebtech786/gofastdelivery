@@ -70,7 +70,7 @@ export function buildInvoicePdf(invoice) {
     y += 14
 
     const from = [
-      invoice.companyName    || 'GoFastDelivery',
+      invoice.companyName    || 'Go Fast Delivery Inc.',
       invoice.companyAddress || '',
       invoice.companyCity    || '',
       invoice.companyEmail   || '',

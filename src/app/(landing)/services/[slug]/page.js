@@ -3,23 +3,23 @@ import ServiceDetailPage from '@/components/landing/pages/ServiceDetailPage'
 
 const SERVICES_META = {
   'same-day-delivery': {
-    title: 'Same-Day Delivery — GoFastDelivery',
+    title: 'Same-Day Delivery — Go Fast Delivery Inc.',
     description: 'Same-city pickup and delivery within hours. Perfect for urgent parcels, documents, and anything that cannot wait.',
   },
   'express-pickup': {
-    title: 'Express Pickup — GoFastDelivery',
+    title: 'Express Pickup — Go Fast Delivery Inc.',
     description: 'Schedule a pickup in seconds from your phone. Our nearest driver heads to you immediately.',
   },
   'business-delivery': {
-    title: 'Business Delivery — GoFastDelivery',
+    title: 'Business Delivery — Go Fast Delivery Inc.',
     description: 'Recurring bulk deliveries for Calgary businesses. Dedicated drivers, priority routing, seamless integration.',
   },
   'scheduled-runs': {
-    title: 'Scheduled Runs — GoFastDelivery',
+    title: 'Scheduled Runs — Go Fast Delivery Inc.',
     description: 'Set up recurring delivery schedules and forget about it. We show up on time, every time.',
   },
   'hotshot-delivery': {
-    title: 'Hotshot Delivery — GoFastDelivery',
+    title: 'Hotshot Delivery — Go Fast Delivery Inc.',
     description: 'Dedicated single-load rush delivery for time-critical freight. One driver, one pickup, one destination.',
   },
 }

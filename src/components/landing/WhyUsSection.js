@@ -146,7 +146,7 @@ export default function WhyUsSection() {
             <div className="relative rounded-3xl overflow-hidden shadow-2xl" style={{ height: '260px' }}>
               <Image
                 src="/images/Why-Choose-Us-img.webp"
-                alt="GoFastDelivery courier delivering packages"
+                alt="Go Fast Delivery Inc. courier delivering packages"
                 fill
                 className="object-cover"
                 sizes="(max-width: 1024px) 100vw, 480px"

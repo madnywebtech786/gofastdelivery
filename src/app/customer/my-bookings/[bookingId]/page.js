@@ -3,7 +3,7 @@ import { requireCustomer } from '@/lib/dal'
 import { findBookingById, attachCustomerAccounts } from '@/lib/db/bookings'
 import BookingDetailClient from './BookingDetailClient'
 
-export const metadata = { title: 'Booking Detail — Go Fast Delivery' }
+export const metadata = { title: 'Booking Detail — Go Fast Delivery Inc.' }
 
 export default async function CustomerBookingDetailPage({ params }) {
   const { bookingId } = await params

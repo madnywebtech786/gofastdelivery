@@ -7,7 +7,7 @@ export async function generateMetadata({ params }) {
   const { id } = await params
   const invoice = await findInvoiceById(id)
   if (!invoice) return { title: 'Invoice Not Found' }
-  return { title: `Invoice ${invoice.invoiceNumber} — Go Fast Delivery` }
+  return { title: `Invoice ${invoice.invoiceNumber} — Go Fast Delivery Inc.` }
 }
 
 export default async function AdminInvoiceDetailPage({ params }) {
