@@ -387,17 +387,15 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess, init
       return
     }
 
-    const { cities, rules, settings } = pricingData
+    const { cities, rules, weightBands } = pricingData
     const result = calculatePrice({
       fromCityName: pickupStop.city,
       toCityName: dropoffStop.city,
       packages,
-      cities, rules, settings,
+      cities, rules, weightBands,
     })
 
-    setPricingPreview(
-      result ? { price: result.total, maxWeightLbs: settings?.maxWeightLbs ?? 20, ...result.breakdown } : null
-    )
+    setPricingPreview(result ? { price: result.total, ...result.breakdown } : null)
   }, [stops, packages, pricingData])
 
   async function handleSubmit(e) {
@@ -628,7 +626,13 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess, init
               type="text"
               value={pickup.address}
               onChange={(e) => {
-                pickupAddressIsAutoFilledRef.current = false
+                // Only a real manual value opts this field out of auto-fill.
+                // Clearing it back to empty (e.g. select-all + delete) must
+                // NOT leave it permanently stuck — otherwise the next map
+                // pin placement silently stops filling this field at all,
+                // since handleStopsChange below only syncs while this ref is
+                // still true.
+                pickupAddressIsAutoFilledRef.current = e.target.value === ''
                 setPickup((p) => ({ ...p, address: e.target.value }))
               }}
               className={inputCls}
@@ -695,7 +699,13 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess, init
               type="text"
               value={dropoff.address}
               onChange={(e) => {
-                dropoffAddressIsAutoFilledRef.current = false
+                // Only a real manual value opts this field out of auto-fill.
+                // Clearing it back to empty (e.g. select-all + delete) must
+                // NOT leave it permanently stuck — otherwise the next map
+                // pin placement silently stops filling this field at all,
+                // since handleStopsChange above only syncs while this ref is
+                // still true.
+                dropoffAddressIsAutoFilledRef.current = e.target.value === ''
                 setDropoff((p) => ({ ...p, address: e.target.value }))
               }}
               className={inputCls}
@@ -822,14 +832,19 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess, init
                     <span className="font-medium text-foreground">${pricingPreview.additionalPackagesTotal.toFixed(2)}</span>
                   </div>
                 )}
-                {pricingPreview.overweightCount > 0 && (
-                  <div className="flex items-center justify-between px-3 py-2">
+                {/* One line per distinct weight range actually used — e.g.
+                    "1 package, 5-10 lb range" / "2 packages, 10-25 lb range" —
+                    so the customer can see exactly why the total is what it
+                    is, not just one opaque "overweight" number. */}
+                {pricingPreview.weightBreakdown?.map((w) => (
+                  <div key={`${w.minLbs}-${w.maxLbs}`} className="flex items-center justify-between px-3 py-2">
                     <span className="text-muted">
-                      Overweight surcharge ({pricingPreview.overweightCount} pkg over {pricingPreview.maxWeightLbs} lb)
+                      {w.count} package{w.count > 1 ? 's' : ''}, {w.minLbs}–{w.maxLbs} lb range
+                      {w.count > 1 && ` (${w.count} × $${w.rate.toFixed(2)})`}
                     </span>
-                    <span className="font-medium text-foreground">${pricingPreview.overweightTotal.toFixed(2)}</span>
+                    <span className="font-medium text-foreground">${w.subtotal.toFixed(2)}</span>
                   </div>
-                )}
+                ))}
                 <div className="flex items-center justify-between px-3 py-2.5" style={{ background: 'var(--surface-2)' }}>
                   <span className="text-sm font-bold text-foreground">Total</span>
                   <p className="text-xl font-bold text-foreground">

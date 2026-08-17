@@ -12,7 +12,7 @@ import { sendBookingConfirmed } from '@/lib/mailer'
 import { sendBookingConfirmedSms } from '@/lib/sms'
 import { checkRateLimit } from '@/lib/redis'
 import { calculatePrice } from '@/lib/pricing'
-import { getAllCities, getAllPricingRules, getPricingSettings } from '@/lib/db/pricing'
+import { getAllCities, getAllPricingRules, getAllWeightBands } from '@/lib/db/pricing'
 
 // Service area bounding box — Greater Alberta / Western Canada
 const LAT_MIN =  48.0
@@ -179,16 +179,16 @@ export async function POST(request) {
     const packagesForPricing = Array.isArray(packageDetails?.packages) && packageDetails.packages.length > 0
       ? packageDetails.packages
       : [{ weightLbs: packageDetails?.weightLbs }]
-    const [cities, rules, settings] = await Promise.all([
+    const [cities, rules, weightBands] = await Promise.all([
       getAllCities(),
       getAllPricingRules(),
-      getPricingSettings(),
+      getAllWeightBands(),
     ])
     const priceResult = calculatePrice({
       fromCityName: pickup.city,
       toCityName: dropoff.city,
       packages: packagesForPricing,
-      cities, rules, settings,
+      cities, rules, weightBands,
     })
     const price = priceResult?.total ?? null
 

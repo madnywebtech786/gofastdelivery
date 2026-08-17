@@ -88,6 +88,12 @@ async function setup() {
   ])
   console.log('✓ pricing_rules indexes')
 
+  // --- weight_bands (admin-defined weight ranges for per-package pricing) ---
+  await db.collection('weight_bands').createIndexes([
+    { key: { minLbs: 1 }, name: 'minLbs' },
+  ])
+  console.log('✓ weight_bands indexes')
+
   console.log('\nDatabase setup complete.')
   process.exit(0)
 }

@@ -7,7 +7,7 @@ import { createBooking } from '@/lib/db/bookings'
 import { sendBookingConfirmed } from '@/lib/mailer'
 import { sendBookingConfirmedSms } from '@/lib/sms'
 import { calculatePrice } from '@/lib/pricing'
-import { getAllCities, getAllPricingRules, getPricingSettings } from '@/lib/db/pricing'
+import { getAllCities, getAllPricingRules, getAllWeightBands } from '@/lib/db/pricing'
 
 // 20 guest bookings per IP per hour
 const GUEST_RATE_LIMIT   = 20
@@ -157,16 +157,16 @@ export async function POST(request) {
     const packagesForPricing = Array.isArray(packageDetails?.packages) && packageDetails.packages.length > 0
       ? packageDetails.packages
       : [{ weightLbs: packageDetails?.weightLbs }]
-    const [cities, rules, settings] = await Promise.all([
+    const [cities, rules, weightBands] = await Promise.all([
       getAllCities(),
       getAllPricingRules(),
-      getPricingSettings(),
+      getAllWeightBands(),
     ])
     const priceResult = calculatePrice({
       fromCityName: pickup.city,
       toCityName: dropoff.city,
       packages: packagesForPricing,
-      cities, rules, settings,
+      cities, rules, weightBands,
     })
     const price = priceResult?.total ?? null
 

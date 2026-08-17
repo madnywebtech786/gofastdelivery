@@ -28,18 +28,55 @@ function findRule(rules, cityKeyA, cityKeyB) {
 }
 
 /**
- * calculatePrice({ fromCityName, toCityName, packages, cities, rules, settings })
+ * The weight-band rate for one package's weight. Bands are inclusive on both
+ * ends ([minLbs, maxLbs]) and admin-defined (see getAllWeightBands in
+ * src/lib/db/pricing.js) — any number of them, sorted lightest-first.
  *
- * packages: [{ weightLbs: number }, ...] — at least one.
- * cities/rules/settings: already-fetched plain arrays/object (see
- *   getAllCities/getAllPricingRules/getPricingSettings in src/lib/db/pricing.js).
+ * A weight below every band's min or above every band's max still needs a
+ * price (a pricing-config gap must never silently block checkout), so it
+ * clamps to the nearest edge band: lightest band for "too light", heaviest
+ * band for "too heavy" — same "always resolve to something" spirit as
+ * calculatePrice()'s own null-if-unrecognized-route behaviour elsewhere in
+ * this file, just resolved rather than left unpriced since a package weight
+ * is the customer's own input, not a route the admin hasn't configured yet.
+ *
+ * Returns { rate, band } — band is the matched/clamped band doc, or null if
+ * no bands exist at all (rate 0 in that case: nothing configured, nothing
+ * charged, same as the old surcharge's behaviour when unset).
+ */
+function findWeightBand(bands, weightLbs) {
+  if (!bands || bands.length === 0) return { rate: 0, band: null }
+  const w = Number(weightLbs) || 0
+
+  const exact = bands.find((b) => w >= b.minLbs && w <= b.maxLbs)
+  if (exact) return { rate: exact.rate, band: exact }
+
+  // bands is sorted lightest-first (getAllWeightBands) — clamp to an edge.
+  const lightest = bands[0]
+  const heaviest = bands[bands.length - 1]
+  if (w < lightest.minLbs) return { rate: lightest.rate, band: lightest }
+  return { rate: heaviest.rate, band: heaviest }
+}
+
+/**
+ * calculatePrice({ fromCityName, toCityName, packages, cities, rules, weightBands })
+ *
+ * packages: [{ weightLbs: number }, ...] — at least one, each priced
+ *   independently against `weightBands` (replaces the old single
+ *   maxWeightLbs/overweightSurcharge flat threshold — see findWeightBand).
+ * cities/rules/weightBands: already-fetched plain arrays (see
+ *   getAllCities/getAllPricingRules/getAllWeightBands in src/lib/db/pricing.js).
  *
  * Returns:
  *   { total, breakdown: { routeLabel, hubFee, baseRate, additionalPackagesTotal,
- *     overweightTotal, packageCount, overweightCount } }
+ *     weightChargeTotal, weightBreakdown, packageCount } }
+ *   weightBreakdown: [{ minLbs, maxLbs, rate, count, subtotal }, ...] — one row
+ *     per DISTINCT band actually used, grouping packages that landed in the
+ *     same band (e.g. "2 packages in the 10-25lb band, $16.00") for the price
+ *     summary, sorted lightest-band-first.
  * or null if either city is unrecognized or no rule exists for the route.
  */
-export function calculatePrice({ fromCityName, toCityName, packages, cities, rules, settings }) {
+export function calculatePrice({ fromCityName, toCityName, packages, cities, rules, weightBands }) {
   if (!packages || packages.length === 0) return null
   if (!cities || !rules) return null
 
@@ -72,22 +109,41 @@ export function calculatePrice({ fromCityName, toCityName, packages, cities, rul
       : `${fromCity.name} → ${toCity.name}`
   }
 
-  const maxWeightLbs = settings?.maxWeightLbs ?? 20
-  const overweightSurcharge = settings?.overweightSurcharge ?? 0
-
   let additionalPackagesTotal = 0
-  let overweightTotal = 0
-  let overweightCount = 0
+  let weightChargeTotal = 0
+  // Grouped by band identity (minLbs-maxLbs), not one row per package — two
+  // packages landing in the same band collapse into one summary line with
+  // count:2, matching "2 packages in the 10-25lb range" rather than listing
+  // the same band twice.
+  const bandGroups = new Map()
 
   packages.forEach((pkg, i) => {
     if (i > 0) additionalPackagesTotal += rule.additionalPackageRate
-    if (Number(pkg.weightLbs) > maxWeightLbs) {
-      overweightTotal += overweightSurcharge
-      overweightCount += 1
+
+    // Weight-band pricing only applies once the customer has actually typed a
+    // weight for this package. Before that, pkg.weightLbs is '' (the empty
+    // form input) — treating that as 0 would match/clamp into the lightest
+    // band and silently charge for a weight nobody entered yet. Route pricing
+    // (baseRate/additionalPackageRate above) is unaffected either way; only
+    // the weight-band lookup itself is skipped.
+    if (pkg.weightLbs === '' || pkg.weightLbs == null) return
+    const { rate, band } = findWeightBand(weightBands, pkg.weightLbs)
+    weightChargeTotal += rate
+    if (!band) return // no bands configured at all — nothing to group
+
+    const key = `${band.minLbs}-${band.maxLbs}`
+    const existing = bandGroups.get(key)
+    if (existing) {
+      existing.count += 1
+      existing.subtotal += rate
+    } else {
+      bandGroups.set(key, { minLbs: band.minLbs, maxLbs: band.maxLbs, rate, count: 1, subtotal: rate })
     }
   })
 
-  const total = hubFee + rule.baseRate + additionalPackagesTotal + overweightTotal
+  const weightBreakdown = [...bandGroups.values()].sort((a, b) => a.minLbs - b.minLbs)
+
+  const total = hubFee + rule.baseRate + additionalPackagesTotal + weightChargeTotal
 
   return {
     total,
@@ -96,9 +152,9 @@ export function calculatePrice({ fromCityName, toCityName, packages, cities, rul
       hubFee,
       baseRate: rule.baseRate,
       additionalPackagesTotal,
-      overweightTotal,
+      weightChargeTotal,
+      weightBreakdown,
       packageCount: packages.length,
-      overweightCount,
     },
   }
 }

@@ -99,30 +99,40 @@ export async function deletePricingRule(id) {
   return db.collection('pricing_rules').deleteOne({ _id: new ObjectId(id) })
 }
 
-const SETTINGS_ID = 'global'
-const DEFAULT_SETTINGS = { maxWeightLbs: 20, overweightSurcharge: 0 }
-
 /**
- * Get the single global pricing-settings doc, seeded with defaults if absent.
+ * List all weight bands, lightest-first. Each band prices ONE package by its
+ * own weight — see calculatePrice() in src/lib/pricing.js for the lookup
+ * (falls back to the lowest band under the smallest min, highest band over
+ * the largest max, so every weight always has a price).
  */
-export async function getPricingSettings() {
+export async function getAllWeightBands() {
   const db = await getDb()
-  const doc = await db.collection('pricing_settings').findOne({ _id: SETTINGS_ID })
-  if (!doc) return { _id: SETTINGS_ID, ...DEFAULT_SETTINGS }
-  return doc
+  return db.collection('weight_bands').find({}).sort({ minLbs: 1 }).toArray()
 }
 
-export async function updatePricingSettings({ maxWeightLbs, overweightSurcharge }) {
+/**
+ * Create or update a weight band. `id` present = edit that row (min/max/rate
+ * all replaced); absent = insert a new row. Overlap with existing bands is
+ * intentionally NOT rejected here — see the route handler for why.
+ */
+export async function upsertWeightBand({ id, minLbs, maxLbs, rate }) {
+  const min = Number(minLbs)
+  const max = Number(maxLbs)
+  const r   = Number(rate)
+  if (!Number.isFinite(min) || min < 0) throw new Error('Min weight must be zero or a positive number')
+  if (!Number.isFinite(max) || max <= min) throw new Error('Max weight must be greater than min weight')
+  if (!Number.isFinite(r) || r < 0) throw new Error('Rate must be zero or a positive number')
+
   const db = await getDb()
-  return db.collection('pricing_settings').updateOne(
-    { _id: SETTINGS_ID },
-    {
-      $set: {
-        maxWeightLbs: Number(maxWeightLbs),
-        overweightSurcharge: Number(overweightSurcharge),
-        updatedAt: new Date(),
-      },
-    },
-    { upsert: true }
-  )
+  const doc = { minLbs: min, maxLbs: max, rate: r, updatedAt: new Date() }
+
+  if (id) {
+    return db.collection('weight_bands').updateOne({ _id: new ObjectId(id) }, { $set: doc })
+  }
+  return db.collection('weight_bands').insertOne({ ...doc, createdAt: new Date() })
+}
+
+export async function deleteWeightBand(id) {
+  const db = await getDb()
+  return db.collection('weight_bands').deleteOne({ _id: new ObjectId(id) })
 }

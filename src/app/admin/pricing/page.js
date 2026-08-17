@@ -8,7 +8,8 @@ import Select from '@/components/ui/Select'
 import { useToast } from '@/components/ui/Toast'
 import EditRuleModal from './EditRuleModal'
 import EditCityModal from './EditCityModal'
-import { Plus, Trash2, Pencil, Search, Tag, MapPin, Route, Scale } from 'lucide-react'
+import EditWeightBandModal from './EditWeightBandModal'
+import { Plus, Trash2, Pencil, Search, Tag, MapPin, Route, Scale, X } from 'lucide-react'
 
 const ZONES = [
   { value: 'calgary', label: 'Calgary (hub)' },
@@ -40,7 +41,7 @@ export default function PricingPage() {
   const toast = useToast()
   const [cities, setCities] = useState([])
   const [rules, setRules]   = useState([])
-  const [settings, setSettings] = useState({ maxWeightLbs: 20, overweightSurcharge: 0 })
+  const [weightBands, setWeightBands] = useState([])
   const [loading, setLoading] = useState(true)
 
   const [cityForm, setCityForm] = useState({ name: '', zone: 'satellite' })
@@ -51,20 +52,31 @@ export default function PricingPage() {
   const [savingRule, setSavingRule] = useState(false)
   const [editingRule, setEditingRule] = useState(null)
 
-  const [savingSettings, setSavingSettings] = useState(false)
+  const [bandForm, setBandForm] = useState({ minLbs: '', maxLbs: '', rate: '' })
+  const [savingBand, setSavingBand] = useState(false)
+  const [editingBand, setEditingBand] = useState(null)
+
   const [filter, setFilter] = useState('')
+
+  // One shared confirm-delete modal for all three delete actions on this page
+  // (city / route rate / weight range) instead of the browser's native
+  // confirm() — matches the in-app modal style used everywhere else deletion
+  // needs a confirmation (e.g. invoice delete, booking-history delete).
+  // { kind: 'city'|'rule'|'band', id, label, warning? } | null
+  const [deleteTarget, setDeleteTarget] = useState(null)
+  const [deleting, setDeleting] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [citiesRes, rulesRes, settingsRes] = await Promise.all([
+      const [citiesRes, rulesRes, bandsRes] = await Promise.all([
         fetch('/api/pricing/cities'),
         fetch('/api/pricing/rules'),
-        fetch('/api/pricing/settings'),
+        fetch('/api/pricing/weight-bands'),
       ])
       if (citiesRes.ok) setCities(await citiesRes.json())
       if (rulesRes.ok) setRules(await rulesRes.json())
-      if (settingsRes.ok) setSettings(await settingsRes.json())
+      if (bandsRes.ok) setWeightBands(await bandsRes.json())
     } finally { setLoading(false) }
   }, [])
 
@@ -89,14 +101,17 @@ export default function PricingPage() {
   }
 
   async function handleDeleteCity(id, name) {
-    if (!confirm(`Delete "${name}"? Any pricing rules referencing it will no longer match new bookings.`)) return
+    setDeleting(true)
     try {
       const res = await fetch('/api/pricing/cities', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) })
       if (!res.ok) { const d = await res.json(); toast.error(d.error || `Failed to delete "${name}".`); return }
       toast.success(`"${name}" deleted.`)
+      setDeleteTarget(null)
       await load()
     } catch {
       toast.error('Network error. Please try again.')
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -124,30 +139,62 @@ export default function PricingPage() {
   }
 
   async function handleDeleteRule(id, label) {
-    if (!confirm(`Delete the rate for ${label}?`)) return
+    setDeleting(true)
     try {
       const res = await fetch('/api/pricing/rules', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) })
       if (!res.ok) { const d = await res.json(); toast.error(d.error || `Failed to delete the rate for ${label}.`); return }
       toast.success(`Rate for ${label} deleted.`)
+      setDeleteTarget(null)
       await load()
     } catch {
       toast.error('Network error. Please try again.')
+    } finally {
+      setDeleting(false)
     }
   }
 
-  async function handleSaveSettings(e) {
+  async function handleAddBand(e) {
     e.preventDefault()
-    setSavingSettings(true)
+    if (bandForm.minLbs === '' || bandForm.maxLbs === '' || bandForm.rate === '') {
+      toast.error('Min weight, max weight, and rate are all required.'); return
+    }
+    setSavingBand(true)
     try {
-      const res = await fetch('/api/pricing/settings', {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(settings),
+      const res = await fetch('/api/pricing/weight-bands', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          minLbs: Number(bandForm.minLbs), maxLbs: Number(bandForm.maxLbs), rate: Number(bandForm.rate),
+        }),
       })
-      if (!res.ok) { const d = await res.json(); toast.error(d.error || 'Failed to save weight rules.'); return }
-      toast.success('Weight rules saved.')
+      if (!res.ok) { const d = await res.json(); toast.error(d.error || 'Failed to save weight range.'); return }
+      toast.success(`Weight range ${bandForm.minLbs}–${bandForm.maxLbs} lb saved.`)
+      setBandForm({ minLbs: '', maxLbs: '', rate: '' })
+      await load()
     } catch {
       toast.error('Network error. Please try again.')
-    } finally { setSavingSettings(false) }
+    } finally { setSavingBand(false) }
+  }
+
+  async function handleDeleteBand(id, label) {
+    setDeleting(true)
+    try {
+      const res = await fetch('/api/pricing/weight-bands', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) })
+      if (!res.ok) { const d = await res.json(); toast.error(d.error || `Failed to delete the ${label} lb range.`); return }
+      toast.success(`Weight range ${label} lb deleted.`)
+      setDeleteTarget(null)
+      await load()
+    } catch {
+      toast.error('Network error. Please try again.')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  function confirmDelete() {
+    if (!deleteTarget) return
+    if (deleteTarget.kind === 'city') return handleDeleteCity(deleteTarget.id, deleteTarget.label)
+    if (deleteTarget.kind === 'rule') return handleDeleteRule(deleteTarget.id, deleteTarget.label)
+    if (deleteTarget.kind === 'band') return handleDeleteBand(deleteTarget.id, deleteTarget.label)
   }
 
   const cityOptions = cities.map((c) => ({ value: c.name, label: `${c.name} (${c.zone})` }))
@@ -211,7 +258,10 @@ export default function PricingPage() {
                         title="Edit zone">
                         <Pencil size={13} />
                       </button>
-                      <button onClick={() => handleDeleteCity(c._id, c.name)}
+                      <button onClick={() => setDeleteTarget({
+                          kind: 'city', id: c._id, label: c.name,
+                          warning: 'Any pricing rules referencing it will no longer match new bookings.',
+                        })}
                         className="p-1.5 rounded-lg transition-colors"
                         style={{ color: 'var(--fg-3)' }}
                         onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--danger)'; e.currentTarget.style.background = 'var(--danger-bg)' }}
@@ -307,7 +357,9 @@ export default function PricingPage() {
                         title="Edit rate">
                         <Pencil size={13} />
                       </button>
-                      <button onClick={() => handleDeleteRule(r._id, `${r.cityADisplay} ↔ ${r.cityBDisplay}`)}
+                      <button onClick={() => setDeleteTarget({
+                          kind: 'rule', id: r._id, label: `${r.cityADisplay} ↔ ${r.cityBDisplay}`,
+                        })}
                         className="p-1.5 rounded-lg transition-colors"
                         style={{ color: 'var(--fg-3)' }}
                         onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--danger)'; e.currentTarget.style.background = 'var(--danger-bg)' }}
@@ -329,21 +381,67 @@ export default function PricingPage() {
         icon={<Scale size={14} />}
         title="Weight rules"
         subtitle={
-          `Applies globally, the same for every route. Each package in a booking is checked against ` +
-          `the weight limit on its own — if a booking has 3 packages and only one is over the limit, ` +
-          `only that one package is charged the surcharge (on top of whatever its base/additional rate ` +
-          `already was).`
+          `Applies globally, the same for every route. Each package in a booking is priced by its own ` +
+          `weight against these ranges — a booking with 3 packages at different weights can land in 3 ` +
+          `different ranges, each charged independently and added on top of the route's base/additional rate.`
         }
       >
-        <form onSubmit={handleSaveSettings} className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <Input label="Max Weight Per Package (lbs)" type="number" min="1" step="1" value={settings.maxWeightLbs}
-              onChange={(e) => setSettings((s) => ({ ...s, maxWeightLbs: e.target.value }))} />
-            <Input label="Overweight Surcharge (CAD, per package over limit)" type="number" min="0" step="0.01" value={settings.overweightSurcharge}
-              onChange={(e) => setSettings((s) => ({ ...s, overweightSurcharge: e.target.value }))} />
+        <form onSubmit={handleAddBand} className="space-y-4 mb-5">
+          <div className="grid grid-cols-3 gap-3">
+            <Input label="Min Weight (lbs)" type="number" min="0" step="0.1" value={bandForm.minLbs}
+              onChange={(e) => setBandForm((f) => ({ ...f, minLbs: e.target.value }))} placeholder="0" />
+            <Input label="Max Weight (lbs)" type="number" min="0" step="0.1" value={bandForm.maxLbs}
+              onChange={(e) => setBandForm((f) => ({ ...f, maxLbs: e.target.value }))} placeholder="10" />
+            <Input label="Rate (CAD)" type="number" min="0" step="0.01" value={bandForm.rate}
+              onChange={(e) => setBandForm((f) => ({ ...f, rate: e.target.value }))} placeholder="5.00" />
           </div>
-          <Button type="submit" loading={savingSettings} variant="primary">Save Weight Rules</Button>
+          <Button type="submit" loading={savingBand} variant="primary" icon={<Plus size={14} />}>Add Weight Range</Button>
         </form>
+
+        {loading ? (
+          <div className="flex justify-center py-10"><Spinner size="lg" style={{ color: 'var(--fg-3)' }} /></div>
+        ) : weightBands.length === 0 ? (
+          <div className="py-12 text-center">
+            <Scale size={28} className="mx-auto mb-2 opacity-20" style={{ color: 'var(--fg-3)' }} />
+            <p className="text-sm" style={{ color: 'var(--fg-3)' }}>No weight ranges yet — every package is priced at $0 extra until at least one range is added.</p>
+          </div>
+        ) : (
+          <div className="rounded-xl overflow-hidden border border-border overflow-x-auto">
+            <table className="data-table">
+              <thead>
+                <tr><th>Weight Range (lbs)</th><th className="text-right">Rate</th><th /></tr>
+              </thead>
+              <tbody>
+                {weightBands.map((b) => (
+                  <tr key={b._id}>
+                    <td className="font-semibold" style={{ color: 'var(--fg)' }}>{b.minLbs}–{b.maxLbs} lb</td>
+                    <td className="text-right mono font-bold" style={{ color: 'var(--accent)' }}>{Number(b.rate).toFixed(2)}</td>
+                    <td className="text-right whitespace-nowrap">
+                      <button onClick={() => setEditingBand(b)}
+                        className="p-1.5 rounded-lg transition-colors"
+                        style={{ color: 'var(--fg-3)' }}
+                        onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--accent)'; e.currentTarget.style.background = 'var(--accent-dim)' }}
+                        onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--fg-3)';  e.currentTarget.style.background = 'transparent' }}
+                        title="Edit range">
+                        <Pencil size={13} />
+                      </button>
+                      <button onClick={() => setDeleteTarget({
+                          kind: 'band', id: b._id, label: `${b.minLbs}–${b.maxLbs}`,
+                        })}
+                        className="p-1.5 rounded-lg transition-colors"
+                        style={{ color: 'var(--fg-3)' }}
+                        onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--danger)'; e.currentTarget.style.background = 'var(--danger-bg)' }}
+                        onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--fg-3)';  e.currentTarget.style.background = 'transparent' }}
+                        title="Delete range">
+                        <Trash2 size={13} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </SectionCard>
 
       {editingRule && (
@@ -368,6 +466,60 @@ export default function PricingPage() {
             load()
           }}
         />
+      )}
+
+      {editingBand && (
+        <EditWeightBandModal
+          band={editingBand}
+          onClose={() => setEditingBand(null)}
+          onSaved={() => {
+            setEditingBand(null)
+            toast.success(`Weight range ${editingBand.minLbs}–${editingBand.maxLbs} lb updated.`)
+            load()
+          }}
+        />
+      )}
+
+      {/* ── Shared delete-confirm modal (city / rate / weight range) ──────── */}
+      {deleteTarget && (
+        <div className="fixed inset-0 flex items-center justify-center z-50 p-4"
+          style={{ background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(6px)' }}
+          onClick={() => !deleting && setDeleteTarget(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+              <h2 className="text-base font-bold" style={{ color: 'var(--fg)' }}>
+                {deleteTarget.kind === 'city' ? 'Delete City?' : deleteTarget.kind === 'rule' ? 'Delete Rate?' : 'Delete Weight Range?'}
+              </h2>
+              <button onClick={() => !deleting && setDeleteTarget(null)} className="p-1.5 rounded-lg transition-colors"
+                style={{ color: 'var(--fg-3)' }}>
+                <X size={16} />
+              </button>
+            </div>
+            <div className="px-6 py-5">
+              <p className="text-sm mb-2" style={{ color: 'var(--fg-2)' }}>
+                {deleteTarget.kind === 'band'
+                  ? <>This will permanently delete the <strong style={{ color: 'var(--fg)' }}>{deleteTarget.label} lb</strong> weight range.</>
+                  : <>This will permanently delete <strong style={{ color: 'var(--fg)' }}>{deleteTarget.label}</strong>.</>}
+              </p>
+              {deleteTarget.warning && (
+                <p className="text-sm mb-4" style={{ color: 'var(--fg-3)' }}>{deleteTarget.warning}</p>
+              )}
+              <p className="text-sm mb-6" style={{ color: 'var(--fg-3)' }}>This action cannot be undone.</p>
+              <div className="flex gap-3 justify-end">
+                <button onClick={() => setDeleteTarget(null)} disabled={deleting}
+                  className="px-4 py-2 rounded-xl text-sm font-semibold border border-border disabled:opacity-50"
+                  style={{ color: 'var(--fg-2)' }}>
+                  Cancel
+                </button>
+                <button onClick={confirmDelete} disabled={deleting}
+                  className="px-4 py-2 rounded-xl text-sm font-bold text-white disabled:opacity-50"
+                  style={{ background: 'var(--danger)' }}>
+                  {deleting ? 'Deleting…' : 'Delete'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

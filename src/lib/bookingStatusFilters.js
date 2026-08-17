@@ -30,7 +30,12 @@ export const FILTER_QUERY_MAP = {
   picked_up:       { status: ['picked_up'], hasDriver: false },
   failed_pickup:   { status: ['failed_pickup'] },
   failed_dropoff:  { status: ['failed_dropoff'] },
-  delivered_today: { status: ['delivered'], sinceDate: 'today' },
+  // dateField: 'updatedAt' — "today" here must mean delivered today, not
+  // booked today (buildAdminFilter's default field, createdAt). Without this
+  // a booking placed yesterday and delivered this morning would silently
+  // miss this filter despite genuinely being delivered today — the same bug
+  // class fixed on the History page (see its dateField comment).
+  delivered_today: { status: ['delivered'], sinceDate: 'today', dateField: 'updatedAt' },
 }
 
 export const VALID_STATUS_FILTERS = Object.keys(FILTER_QUERY_MAP)

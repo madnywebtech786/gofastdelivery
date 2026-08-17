@@ -38,9 +38,16 @@ export default async function AdminBookingHistoryPage({ searchParams }) {
 
   const statusArg = statusFilter ? [statusFilter] : HISTORY_STATUSES
 
+  // This page ONLY ever lists delivered/cancelled bookings, so "on this date"
+  // can only sensibly mean the date it was delivered/cancelled (updatedAt) —
+  // not createdAt (the default elsewhere), which is when the booking was
+  // originally PLACED. Filtering on createdAt silently dropped any booking
+  // that took more than a few hours from booking to completion: e.g. a
+  // booking placed Aug 13 and delivered Aug 14 has updatedAt on the 14th, so
+  // it belongs in an "Aug 14" filtered view even though createdAt says the 13th.
   const [rawBookings, total] = await Promise.all([
-    findAllBookings({ status: statusArg, driverId: rawDriverId || undefined, priceMin, priceMax, sinceDate, untilDate, search: rawSearch || undefined, excludeHiddenFromHistory: true, limit: PAGE_SIZE, skip }),
-    countAllBookings({ status: statusArg, driverId: rawDriverId || undefined, priceMin, priceMax, sinceDate, untilDate, search: rawSearch || undefined, excludeHiddenFromHistory: true }),
+    findAllBookings({ status: statusArg, driverId: rawDriverId || undefined, priceMin, priceMax, sinceDate, untilDate, dateField: 'updatedAt', search: rawSearch || undefined, excludeHiddenFromHistory: true, limit: PAGE_SIZE, skip }),
+    countAllBookings({ status: statusArg, driverId: rawDriverId || undefined, priceMin, priceMax, sinceDate, untilDate, dateField: 'updatedAt', search: rawSearch || undefined, excludeHiddenFromHistory: true }),
   ])
   const bookings = await attachCustomerAccounts(rawBookings)
 

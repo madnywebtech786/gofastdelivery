@@ -174,8 +174,19 @@ function escapeRegex(str) {
  * datetime-local string ("YYYY-MM-DDTHH:mm", not a Date), so this is a
  * string-prefix match, not a Date range query. Only the pickup stop ever has
  * pickupTime, so this can't accidentally match a dropoff stop.
+ *
+ * `sinceDate`/`untilDate` filter on `dateField`, which defaults to
+ * `createdAt` (when the booking was PLACED — what "Today's Work"'s pending
+ * sub-query and every other pre-existing caller mean by a date filter).
+ * Pass `dateField: 'updatedAt'` for a completed-status list (History's
+ * delivered/cancelled view, the `delivered_today` filter): those only ever
+ * show bookings that are already delivered/cancelled, so "on this date" can
+ * only sensibly mean the date that happened, not the unrelated date the
+ * booking happened to be created — a booking placed the day before it's
+ * delivered would otherwise silently vanish from that day's filtered view
+ * despite genuinely having been delivered on it.
  */
-function buildAdminFilter({ status, hasDriver, driverId, priceMin, priceMax, sinceDate, untilDate, pickupDate, search, excludeHiddenFromHistory }) {
+function buildAdminFilter({ status, hasDriver, driverId, priceMin, priceMax, sinceDate, untilDate, dateField = 'createdAt', pickupDate, search, excludeHiddenFromHistory }) {
   const filter = Array.isArray(status)
     ? (status.length > 0 ? { status: { $in: status } } : {})
     : (status ? { status } : {})
@@ -193,9 +204,9 @@ function buildAdminFilter({ status, hasDriver, driverId, priceMin, priceMax, sin
     if (priceMax != null) filter.estimatedPrice.$lte = priceMax
   }
   if (sinceDate || untilDate) {
-    filter.createdAt = {}
-    if (sinceDate) filter.createdAt.$gte = sinceDate
-    if (untilDate) filter.createdAt.$lte = untilDate
+    filter[dateField] = {}
+    if (sinceDate) filter[dateField].$gte = sinceDate
+    if (untilDate) filter[dateField].$lte = untilDate
   }
   if (pickupDate) {
     filter['stops.pickupTime'] = { $regex: '^' + escapeRegex(pickupDate) }
@@ -240,21 +251,21 @@ function buildAdminQuery(params) {
   }
 }
 
-export async function findAllBookings({ status, hasDriver, driverId, priceMin, priceMax, sinceDate, untilDate, pickupDate, search, combine, excludeHiddenFromHistory, limit = 50, skip = 0 } = {}) {
+export async function findAllBookings({ status, hasDriver, driverId, priceMin, priceMax, sinceDate, untilDate, dateField, pickupDate, search, combine, excludeHiddenFromHistory, limit = 50, skip = 0 } = {}) {
   const db = await getDb()
   return db
     .collection('bookings')
-    .find(buildAdminQuery({ status, hasDriver, driverId, priceMin, priceMax, sinceDate, untilDate, pickupDate, search, combine, excludeHiddenFromHistory }))
+    .find(buildAdminQuery({ status, hasDriver, driverId, priceMin, priceMax, sinceDate, untilDate, dateField, pickupDate, search, combine, excludeHiddenFromHistory }))
     .sort({ createdAt: -1 })
     .skip(skip)
     .limit(limit)
     .toArray()
 }
 
-export async function countAllBookings({ status, hasDriver, driverId, priceMin, priceMax, sinceDate, untilDate, pickupDate, search, combine, excludeHiddenFromHistory } = {}) {
+export async function countAllBookings({ status, hasDriver, driverId, priceMin, priceMax, sinceDate, untilDate, dateField, pickupDate, search, combine, excludeHiddenFromHistory } = {}) {
   const db = await getDb()
   return db.collection('bookings').countDocuments(
-    buildAdminQuery({ status, hasDriver, driverId, priceMin, priceMax, sinceDate, untilDate, pickupDate, search, combine, excludeHiddenFromHistory })
+    buildAdminQuery({ status, hasDriver, driverId, priceMin, priceMax, sinceDate, untilDate, dateField, pickupDate, search, combine, excludeHiddenFromHistory })
   )
 }
 

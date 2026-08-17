@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { verifySession, handleApiError } from '@/lib/dal'
-import { getAllCities, getAllPricingRules, getPricingSettings } from '@/lib/db/pricing'
+import { getAllCities, getAllPricingRules, getAllWeightBands } from '@/lib/db/pricing'
 
 /**
  * GET /api/pricing/rules/public
@@ -12,10 +12,10 @@ import { getAllCities, getAllPricingRules, getPricingSettings } from '@/lib/db/p
 export async function GET() {
   try {
     await verifySession()
-    const [cities, rules, settings] = await Promise.all([
+    const [cities, rules, weightBands] = await Promise.all([
       getAllCities(),
       getAllPricingRules(),
-      getPricingSettings(),
+      getAllWeightBands(),
     ])
 
     const safeCities = cities.map((c) => ({ nameKey: c.nameKey, name: c.name, zone: c.zone }))
@@ -24,13 +24,10 @@ export async function GET() {
       cityADisplay: r.cityADisplay, cityBDisplay: r.cityBDisplay,
       baseRate: r.baseRate, additionalPackageRate: r.additionalPackageRate,
     }))
+    const safeWeightBands = weightBands.map((b) => ({ minLbs: b.minLbs, maxLbs: b.maxLbs, rate: b.rate }))
 
     return NextResponse.json(
-      {
-        cities: safeCities,
-        rules: safeRules,
-        settings: { maxWeightLbs: settings.maxWeightLbs, overweightSurcharge: settings.overweightSurcharge },
-      },
+      { cities: safeCities, rules: safeRules, weightBands: safeWeightBands },
       { headers: { 'Cache-Control': 'private, max-age=300' } }
     )
   } catch (err) {
