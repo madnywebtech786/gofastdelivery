@@ -51,10 +51,18 @@ const WEEKDAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 // (so empty buckets show as 0 instead of being missing from the series),
 // per distance-range granularity. All date operators are Calgary-anchored
 // via `timezone: CALGARY_TZ` — the same reasoning as calgaryStartOfToday.
+//
+// Buckets on `updatedAt`, NOT `createdAt` — see getDriverDistanceForRange's
+// doc comment for why: a route's `drivenDistanceMeters` is one running total
+// with no per-day split, so whichever single day it's credited to must be
+// the day driving actually happened. `updatedAt` is stamped by updateRoute()
+// on every stop-complete/stop-failed/reroute, so on a finished route it's the
+// moment the LAST leg was driven — matching the deliveries-per-day chart
+// (bookings.updatedAt) it's rendered next to on the driver detail page.
 function distanceBucketSpec(range, start) {
   if (range === 'day') {
     return {
-      groupId: { $hour: { date: '$createdAt', timezone: CALGARY_TZ } },
+      groupId: { $hour: { date: '$updatedAt', timezone: CALGARY_TZ } },
       buckets: Array.from({ length: 24 }, (_, h) => ({
         id: h,
         label: h === 0 ? '12am' : h < 12 ? `${h}am` : h === 12 ? '12pm' : `${h - 12}pm`,
@@ -63,35 +71,55 @@ function distanceBucketSpec(range, start) {
   }
   if (range === 'week') {
     return {
-      groupId: { $dayOfWeek: { date: '$createdAt', timezone: CALGARY_TZ } }, // 1=Sun..7=Sat
+      groupId: { $dayOfWeek: { date: '$updatedAt', timezone: CALGARY_TZ } }, // 1=Sun..7=Sat
       // Reorder Mon..Sun to match distanceRangeWindow's Monday-start week.
       buckets: [1, 2, 3, 4, 5, 6, 0].map((wd) => ({ id: wd + 1, label: WEEKDAY_SHORT[wd] })),
     }
   }
   if (range === 'year') {
     return {
-      groupId: { $month: { date: '$createdAt', timezone: CALGARY_TZ } },
+      groupId: { $month: { date: '$updatedAt', timezone: CALGARY_TZ } },
       buckets: MONTHS_SHORT.map((label, i) => ({ id: i + 1, label })),
     }
   }
   // 'month' — one bucket per calendar day of the selected month.
   const daysInMonth = new Date(start.getFullYear(), start.getMonth() + 1, 0).getDate()
   return {
-    groupId: { $dayOfMonth: { date: '$createdAt', timezone: CALGARY_TZ } },
+    groupId: { $dayOfMonth: { date: '$updatedAt', timezone: CALGARY_TZ } },
     buckets: Array.from({ length: daysInMonth }, (_, i) => ({ id: i + 1, label: String(i + 1) })),
   }
 }
 
 /**
- * Sum of routes.drivenDistanceMeters for routes STARTED (createdAt) within
- * the given Calgary-anchored range for this driver, plus a bucketed series
- * for the distance chart (hourly for 'day', daily for 'week'/'month', monthly
- * for 'year' — empty buckets included as 0 so the chart has a consistent
- * x-axis). Approximation: a route spanning midnight attributes its whole
- * distance to the day it started on — accurate for the common case (one
- * route = one day's shift; routes stay active only for a single driver
- * shift, see upsertDriverRoute), not exact for a route that happens to run
- * past midnight.
+ * Sum of routes.drivenDistanceMeters for routes LAST TOUCHED (updatedAt)
+ * within the given Calgary-anchored range for this driver, plus a bucketed
+ * series for the distance chart (hourly for 'day', daily for 'week'/'month',
+ * monthly for 'year' — empty buckets included as 0 so the chart has a
+ * consistent x-axis).
+ *
+ * Uses updatedAt, not createdAt: drivenDistanceMeters is one running total
+ * per route with no per-day split, so the whole distance has to be credited
+ * to a single day — and updatedAt (stamped by updateRoute() on every
+ * stop-complete/stop-failed/reroute) is the day the LAST leg was actually
+ * driven, which for a finished route is when the distance total stopped
+ * growing. createdAt (when the route was first assigned) was used previously
+ * and is wrong for any route that starts one day and finishes into the next
+ * (an evening/overnight shift) — it silently misattributed the entire
+ * route's km to the earlier day, showing 0 on the day the driver was
+ * actually still delivering. Confirmed against real data: a route created
+ * 21:58 Calgary Aug 17 with its 17th and final delivery completed 19:23
+ * Calgary Aug 18 had all 213km credited to Aug 17, while the deliveries
+ * chart (bookings.updatedAt — see getDriverStats below) correctly showed
+ * all 17 deliveries on Aug 18. Matching this field to that chart's is the
+ * point: they're rendered stacked on the same page/date-axis on the admin
+ * driver detail page and must agree.
+ *
+ * Still an approximation for a route that stays active and gets touched
+ * again on a LATER day with no new distance (e.g. a merge-notice reroute
+ * with 0 driven since) — the ~2% of routes with a >20h createdAt/updatedAt
+ * gap while inactive, checked against live data before this change, showed
+ * that's rare in practice; a fully exact fix needs per-day distance
+ * tracking on the route doc, not just this single running total.
  */
 export async function getDriverDistanceForRange(driverId, range = 'month') {
   const safeRange = DISTANCE_RANGES.includes(range) ? range : 'month'
@@ -101,7 +129,7 @@ export async function getDriverDistanceForRange(driverId, range = 'month') {
   const { groupId, buckets } = distanceBucketSpec(safeRange, start)
 
   const rows = await db.collection('routes').aggregate([
-    { $match: { driverId: objId, createdAt: { $gte: start, $lt: end } } },
+    { $match: { driverId: objId, updatedAt: { $gte: start, $lt: end } } },
     { $group: { _id: groupId, meters: { $sum: { $ifNull: ['$drivenDistanceMeters', 0] } } } },
   ]).toArray()
   const byId = new Map(rows.map((r) => [r._id, r.meters]))
