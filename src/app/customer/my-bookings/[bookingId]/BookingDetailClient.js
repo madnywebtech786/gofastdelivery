@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import Badge from '@/components/ui/Badge'
 import StatusTimeline from '@/components/ui/StatusTimeline'
 import { useToast } from '@/components/ui/Toast'
+import SignatureViewer from '@/components/booking/SignatureViewer'
 import { formatDateTime } from '@/lib/dateFormat'
 import { accountNumber } from '@/lib/accountLabel'
 import {
@@ -327,6 +328,11 @@ export default function BookingDetailClient({ booking: initial, origin }) {
                         <Phone size={10} />{stop.contactPhone}
                       </a>
                     )}
+                  </div>
+                )}
+                {stop.type === 'dropoff' && stop.signatureKey && (
+                  <div className="mt-2">
+                    <SignatureViewer bookingId={b._id} />
                   </div>
                 )}
               </div>

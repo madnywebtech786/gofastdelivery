@@ -411,6 +411,23 @@ export async function updateStopDriverNote(bookingId, { stopType, note } = {}) {
 }
 
 /**
+ * Persist a signature's S3 object key onto a booking's dropoff stop. Same
+ * arrayFilters positional-update technique as updateStopDriverNote/
+ * updateStopEtas above — durable on the booking (survives route
+ * replacement), dropoff-only since pickup has no signature concept.
+ */
+export async function updateStopSignature(bookingId, { stopType, signatureKey } = {}) {
+  if (stopType !== 'dropoff' || !signatureKey) return { matchedCount: 0, modifiedCount: 0 }
+  const db = await getDb()
+
+  return db.collection('bookings').updateOne(
+    { _id: new ObjectId(bookingId) },
+    { $set: { 'stops.$[elem].signatureKey': signatureKey } },
+    { arrayFilters: [{ 'elem.type': stopType }] }
+  )
+}
+
+/**
  * Assign a driver to a booking for either pickup or delivery.
  * newStatus must be 'assigned_pickup' or 'assigned_delivery'.
  * allowedFromStatus is the status the booking must currently be in.

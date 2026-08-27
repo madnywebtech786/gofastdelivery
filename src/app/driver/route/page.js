@@ -12,6 +12,7 @@ import { enqueue as enqueueAction, subscribeQueue } from '@/lib/offline-queue'
 import { formatTime as formatTimeShared } from '@/lib/dateFormat'
 import { Search, X, MapPin, Navigation, ArrowLeft } from 'lucide-react'
 import OnlineIndicator from '@/components/ui/OnlineIndicator'
+import SignaturePad from '@/components/driver/SignaturePad'
 
 
 const DriverMap = dynamic(() => import('@/components/map/DriverMap'), {
@@ -227,6 +228,13 @@ export default function DriverRoutePage() {
   // timeline doesn't lose a half-typed note. Cleared for a stop once it's
   // successfully confirmed (see handleStopComplete).
   const [driverNoteByStop, setDriverNoteByStop] = useState({})
+
+  // Optional signature capture, dropoff stops only. Keyed by stopIndex so
+  // switching stops in the timeline doesn't lose a captured-but-not-yet-
+  // confirmed signature. `signaturePadOpenFor` is the stopIndex currently
+  // showing the full-screen capture overlay, or null when closed.
+  const [signatureByStop, setSignatureByStop] = useState({}) // { [stopIndex]: { dataUrl } } — not yet uploaded; see handleStopComplete
+  const [signaturePadOpenFor, setSignaturePadOpenFor] = useState(null)
 
   // Batch-select mode — driver can check off several not-yet-completed stops
   // (typically sharing one address) and confirm/fail them together instead of
@@ -720,20 +728,69 @@ export default function DriverRoutePage() {
     }
   }
 
+  // Purely local — captures the drawn signature into component state as a
+  // data URL. Deliberately does NOT upload to S3 yet: the image must only
+  // be written to storage once the driver actually taps "Confirm Delivery"
+  // (handleStopComplete below), not the moment the driver finishes drawing.
+  // This avoids ever staging an S3 object for a signature the driver drew
+  // but the customer/driver decided not to use.
+  function handleSignatureConfirm(stopIndex, dataUrl) {
+    setSignatureByStop((prev) => ({ ...prev, [stopIndex]: { dataUrl } }))
+    setSignaturePadOpenFor(null)
+  }
+
+  // Also purely local — nothing has been uploaded yet at this point (see
+  // above), so there is nothing in S3 to clean up here.
+  function handleRemoveSignature(stopIndex) {
+    setSignatureByStop((prev) => { const next = { ...prev }; delete next[stopIndex]; return next })
+  }
+
   async function handleStopComplete(stop, stopIndex) {
     if (!driverId || completing) return
 
     setCompleting(true)
     try {
       const pos = driverPos
-      const drivenMeters = flushAndResetDist()
       const driverNote = (driverNoteByStop[stopIndex] ?? '').trim()
+      const signatureEntry = signatureByStop[stopIndex]
+
+      // Upload the signature to S3 now — the very first thing that happens
+      // on "Confirm Delivery", not a moment before. Nothing is written to
+      // storage just because the driver finished drawing/previewed it; only
+      // an actual confirm tap stages the object. If this upload fails (e.g.
+      // offline), bail out of the whole confirm attempt without flushing GPS
+      // distance or touching stop-complete — the driver just retries the tap
+      // once connectivity is back, and the drawn signature is still held
+      // locally (signatureByStop is untouched here on failure).
+      let signatureKey = null
+      if (signatureEntry?.dataUrl && stop.bookingId) {
+        try {
+          const sigRes = await fetch(`/api/drivers/${driverId}/signature`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ dataUrl: signatureEntry.dataUrl, bookingId: String(stop.bookingId) }),
+          })
+          if (!sigRes.ok) {
+            const data = await sigRes.json().catch(() => ({}))
+            toast?.error?.('Could not save signature', data?.error ?? 'Try again.')
+            return
+          }
+          const data = await sigRes.json()
+          signatureKey = data.key
+        } catch {
+          toast?.error?.('Could not save signature', 'Check your connection and try again.')
+          return
+        }
+      }
+
+      const drivenMeters = flushAndResetDist()
       const body = {
         stopIndex,
         drivenMeters,
         currentLng: pos?.lng ?? null,
         currentLat: pos?.lat ?? null,
         ...(driverNote ? { driverNote } : {}),
+        ...(signatureKey ? { signatureKey } : {}),
       }
       const url = `/api/drivers/${driverId}/stop-complete`
       // Stable key: stopIndex + stop signature — server guards on completedAt
@@ -758,20 +815,41 @@ export default function DriverRoutePage() {
           updatedRoute = data?.route ?? null
           delivered = true
           setDriverNoteByStop((prev) => { const next = { ...prev }; delete next[stopIndex]; return next })
+          setSignatureByStop((prev) => { const next = { ...prev }; delete next[stopIndex]; return next })
         } else if (res.status >= 500 || res.status === 408 || res.status === 429) {
-          // Retryable — queue it
+          // Retryable — queue it. The signature (if any) is already uploaded
+          // and its key is baked into the queued `body`, so the eventual
+          // retry will still attach it correctly. Safe to clear the local
+          // signatureByStop entry here — the upload already succeeded, so
+          // there's nothing left to redo/remove locally for this attempt.
           enqueueAction({ url, body, idempotencyKey, label: `Confirm stop ${stopIndex + 1}` })
           toast?.info?.('Saved offline', 'Your confirmation will sync when you\u2019re back online.')
           setDriverNoteByStop((prev) => { const next = { ...prev }; delete next[stopIndex]; return next })
+          setSignatureByStop((prev) => { const next = { ...prev }; delete next[stopIndex]; return next })
         } else {
           const data = await res.json().catch(() => ({}))
           console.error('[stop-complete] failed:', data?.error)
+          // stop-complete was rejected outright (non-retryable) \u2014 the
+          // signature was already uploaded above, so it's now orphaned.
+          // Delete it; the driver's local preview (signatureByStop) is left
+          // in place so retrying "Confirm Delivery" just re-uploads it fresh.
+          if (signatureKey) {
+            fetch(`/api/drivers/${driverId}/signature`, {
+              method: 'DELETE',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ key: signatureKey }),
+            }).catch(() => {})
+          }
+          toast?.error?.('Could not confirm delivery', data?.error ?? 'Please try again.')
         }
       } catch {
-        // Network error — durable queue
+        // Network error on the stop-complete call itself — the signature (if
+        // any) was already uploaded successfully above, so its key is baked
+        // into the queued body. Durable queue handles the retry from here.
         enqueueAction({ url, body, idempotencyKey, label: `Confirm stop ${stopIndex + 1}` })
         toast?.info?.('Saved offline', 'Your confirmation will sync when you\u2019re back online.')
         setDriverNoteByStop((prev) => { const next = { ...prev }; delete next[stopIndex]; return next })
+        setSignatureByStop((prev) => { const next = { ...prev }; delete next[stopIndex]; return next })
       }
 
       if (delivered && updatedRoute) {
@@ -1406,6 +1484,48 @@ export default function DriverRoutePage() {
                     </div>
                   )}
 
+                  {/* Optional signature capture — dropoff only, active stop only */}
+                  {isActive && !isDone && stop.stopType === 'dropoff' && (
+                    <div className="mb-3">
+                      {signatureByStop[stopIndex] ? (
+                        <div className="rounded-2xl border border-green-200 bg-green-50 px-4 py-3 flex items-center gap-3">
+                          {/* eslint-disable-next-line @next/next/no-img-element -- local data URL preview */}
+                          <img
+                            src={signatureByStop[stopIndex].dataUrl}
+                            alt="Captured signature"
+                            className="w-16 h-10 object-contain bg-white rounded-lg border border-green-200 shrink-0"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-bold text-green-700">Signature captured</p>
+                            <p className="text-[10px] text-green-600">Will be saved when you confirm delivery</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setSignaturePadOpenFor(stopIndex)}
+                            className="text-xs font-semibold text-green-700 underline shrink-0"
+                          >
+                            Redo
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveSignature(stopIndex)}
+                            className="text-xs font-semibold text-red-600 underline shrink-0"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setSignaturePadOpenFor(stopIndex)}
+                          className="w-full rounded-2xl py-3 text-sm font-semibold border border-gray-200 text-gray-600 flex items-center justify-center gap-2"
+                        >
+                          Add Signature (optional)
+                        </button>
+                      )}
+                    </div>
+                  )}
+
                   {/* CTA — only for the active, non-completed stop */}
                   {isActive && !isDone && (
                     <>
@@ -1741,6 +1861,13 @@ export default function DriverRoutePage() {
             </div>
           </div>
         </div>
+      )}
+
+      {signaturePadOpenFor !== null && (
+        <SignaturePad
+          onCancel={() => setSignaturePadOpenFor(null)}
+          onConfirm={(dataUrl) => handleSignatureConfirm(signaturePadOpenFor, dataUrl)}
+        />
       )}
 
       {/* Invisible helpers */}

@@ -6,6 +6,7 @@ import { accountLabel } from '@/lib/accountLabel'
 import Badge from '@/components/ui/Badge'
 import StatusTimeline from '@/components/ui/StatusTimeline'
 import AssignDriverForm from '@/components/booking/AssignDriverForm'
+import SignatureViewer from '@/components/booking/SignatureViewer'
 import { formatDateTime as formatDate } from '@/lib/dateFormat'
 import { ArrowLeft, MapPin, User, Phone, CheckCircle2, UserCheck } from 'lucide-react'
 
@@ -106,6 +107,11 @@ export default async function AdminBookingDetailPage({ params }) {
                       <p className="text-xs mt-1 px-2 py-1 rounded-lg inline-block" style={{ color: '#92400e', background: '#fef3c7' }}>
                         Driver note: {stop.driverNote}
                       </p>
+                    )}
+                    {stop.type === 'dropoff' && stop.signatureKey && (
+                      <div className="mt-2">
+                        <SignatureViewer bookingId={b._id} />
+                      </div>
                     )}
                   </div>
                   <MapPin size={12} className="shrink-0 mt-1" style={{ color: stop.type === 'pickup' ? 'var(--success)' : 'var(--danger)', opacity: 0.5 }} />

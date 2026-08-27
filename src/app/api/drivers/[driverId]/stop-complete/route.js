@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { requireDriver, handleApiError } from '@/lib/dal'
 import { findActiveRoute, updateRoute, incrementDrivenDistance } from '@/lib/db/drivers'
-import { updateBookingStatus, updateStopDriverNote } from '@/lib/db/bookings'
+import { updateBookingStatus, updateStopDriverNote, updateStopSignature } from '@/lib/db/bookings'
 import { pushBookingStatusChange, pushRouteUpdate } from '@/lib/pusher'
 // import { sendStatusUpdate } from '@/lib/mailer'
 import { hydrateRouteItems } from '@/lib/routing/hydrate'
@@ -30,7 +30,7 @@ export async function POST(request, { params }) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
-    const { stopIndex, drivenMeters, driverNote } = await request.json()
+    const { stopIndex, drivenMeters, driverNote, signatureKey } = await request.json()
     if (typeof stopIndex !== 'number') {
       return NextResponse.json({ error: 'stopIndex is required' }, { status: 400 })
     }
@@ -66,9 +66,17 @@ export async function POST(request, { params }) {
     }
 
     const trimmedNote = typeof driverNote === 'string' ? driverNote.trim().slice(0, 500) : ''
+    const trimmedSignatureKey = stop.stopType === 'dropoff' && typeof signatureKey === 'string' ? signatureKey.trim() : ''
 
     const updatedStops = stops.map((s, i) =>
-      i === stopIndex ? { ...s, completedAt: now, ...(trimmedNote ? { driverNote: trimmedNote } : {}) } : s
+      i === stopIndex
+        ? {
+            ...s,
+            completedAt: now,
+            ...(trimmedNote ? { driverNote: trimmedNote } : {}),
+            ...(trimmedSignatureKey ? { signatureKey: trimmedSignatureKey } : {}),
+          }
+        : s
     )
     const allDone = updatedStops.every((s) => s.completedAt)
 
@@ -89,6 +97,9 @@ export async function POST(request, { params }) {
     // note-write failure must never block the stop confirmation itself.
     if (stop.bookingId && trimmedNote && (stop.stopType === 'pickup' || stop.stopType === 'dropoff')) {
       updateStopDriverNote(String(stop.bookingId), { stopType: stop.stopType, note: trimmedNote }).catch(() => {})
+    }
+    if (stop.bookingId && trimmedSignatureKey && stop.stopType === 'dropoff') {
+      updateStopSignature(String(stop.bookingId), { stopType: 'dropoff', signatureKey: trimmedSignatureKey }).catch(() => {})
     }
 
     const newBookingStatus = nextBookingStatus(stop)

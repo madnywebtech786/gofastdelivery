@@ -27,7 +27,7 @@ const nextConfig = {
       // Inline styles required by Tailwind utilities and Google Maps.
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       // Google Maps renders to a canvas; data: for map sprites.
-      "img-src 'self' data: blob: https://maps.googleapis.com https://maps.gstatic.com https://www.gstatic.com",
+      "img-src 'self' data: blob: https://maps.googleapis.com https://maps.gstatic.com https://www.gstatic.com https://go-fast-delivery-storage.s3.eu-north-1.amazonaws.com",
       // Google Maps JS API spins up Web Workers from blob: and same-origin URLs.
       "worker-src 'self' blob:",
       // API calls: own origin + Google Maps/Places/Routes APIs + Pusher channels.
