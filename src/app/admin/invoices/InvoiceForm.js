@@ -5,6 +5,7 @@ import { Plus, Trash2, ChevronDown, ChevronUp, Loader2 } from 'lucide-react'
 import Select from '@/components/ui/Select'
 import DatePicker from '@/components/ui/DatePicker'
 import { calgaryDateKey } from '@/lib/dateFormat'
+import { COMPANY_GST_NUMBER } from '@/lib/invoiceConstants'
 
 const EMPTY_ITEM = { description: '', serviceDate: '', rate: '', quantity: '', details: '' }
 
@@ -167,6 +168,13 @@ export default function InvoiceForm({ initial = {}, onSubmit, onCancel, submitti
             <input className={inputCls} type="email" value={form.companyEmail} onChange={e => set('companyEmail', e.target.value)} />
           </Field>
         </div>
+        {/* GST/HST number is fixed (COMPANY_GST_NUMBER, src/lib/invoiceConstants.js)
+            and shown read-only on every invoice — not an editable field here,
+            since it's the company's own registration number, not something
+            that varies per invoice. */}
+        <p className="text-xs mt-3" style={{ color: 'var(--fg-3)' }}>
+          GST/HST Number: <span className="font-medium">{COMPANY_GST_NUMBER}</span> (shown automatically on the invoice — not editable here)
+        </p>
       </div>
 
       {/* ── 2. Invoice Details ── */}

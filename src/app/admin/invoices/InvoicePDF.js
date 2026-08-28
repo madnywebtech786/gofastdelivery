@@ -1,6 +1,7 @@
 'use client'
 
 import { formatDateOnlyLong as formatDate } from '@/lib/dateFormat'
+import { COMPANY_GST_NUMBER } from '@/lib/invoiceConstants'
 
 const BRAND_GREEN      = '#1bb908'
 const BRAND_GREEN_DARK = '#15960a'
@@ -131,6 +132,7 @@ export default function InvoicePDF({ invoice }) {
           {invoice.companyCity    && <div style={{ color: '#475569', lineHeight: 1.5 }}>{invoice.companyCity}</div>}
           {invoice.companyPhone   && <div style={{ color: '#475569', marginTop: '4px' }}>{invoice.companyPhone}</div>}
           {invoice.companyEmail   && <div style={{ color: BRAND_GREEN, marginTop: '2px' }}>{invoice.companyEmail}</div>}
+          <div style={{ color: '#64748b', marginTop: '4px', fontSize: '10px' }}>GST/HST: {COMPANY_GST_NUMBER}</div>
         </div>
 
         {/* Bill To */}

@@ -1,6 +1,7 @@
 import nodemailer from 'nodemailer'
 import { buildInvoicePdf } from './invoicePdf'
 import { formatDateTime as formatDate, formatDateOnlyLong as formatInvoiceDate } from './dateFormat'
+import { COMPANY_GST_NUMBER } from './invoiceConstants'
 
 // ── Transport ─────────────────────────────────────────────────────────────────
 
@@ -479,6 +480,7 @@ function buildInvoiceEmailHtml(invoice) {
           ${invoice.companyAddress ? `<p style="margin:3px 0 0;font-size:12px;color:#475569;">${esc(invoice.companyAddress)}</p>` : ''}
           ${invoice.companyCity    ? `<p style="margin:1px 0 0;font-size:12px;color:#475569;">${esc(invoice.companyCity)}</p>`    : ''}
           ${invoice.companyEmail   ? `<p style="margin:5px 0 0;font-size:12px;color:${BRAND_GREEN};font-weight:600;">${esc(invoice.companyEmail)}</p>` : ''}
+          <p style="margin:5px 0 0;font-size:11px;color:#94a3b8;">GST/HST: ${esc(COMPANY_GST_NUMBER)}</p>
         </td>
         <td width="50%" style="vertical-align:top;padding-left:16px;border-left:2px solid #e2e8f0;">
           <p style="margin:0 0 6px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#94a3b8;">Bill To</p>

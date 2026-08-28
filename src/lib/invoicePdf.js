@@ -1,6 +1,7 @@
 import PDFDocument from 'pdfkit'
 import path from 'path'
 import { formatDateOnlyLong as formatDate } from './dateFormat'
+import { COMPANY_GST_NUMBER } from './invoiceConstants'
 
 const BRAND_GREEN  = '#1bb908'
 const DARK         = '#0f172a'
@@ -75,6 +76,7 @@ export function buildInvoicePdf(invoice) {
       invoice.companyCity    || '',
       invoice.companyEmail   || '',
       invoice.companyPhone   || '',
+      `GST/HST: ${COMPANY_GST_NUMBER}`,
     ].filter(Boolean)
 
     const billTo = [

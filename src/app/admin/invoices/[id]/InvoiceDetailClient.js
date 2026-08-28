@@ -10,6 +10,7 @@ import {
 import { triggerPrint } from '../InvoicePDF'
 import { useToast } from '@/components/ui/Toast'
 import { formatDateOnlyLong as formatDate } from '@/lib/dateFormat'
+import { COMPANY_GST_NUMBER } from '@/lib/invoiceConstants'
 
 const STATUS_CONFIG = {
   draft:   { label: 'Draft',   color: '#64748b', bg: 'rgba(100,116,139,0.08)', border: 'rgba(100,116,139,0.2)', icon: FileText },
@@ -205,6 +206,7 @@ export default function InvoiceDetailClient({ invoice }) {
           {invoice.companyCity    && <p className="text-xs leading-relaxed" style={{ color: 'var(--fg-2)' }}>{invoice.companyCity}</p>}
           {invoice.companyPhone   && <p className="text-xs mt-2 font-medium" style={{ color: 'var(--fg-2)' }}>{invoice.companyPhone}</p>}
           {invoice.companyEmail   && <p className="text-xs font-medium" style={{ color: 'var(--accent)' }}>{invoice.companyEmail}</p>}
+          <p className="text-xs mt-2" style={{ color: 'var(--fg-3)' }}>GST/HST: {COMPANY_GST_NUMBER}</p>
         </div>
 
         {/* Bill To */}
