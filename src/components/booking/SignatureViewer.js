@@ -50,34 +50,39 @@ export default function SignatureViewer({ bookingId }) {
       </button>
 
       {open && (
-        <div
-          className="fixed inset-0 z-100 flex items-center justify-center bg-black/60 p-4"
-          onClick={() => setOpen(false)}
-        >
-          <div
-            className="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="px-5 py-3.5 border-b border-border flex items-center justify-between">
-              <h3 className="text-sm font-bold" style={{ color: 'var(--fg)' }}>Delivery Signature</h3>
-              <button
-                onClick={() => setOpen(false)}
-                className="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-500"
-                aria-label="Close"
-              >
-                <X size={16} />
-              </button>
-            </div>
-            <div className="p-5 flex items-center justify-center min-h-[160px]">
-              {loading ? (
-                <Spinner size="md" />
-              ) : error ? (
-                <p className="text-sm text-center" style={{ color: 'var(--danger)' }}>{error}</p>
-              ) : url ? (
-                /* eslint-disable-next-line @next/next/no-img-element -- remote presigned S3 URL, not an app asset next/image can optimize */
-                <img src={url} alt="Customer signature" className="max-w-full h-auto rounded-lg border border-border" />
-              ) : null}
-            </div>
+        // Full-screen, not a small centered card — a signature's natural
+        // shape (very wide relative to its height, from getTrimmedCanvas())
+        // needs the whole viewport to display at a readable size without
+        // scrolling. Header is pinned via flex-column + shrink-0; the image
+        // area gets 100% of the remaining space and the image is fitted
+        // (not cropped) inside it via object-contain, so it's shown as
+        // large as possible while always fitting on screen at once.
+        <div className="fixed inset-0 z-100 bg-black/90 flex flex-col" onClick={() => setOpen(false)}>
+          <div className="px-5 py-3.5 flex items-center justify-between shrink-0" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-sm font-bold text-white">Delivery Signature</h3>
+            <button
+              onClick={() => setOpen(false)}
+              className="w-9 h-9 rounded-full hover:bg-white/10 flex items-center justify-center text-white"
+              aria-label="Close"
+            >
+              <X size={18} />
+            </button>
+          </div>
+          <div className="flex-1 min-h-0 flex items-center justify-center p-4">
+            {loading ? (
+              <Spinner size="lg" />
+            ) : error ? (
+              <p className="text-sm text-center text-white">{error}</p>
+            ) : url ? (
+              // object-contain inside a sized bg-white card: fits the full
+              // image within the available space with no cropping and no
+              // scrolling, at whatever size that space allows — never
+              // stretched, never clipped.
+              <div className="w-full h-full max-w-4xl bg-white rounded-2xl p-4 flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
+                {/* eslint-disable-next-line @next/next/no-img-element -- remote presigned S3 URL, not an app asset next/image can optimize */}
+                <img src={url} alt="Customer signature" className="max-w-full max-h-full w-auto h-auto object-contain" />
+              </div>
+            ) : null}
           </div>
         </div>
       )}
