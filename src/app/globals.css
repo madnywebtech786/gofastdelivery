@@ -108,6 +108,7 @@ body {
   to   { opacity: 1; }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+@keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
 
 .anim-fade-up { animation: fade-up 0.3s ease both; }
 .anim-fade-in { animation: fade-in 0.2s ease both; }

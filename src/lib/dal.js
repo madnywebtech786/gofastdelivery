@@ -61,8 +61,9 @@ export const getUser = cache(async () => {
  * rather than throwing a dev-overlay 403 when a page guard fails.
  */
 function landingFor(role) {
-  if (role === 'driver')   return '/driver/home'
-  if (role === 'customer') return '/customer/overview'
+  if (role === 'driver')         return '/driver/home'
+  if (role === 'customer')       return '/customer/overview'
+  if (role === 'email_marketer') return '/marketing/dashboard'
   return '/login'
 }
 
@@ -113,6 +114,22 @@ export async function requireCustomer() {
     } catch (e) {
       if (e?.digest?.startsWith('NEXT_REDIRECT')) throw e
       throw new AuthError('Forbidden: customer only', 403)
+    }
+  }
+  return { userId, role }
+}
+
+/**
+ * Verifies session and asserts the role is 'email_marketer'.
+ */
+export async function requireMarketer() {
+  const { userId, role } = await verifySession()
+  if (role !== 'email_marketer') {
+    try {
+      redirect(landingFor(role))
+    } catch (e) {
+      if (e?.digest?.startsWith('NEXT_REDIRECT')) throw e
+      throw new AuthError('Forbidden: email marketer only', 403)
     }
   }
   return { userId, role }

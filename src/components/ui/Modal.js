@@ -24,6 +24,12 @@ export default function Modal({ open, onClose, title, children, size = 'md' }) {
       onClick={handleClick}
       onCancel={onClose}
       className={[
+        // Tailwind's Preflight reset zeroes the <dialog> margin, which
+        // breaks the browser's own centering (default UA style is
+        // `dialog { margin: auto }`) — restored explicitly here since
+        // Preflight applies globally and can't be scoped away from just
+        // this element.
+        'm-auto',
         'w-full rounded-2xl p-0 shadow-xl',
         'bg-white border border-border text-foreground',
         'backdrop:bg-black/40 backdrop:backdrop-blur-sm',

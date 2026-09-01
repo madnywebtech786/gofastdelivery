@@ -6,15 +6,17 @@ import { checkRateLimit } from '@/lib/redis'
 
 // Which portal each role must use, and where to redirect if they use the wrong one
 const ROLE_PORTAL = {
-  admin:    { portal: 'admin',    loginPath: '/admin_login' },
-  driver:   { portal: 'driver',   loginPath: '/driver_login' },
-  customer: { portal: 'customer', loginPath: '/login' },
+  admin:          { portal: 'admin',    loginPath: '/admin_login' },
+  driver:         { portal: 'driver',   loginPath: '/driver_login' },
+  customer:       { portal: 'customer', loginPath: '/login' },
+  email_marketer: { portal: 'marketer', loginPath: '/marketer_login' },
 }
 
 const ROLE_DASHBOARDS = {
-  admin:    '/admin/dashboard',
-  driver:   '/driver/home',
-  customer: '/customer/overview',
+  admin:          '/admin/dashboard',
+  driver:         '/driver/home',
+  customer:       '/customer/overview',
+  email_marketer: '/marketing/dashboard',
 }
 
 export async function POST(request) {

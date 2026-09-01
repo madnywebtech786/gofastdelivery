@@ -43,6 +43,24 @@ const nextConfig = {
       "frame-ancestors 'none'",
     ].join('; ')
 
+    // Unlayer's email template builder (react-email-editor) loads a script
+    // from editor.unlayer.com which then injects its own iframe + makes its
+    // own API calls (autosave, stock image search, font loading) back to
+    // Unlayer's infrastructure. This is scoped ONLY to the template builder
+    // routes — every other route keeps the strict default CSP above with
+    // frame-src 'none'.
+    const unlayerCsp = [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline' https://editor.unlayer.com",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://editor.unlayer.com",
+      "img-src 'self' data: blob: https: http:",
+      "font-src 'self' https://fonts.gstatic.com https://editor.unlayer.com data:",
+      "connect-src 'self' https://editor.unlayer.com https://api.unlayer.com https://*.unlayer.com",
+      "frame-src 'self' https://editor.unlayer.com https://*.unlayer.com",
+      "worker-src 'self' blob:",
+      "frame-ancestors 'none'",
+    ].join('; ')
+
     return [
       {
         source: '/(.*)',
@@ -54,6 +72,24 @@ const nextConfig = {
           { key: 'Permissions-Policy', value: 'geolocation=(self), microphone=(), speaker-selection=(self)' },
           { key: 'Content-Security-Policy', value: csp },
           // Force HTTPS for 1 year (production only — harmless in dev since dev is http)
+          { key: 'Strict-Transport-Security', value: 'max-age=31536000; includeSubDomains' },
+        ],
+      },
+      {
+        source: '/marketing/templates/:path*',
+        headers: [
+          // Not required for Unlayer to work (X-Frame-Options only controls
+          // whether OTHER sites can frame THIS page, not what this page can
+          // embed — that's governed by frame-src in the CSP below).
+          // Explicitly redeclared anyway because Next.js applies header
+          // blocks additively per matching source: a more-specific match
+          // does not omit/replace a header the broader '/(.*)' block already
+          // set, so without this line the page would still send DENY. Kept
+          // as SAMEORIGIN rather than removing the protection outright.
+          { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          { key: 'Content-Security-Policy', value: unlayerCsp },
           { key: 'Strict-Transport-Security', value: 'max-age=31536000; includeSubDomains' },
         ],
       },

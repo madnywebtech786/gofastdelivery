@@ -94,6 +94,27 @@ async function setup() {
   ])
   console.log('✓ weight_bands indexes')
 
+  // --- marketing_subscribers (unified customer + imported email list) ---
+  await db.collection('marketing_subscribers').createIndexes([
+    { key: { email: 1 }, unique: true, name: 'email_unique' },
+    { key: { status: 1 }, name: 'status' },
+    { key: { unsubscribeToken: 1 }, unique: true, name: 'unsubscribeToken_unique' },
+  ])
+  console.log('✓ marketing_subscribers indexes')
+
+  // --- email_templates ---
+  await db.collection('email_templates').createIndexes([
+    { key: { updatedAt: -1 }, name: 'updatedAt_desc' },
+  ])
+  console.log('✓ email_templates indexes')
+
+  // --- email_campaigns ---
+  await db.collection('email_campaigns').createIndexes([
+    { key: { status: 1, updatedAt: 1 }, name: 'status_updated' },
+    { key: { createdAt: -1 }, name: 'createdAt_desc' },
+  ])
+  console.log('✓ email_campaigns indexes')
+
   console.log('\nDatabase setup complete.')
   process.exit(0)
 }

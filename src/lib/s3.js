@@ -76,3 +76,45 @@ export async function getSignatureViewUrl(key, { expiresInSeconds = 300 } = {}) 
   const command = new GetObjectCommand({ Bucket: BUCKET, Key: key })
   return getSignedUrl(getClient(), command, { expiresIn: expiresInSeconds })
 }
+
+const ALLOWED_IMAGE_TYPES = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/gif': 'gif',
+  'image/webp': 'webp',
+}
+
+/**
+ * Uploads an image embedded in a marketing email template. Stored under
+ * marketing-images/ — the ONLY prefix in this bucket covered by a public
+ * bucket policy (Resource scoped to marketing-images/* — see
+ * docs/plans/2026-08-31-email-marketing.md), because unlike signatures,
+ * email clients must be able to fetch these with no auth from anywhere.
+ * Returns the object's public URL directly (not a key) since callers hand
+ * this straight to Unlayer as the final image src.
+ */
+export async function uploadMarketingImage(buffer, contentType) {
+  const ext = ALLOWED_IMAGE_TYPES[contentType]
+  if (!ext) {
+    throw new Error(`Unsupported image type: ${contentType}. Allowed: ${Object.keys(ALLOWED_IMAGE_TYPES).join(', ')}`)
+  }
+
+  // Generous ceiling against an oversized/corrupted upload, not a realistic
+  // marketing-image size — Unlayer's own custom-storage docs note common
+  // client-side caps around 2-5MB for the same reason.
+  const MAX_BYTES = 5 * 1024 * 1024
+  if (buffer.length === 0 || buffer.length > MAX_BYTES) {
+    throw new Error('Image size is invalid (must be non-empty and under 5MB)')
+  }
+
+  const key = `marketing-images/${randomUUID()}.${ext}`
+
+  await getClient().send(new PutObjectCommand({
+    Bucket: BUCKET,
+    Key: key,
+    Body: buffer,
+    ContentType: contentType,
+  }))
+
+  return `https://${BUCKET}.s3.${REGION}.amazonaws.com/${key}`
+}
