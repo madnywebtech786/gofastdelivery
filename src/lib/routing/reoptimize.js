@@ -8,9 +8,21 @@ import { hydrateRouteItems } from './hydrate'
 // the full-route polyline (getDirectionsPolyline) — see ORS_GOOGLE_HYBRID_ROUTING.md.
 // Active-leg turn-by-turn (DriverMap) stays on Google via /api/google/directions —
 // unrelated to either of these and not touched by this file.
-const ORS_OPTIMIZATION_API ='https://api.heigit.org/optimization'
+//
+// api.openrouteservice.org was deprecated 2026-04-28 in favour of api.heigit.org
+// (hard shutdown 2026-09-28, reduced to 10% quota since 2026-08-27 — see
+// https://ask.openrouteservice.org/t/reducing-the-quota-of-deprecated-api-api-openrouteservice-org/8013).
+// The new domain also adds an /openrouteservice path prefix, not just a domain
+// swap — confirmed live 2026-09-02 (api.heigit.org/openrouteservice/v2/directions/...
+// returns 401 with no key, i.e. real and reachable; api.heigit.org/v2/directions/...
+// without the prefix 404s). Directions has been moved to the new host+path below.
+// Optimization (VROOM) has NOT been moved yet — every path variant tried against
+// api.heigit.org 404'd, so it stays on the deprecated host until ORS confirms the
+// new path (ask on their forum) — better a working call at reduced quota than a
+// broken one, since a 404 here falls back to unoptimized stop order every time.
+const ORS_OPTIMIZATION_API = 'https://api.openrouteservice.org/optimization'
+const ORS_DIRECTIONS_API   = 'https://api.heigit.org/openrouteservice/v2/directions/driving-car/json'
 
-const ORS_DIRECTIONS_API ='https://api.heigit.org/v2/directions/driving-car/json'
 function getOrsKey() {
   const key = process.env.ORS_API_KEY
   if (!key) throw new Error('ORS_API_KEY not set')
