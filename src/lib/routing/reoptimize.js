@@ -10,17 +10,16 @@ import { hydrateRouteItems } from './hydrate'
 // unrelated to either of these and not touched by this file.
 //
 // api.openrouteservice.org was deprecated 2026-04-28 in favour of api.heigit.org
-// (hard shutdown 2026-09-28, reduced to 10% quota since 2026-08-27 — see
-// https://ask.openrouteservice.org/t/reducing-the-quota-of-deprecated-api-api-openrouteservice-org/8013).
-// The new domain also adds an /openrouteservice path prefix, not just a domain
-// swap — confirmed live 2026-09-02 (api.heigit.org/openrouteservice/v2/directions/...
-// returns 401 with no key, i.e. real and reachable; api.heigit.org/v2/directions/...
-// without the prefix 404s). Directions has been moved to the new host+path below.
-// Optimization (VROOM) has NOT been moved yet — every path variant tried against
-// api.heigit.org 404'd, so it stays on the deprecated host until ORS confirms the
-// new path (ask on their forum) — better a working call at reduced quota than a
-// broken one, since a 404 here falls back to unoptimized stop order every time.
-const ORS_OPTIMIZATION_API = 'https://api.openrouteservice.org/optimization'
+// (hard shutdown 2026-09-28; reduced to 10% quota since 2026-08-27 — confirmed
+// via a real 403 "Quota exceeded" from production on 2026-09-02, which was
+// silently degrading every route to unoptimized order via the ORS-failure
+// fallback below). Migrated both endpoints to their real new paths per
+// https://ask.openrouteservice.org/t/deprecating-api-openrouteservice-org-in-favour-of-api-heigit-org/7912
+// — note Optimization moved to a DIFFERENT service namespace (vroom/v0, not
+// openrouteservice/v2) and a different version scheme (v0, not v2), which is
+// why guessing paths under /openrouteservice/ never found it. Both endpoints
+// verified live 2026-09-02 with real production coordinates.
+const ORS_OPTIMIZATION_API = 'https://api.heigit.org/vroom/v0'
 const ORS_DIRECTIONS_API   = 'https://api.heigit.org/openrouteservice/v2/directions/driving-car/json'
 
 function getOrsKey() {
