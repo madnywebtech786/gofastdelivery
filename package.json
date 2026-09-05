@@ -40,7 +40,6 @@
     "react-email-editor": "^2.1.2",
     "react-signature-canvas": "^1.0.7",
     "server-only": "^0.0.1",
-    "sharp": "^0.35.4",
     "swiper": "^12.1.4",
     "twilio": "^6.0.2"
   },

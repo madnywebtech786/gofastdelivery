@@ -9,6 +9,7 @@ import VoiceGuide from '@/components/driver/VoiceGuide'
 import { useToast } from '@/components/ui/Toast'
 import { reverseGeocode, placesAutocomplete, placeDetails } from '@/lib/google-geocode'
 import { enqueue as enqueueAction, subscribeQueue } from '@/lib/offline-queue'
+import { convertPhotoToWebp } from '@/lib/imageConversion'
 import { formatTime as formatTimeShared } from '@/lib/dateFormat'
 import { Search, X, MapPin, Navigation, ArrowLeft, Camera } from 'lucide-react'
 import OnlineIndicator from '@/components/ui/OnlineIndicator'
@@ -851,8 +852,25 @@ export default function DriverRoutePage() {
       if (stopPhotos.length > 0 && stop.bookingId) {
         for (const photo of stopPhotos) {
           try {
+            // Convert to WebP in-browser before upload — the server only
+            // accepts image/webp (see uploadDeliveryPhoto in lib/s3.js) so it
+            // never needs native image-processing code at runtime.
+            let webpBlob
+            try {
+              webpBlob = await convertPhotoToWebp(photo.file)
+            } catch (conversionErr) {
+              for (const key of photoKeys) {
+                fetch(`/api/drivers/${driverId}/photos`, {
+                  method: 'DELETE',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ key }),
+                }).catch(() => {})
+              }
+              toast?.error?.('Could not process photo', conversionErr?.message ?? 'Try again.')
+              return
+            }
             const formData = new FormData()
-            formData.append('file', photo.file)
+            formData.append('file', webpBlob, 'photo.webp')
             formData.append('bookingId', String(stop.bookingId))
             formData.append('stopType', stop.stopType)
             const photoRes = await fetch(`/api/drivers/${driverId}/photos`, { method: 'POST', body: formData })

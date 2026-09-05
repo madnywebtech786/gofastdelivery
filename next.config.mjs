@@ -3,10 +3,8 @@ const nextConfig = {
   // Enables Cache Components — unlocks use cache, cacheLife, cacheTag (stable in Next.js 16)
   cacheComponents: true,
 
-  // pdfkit resolves font files at runtime via __dirname — bundling it breaks those paths.
-  // sharp ships native .node bindings (libvips) that must be loaded from their real
-  // node_modules path — bundling it breaks the native binding lookup (ERR_DLOPEN_FAILED).
-  serverExternalPackages: ['pdfkit', 'sharp'],
+  // pdfkit resolves font files at runtime via __dirname — bundling it breaks those paths
+  serverExternalPackages: ['pdfkit'],
 
   images: {
     remotePatterns: [
