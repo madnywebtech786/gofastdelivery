@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
 import { requireDriver, handleApiError } from '@/lib/dal'
 import { findActiveRoute, updateRoute, incrementDrivenDistance } from '@/lib/db/drivers'
-import { updateBookingStatus, updateStopDriverNote, updateStopSignature } from '@/lib/db/bookings'
+import { updateBookingStatus, updateStopDriverNote, updateStopSignature, updateStopPhotos } from '@/lib/db/bookings'
+import { MAX_PHOTOS_PER_STOP } from '@/lib/s3'
 import { pushBookingStatusChange, pushRouteUpdate } from '@/lib/pusher'
 // import { sendStatusUpdate } from '@/lib/mailer'
 import { hydrateRouteItems } from '@/lib/routing/hydrate'
@@ -19,7 +20,8 @@ function nextBookingStatus(stop) {
 
 /**
  * POST /api/drivers/[driverId]/stop-complete
- * Body: { stopIndex: number, driverNote?: string }
+ * Body: { stopIndex: number, driverNote?: string, signatureKey?: string,
+ *         signerName?: string, photoKeys?: string[] }
  */
 export async function POST(request, { params }) {
   try {
@@ -30,7 +32,7 @@ export async function POST(request, { params }) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
-    const { stopIndex, drivenMeters, driverNote, signatureKey } = await request.json()
+    const { stopIndex, drivenMeters, driverNote, signatureKey, signerName, photoKeys } = await request.json()
     if (typeof stopIndex !== 'number') {
       return NextResponse.json({ error: 'stopIndex is required' }, { status: 400 })
     }
@@ -67,6 +69,13 @@ export async function POST(request, { params }) {
 
     const trimmedNote = typeof driverNote === 'string' ? driverNote.trim().slice(0, 500) : ''
     const trimmedSignatureKey = stop.stopType === 'dropoff' && typeof signatureKey === 'string' ? signatureKey.trim() : ''
+    const trimmedSignerName = stop.stopType === 'dropoff' && typeof signerName === 'string' ? signerName.trim().slice(0, 100) : ''
+    // Photos apply to BOTH pickup and dropoff, unlike signature/signerName.
+    // Cap enforced again here (not just client + the photos upload route)
+    // since this is the last write before it becomes durable.
+    const validPhotoKeys = (stop.stopType === 'pickup' || stop.stopType === 'dropoff') && Array.isArray(photoKeys)
+      ? photoKeys.filter((k) => typeof k === 'string' && k).slice(0, MAX_PHOTOS_PER_STOP)
+      : []
 
     const updatedStops = stops.map((s, i) =>
       i === stopIndex
@@ -75,6 +84,18 @@ export async function POST(request, { params }) {
             completedAt: now,
             ...(trimmedNote ? { driverNote: trimmedNote } : {}),
             ...(trimmedSignatureKey ? { signatureKey: trimmedSignatureKey } : {}),
+            ...(trimmedSignerName ? { signerName: trimmedSignerName } : {}),
+            // Re-sliced to MAX_PHOTOS_PER_STOP after merging with any
+            // pre-existing photoKeys — in practice s.photoKeys should always
+            // be empty here (this whole block only runs once per stop, ever,
+            // since the idempotency guard above returns early once
+            // completedAt is set), but capping the MERGED array rather than
+            // just validPhotoKeys keeps this correct even if that
+            // assumption ever changes, instead of silently allowing more
+            // than the cap through.
+            ...(validPhotoKeys.length > 0
+              ? { photoKeys: [...(s.photoKeys ?? []), ...validPhotoKeys].slice(0, MAX_PHOTOS_PER_STOP) }
+              : {}),
           }
         : s
     )
@@ -91,15 +112,19 @@ export async function POST(request, { params }) {
       incrementDrivenDistance(driverId, String(route._id), Math.round(drivenMeters)).catch(() => {})
     }
 
-    // Persist the driver's optional note onto the booking's matching stop too
-    // (durable — survives after this route is replaced/completed, matching
-    // how markBookingFailed's lastFailure is durable). Fire-and-forget: a
-    // note-write failure must never block the stop confirmation itself.
+    // Persist the driver's optional note/signature/photos onto the booking's
+    // matching stop too (durable — survives after this route is replaced/
+    // completed, matching how markBookingFailed's lastFailure is durable).
+    // Fire-and-forget: a write failure here must never block the stop
+    // confirmation itself, which has already succeeded on the route above.
     if (stop.bookingId && trimmedNote && (stop.stopType === 'pickup' || stop.stopType === 'dropoff')) {
       updateStopDriverNote(String(stop.bookingId), { stopType: stop.stopType, note: trimmedNote }).catch(() => {})
     }
     if (stop.bookingId && trimmedSignatureKey && stop.stopType === 'dropoff') {
-      updateStopSignature(String(stop.bookingId), { stopType: 'dropoff', signatureKey: trimmedSignatureKey }).catch(() => {})
+      updateStopSignature(String(stop.bookingId), { stopType: 'dropoff', signatureKey: trimmedSignatureKey, signerName: trimmedSignerName }).catch(() => {})
+    }
+    if (stop.bookingId && validPhotoKeys.length > 0) {
+      updateStopPhotos(String(stop.bookingId), { stopType: stop.stopType, photoKeys: validPhotoKeys }).catch(() => {})
     }
 
     const newBookingStatus = nextBookingStatus(stop)

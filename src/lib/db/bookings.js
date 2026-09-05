@@ -1,6 +1,7 @@
 import { ObjectId } from 'mongodb'
 import { nanoid } from 'nanoid'
 import { getDb } from './client.js'
+import { MAX_PHOTOS_PER_STOP } from '../s3.js'
 import { calgaryStartOfToday, CALGARY_TZ } from '../dateFormat.js'
 import { findAccountsByIds } from './users.js'
 
@@ -411,18 +412,49 @@ export async function updateStopDriverNote(bookingId, { stopType, note } = {}) {
 }
 
 /**
- * Persist a signature's S3 object key onto a booking's dropoff stop. Same
- * arrayFilters positional-update technique as updateStopDriverNote/
- * updateStopEtas above — durable on the booking (survives route
- * replacement), dropoff-only since pickup has no signature concept.
+ * Persist a signature's S3 object key (+ optional signer name) onto a
+ * booking's dropoff stop. Same arrayFilters positional-update technique as
+ * updateStopDriverNote/updateStopEtas above — durable on the booking
+ * (survives route replacement), dropoff-only since pickup has no signature
+ * concept (photos, which DO apply to both stop types, are handled by
+ * updateStopPhotos below, a separate function).
  */
-export async function updateStopSignature(bookingId, { stopType, signatureKey } = {}) {
+export async function updateStopSignature(bookingId, { stopType, signatureKey, signerName } = {}) {
   if (stopType !== 'dropoff' || !signatureKey) return { matchedCount: 0, modifiedCount: 0 }
+  const db = await getDb()
+  const trimmedName = typeof signerName === 'string' ? signerName.trim().slice(0, 100) : ''
+
+  return db.collection('bookings').updateOne(
+    { _id: new ObjectId(bookingId) },
+    {
+      $set: {
+        'stops.$[elem].signatureKey': signatureKey,
+        ...(trimmedName ? { 'stops.$[elem].signerName': trimmedName } : {}),
+      },
+    },
+    { arrayFilters: [{ 'elem.type': stopType }] }
+  )
+}
+
+/**
+ * Append driver-captured photo S3 keys onto a booking's pickup OR dropoff
+ * stop (unlike signatures, photos apply to both stop types). Uses $push
+ * with $each + $slice rather than $set so repeated calls (e.g. photos added
+ * one at a time as each upload completes) accumulate rather than overwrite,
+ * while $slice caps the array at MAX_PHOTOS_PER_STOP atomically in the same
+ * update — defense in depth alongside stop-complete/route.js's own cap
+ * (which is the primary enforcement point), rather than trusting the
+ * caller alone.
+ */
+export async function updateStopPhotos(bookingId, { stopType, photoKeys } = {}) {
+  if (stopType !== 'pickup' && stopType !== 'dropoff') return { matchedCount: 0, modifiedCount: 0 }
+  const keys = Array.isArray(photoKeys) ? photoKeys.filter((k) => typeof k === 'string' && k) : []
+  if (keys.length === 0) return { matchedCount: 0, modifiedCount: 0 }
   const db = await getDb()
 
   return db.collection('bookings').updateOne(
     { _id: new ObjectId(bookingId) },
-    { $set: { 'stops.$[elem].signatureKey': signatureKey } },
+    { $push: { 'stops.$[elem].photoKeys': { $each: keys, $slice: -MAX_PHOTOS_PER_STOP } } },
     { arrayFilters: [{ 'elem.type': stopType }] }
   )
 }

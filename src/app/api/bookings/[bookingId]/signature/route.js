@@ -34,7 +34,7 @@ export async function GET(request, { params }) {
     }
 
     const url = await getSignatureViewUrl(dropoffStop.signatureKey)
-    return NextResponse.json({ url })
+    return NextResponse.json({ url, signerName: dropoffStop.signerName ?? null })
   } catch (err) {
     return handleApiError(err, '[GET /api/bookings/[bookingId]/signature]')
   }

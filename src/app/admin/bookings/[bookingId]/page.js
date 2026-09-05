@@ -7,6 +7,7 @@ import Badge from '@/components/ui/Badge'
 import StatusTimeline from '@/components/ui/StatusTimeline'
 import AssignDriverForm from '@/components/booking/AssignDriverForm'
 import SignatureViewer from '@/components/booking/SignatureViewer'
+import PhotoGallery from '@/components/booking/PhotoGallery'
 import { formatDateTime as formatDate } from '@/lib/dateFormat'
 import { ArrowLeft, MapPin, User, Phone, CheckCircle2, UserCheck } from 'lucide-react'
 
@@ -108,11 +109,16 @@ export default async function AdminBookingDetailPage({ params }) {
                         Driver note: {stop.driverNote}
                       </p>
                     )}
-                    {stop.type === 'dropoff' && stop.signatureKey && (
-                      <div className="mt-2">
-                        <SignatureViewer bookingId={b._id} />
+                    {(stop.type === 'dropoff' && stop.signatureKey) || stop.photoKeys?.length > 0 ? (
+                      <div className="mt-2 flex items-center gap-2 flex-wrap">
+                        {stop.type === 'dropoff' && stop.signatureKey && (
+                          <SignatureViewer bookingId={b._id} />
+                        )}
+                        {stop.photoKeys?.length > 0 && (
+                          <PhotoGallery bookingId={b._id} stopType={stop.type} />
+                        )}
                       </div>
-                    )}
+                    ) : null}
                   </div>
                   <MapPin size={12} className="shrink-0 mt-1" style={{ color: stop.type === 'pickup' ? 'var(--success)' : 'var(--danger)', opacity: 0.5 }} />
                 </li>

@@ -10,7 +10,7 @@ import { useToast } from '@/components/ui/Toast'
 import { reverseGeocode, placesAutocomplete, placeDetails } from '@/lib/google-geocode'
 import { enqueue as enqueueAction, subscribeQueue } from '@/lib/offline-queue'
 import { formatTime as formatTimeShared } from '@/lib/dateFormat'
-import { Search, X, MapPin, Navigation, ArrowLeft } from 'lucide-react'
+import { Search, X, MapPin, Navigation, ArrowLeft, Camera } from 'lucide-react'
 import OnlineIndicator from '@/components/ui/OnlineIndicator'
 import SignaturePad from '@/components/driver/SignaturePad'
 
@@ -235,6 +235,20 @@ export default function DriverRoutePage() {
   // showing the full-screen capture overlay, or null when closed.
   const [signatureByStop, setSignatureByStop] = useState({}) // { [stopIndex]: { dataUrl } } — not yet uploaded; see handleStopComplete
   const [signaturePadOpenFor, setSignaturePadOpenFor] = useState(null)
+
+  // Optional name of the person who signed — dropoff only, travels alongside
+  // the signature (plain text, sent directly in the stop-complete body, no
+  // separate upload step needed unlike the signature drawing itself).
+  const [signerNameByStop, setSignerNameByStop] = useState({})
+
+  // Optional proof-of-pickup/dropoff photos — BOTH stop types, unlike
+  // signature. Keyed by stopIndex; each entry is an array of
+  // { dataUrl, key, uploading, error } so multiple photos can be staged,
+  // previewed, and independently retried before the stop is confirmed.
+  // `key` is set once the photo has actually been uploaded to S3 (staged,
+  // same two-phase pattern as signature) — only entries with a `key` are
+  // sent along when the driver taps Confirm.
+  const [photosByStop, setPhotosByStop] = useState({})
 
   // Batch-select mode — driver can check off several not-yet-completed stops
   // (typically sharing one address) and confirm/fail them together instead of
@@ -745,14 +759,56 @@ export default function DriverRoutePage() {
     setSignatureByStop((prev) => { const next = { ...prev }; delete next[stopIndex]; return next })
   }
 
+  const MAX_PHOTOS_PER_STOP = 3
+  const MAX_PHOTO_BYTES = 5 * 1024 * 1024
+
+  // Purely local — exactly the same staging pattern as
+  // handleSignatureConfirm above. Nothing is uploaded to S3 until the driver
+  // actually taps Confirm (see handleStopComplete), so a photo taken then
+  // discarded, or a stop the driver navigates away from, never leaves an
+  // object in storage.
+  function handlePhotoCapture(stopIndex, file) {
+    if (!file) return
+    const existing = photosByStop[stopIndex] ?? []
+    if (existing.length >= MAX_PHOTOS_PER_STOP) {
+      toast?.error?.('Photo limit reached', `You can add up to ${MAX_PHOTOS_PER_STOP} photos per stop.`)
+      return
+    }
+    if (file.size > MAX_PHOTO_BYTES) {
+      toast?.error?.('Photo too large', 'Please use a photo under 5MB.')
+      return
+    }
+    const localId = `${Date.now()}-${Math.random().toString(36).slice(2)}`
+    const dataUrl = URL.createObjectURL(file)
+    setPhotosByStop((prev) => ({
+      ...prev,
+      [stopIndex]: [...(prev[stopIndex] ?? []), { localId, dataUrl, file }],
+    }))
+  }
+
+  // Also purely local — nothing has been uploaded yet at this point (see
+  // above), so there is nothing in S3 to clean up here. Same reasoning as
+  // handleRemoveSignature.
+  function handleRemovePhoto(stopIndex, localId) {
+    const entry = (photosByStop[stopIndex] ?? []).find((p) => p.localId === localId)
+    if (entry?.dataUrl) URL.revokeObjectURL(entry.dataUrl)
+    setPhotosByStop((prev) => ({
+      ...prev,
+      [stopIndex]: (prev[stopIndex] ?? []).filter((p) => p.localId !== localId),
+    }))
+  }
+
   async function handleStopComplete(stop, stopIndex) {
     if (!driverId || completing) return
+
+    const stopPhotos = photosByStop[stopIndex] ?? []
 
     setCompleting(true)
     try {
       const pos = driverPos
       const driverNote = (driverNoteByStop[stopIndex] ?? '').trim()
       const signatureEntry = signatureByStop[stopIndex]
+      const signerName = stop.stopType === 'dropoff' ? (signerNameByStop[stopIndex] ?? '').trim() : ''
 
       // Upload the signature to S3 now — the very first thing that happens
       // on "Confirm Delivery", not a moment before. Nothing is written to
@@ -783,6 +839,51 @@ export default function DriverRoutePage() {
         }
       }
 
+      // Upload staged photos to S3 now, exactly the same two-phase pattern
+      // as the signature above (stage locally on capture, upload only at
+      // Confirm). If ANY photo fails to upload, bail out of the whole
+      // confirm attempt the same way the signature does — but first delete
+      // whichever photos in this batch DID already succeed, so a partial
+      // failure never leaves orphaned objects the driver has no way to see
+      // or clean up (they'll just retry the whole confirm, which re-uploads
+      // everything fresh from the still-staged local files).
+      const photoKeys = []
+      if (stopPhotos.length > 0 && stop.bookingId) {
+        for (const photo of stopPhotos) {
+          try {
+            const formData = new FormData()
+            formData.append('file', photo.file)
+            formData.append('bookingId', String(stop.bookingId))
+            formData.append('stopType', stop.stopType)
+            const photoRes = await fetch(`/api/drivers/${driverId}/photos`, { method: 'POST', body: formData })
+            if (!photoRes.ok) {
+              const data = await photoRes.json().catch(() => ({}))
+              for (const key of photoKeys) {
+                fetch(`/api/drivers/${driverId}/photos`, {
+                  method: 'DELETE',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ key }),
+                }).catch(() => {})
+              }
+              toast?.error?.('Could not save photo', data?.error ?? 'Try again.')
+              return
+            }
+            const data = await photoRes.json()
+            photoKeys.push(data.key)
+          } catch {
+            for (const key of photoKeys) {
+              fetch(`/api/drivers/${driverId}/photos`, {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ key }),
+              }).catch(() => {})
+            }
+            toast?.error?.('Could not save photo', 'Check your connection and try again.')
+            return
+          }
+        }
+      }
+
       const drivenMeters = flushAndResetDist()
       const body = {
         stopIndex,
@@ -791,6 +892,8 @@ export default function DriverRoutePage() {
         currentLat: pos?.lat ?? null,
         ...(driverNote ? { driverNote } : {}),
         ...(signatureKey ? { signatureKey } : {}),
+        ...(signerName ? { signerName } : {}),
+        ...(photoKeys.length > 0 ? { photoKeys } : {}),
       }
       const url = `/api/drivers/${driverId}/stop-complete`
       // Stable key: stopIndex + stop signature — server guards on completedAt
@@ -816,23 +919,30 @@ export default function DriverRoutePage() {
           delivered = true
           setDriverNoteByStop((prev) => { const next = { ...prev }; delete next[stopIndex]; return next })
           setSignatureByStop((prev) => { const next = { ...prev }; delete next[stopIndex]; return next })
+          setSignerNameByStop((prev) => { const next = { ...prev }; delete next[stopIndex]; return next })
+          stopPhotos.forEach((p) => p.dataUrl && URL.revokeObjectURL(p.dataUrl))
+          setPhotosByStop((prev) => { const next = { ...prev }; delete next[stopIndex]; return next })
         } else if (res.status >= 500 || res.status === 408 || res.status === 429) {
-          // Retryable — queue it. The signature (if any) is already uploaded
-          // and its key is baked into the queued `body`, so the eventual
-          // retry will still attach it correctly. Safe to clear the local
-          // signatureByStop entry here — the upload already succeeded, so
+          // Retryable — queue it. The signature/photos (if any) are already
+          // uploaded and their keys are baked into the queued `body`, so the
+          // eventual retry will still attach them correctly. Safe to clear
+          // the local staged state here — the uploads already succeeded, so
           // there's nothing left to redo/remove locally for this attempt.
           enqueueAction({ url, body, idempotencyKey, label: `Confirm stop ${stopIndex + 1}` })
           toast?.info?.('Saved offline', 'Your confirmation will sync when you\u2019re back online.')
           setDriverNoteByStop((prev) => { const next = { ...prev }; delete next[stopIndex]; return next })
           setSignatureByStop((prev) => { const next = { ...prev }; delete next[stopIndex]; return next })
+          setSignerNameByStop((prev) => { const next = { ...prev }; delete next[stopIndex]; return next })
+          stopPhotos.forEach((p) => p.dataUrl && URL.revokeObjectURL(p.dataUrl))
+          setPhotosByStop((prev) => { const next = { ...prev }; delete next[stopIndex]; return next })
         } else {
           const data = await res.json().catch(() => ({}))
           console.error('[stop-complete] failed:', data?.error)
           // stop-complete was rejected outright (non-retryable) \u2014 the
-          // signature was already uploaded above, so it's now orphaned.
-          // Delete it; the driver's local preview (signatureByStop) is left
-          // in place so retrying "Confirm Delivery" just re-uploads it fresh.
+          // signature/photos were already uploaded above, so they're now
+          // orphaned. Delete them; the driver's local previews are left in
+          // place so retrying "Confirm Delivery" just re-uploads everything
+          // fresh.
           if (signatureKey) {
             fetch(`/api/drivers/${driverId}/signature`, {
               method: 'DELETE',
@@ -840,13 +950,24 @@ export default function DriverRoutePage() {
               body: JSON.stringify({ key: signatureKey }),
             }).catch(() => {})
           }
+          for (const key of photoKeys) {
+            fetch(`/api/drivers/${driverId}/photos`, {
+              method: 'DELETE',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ key }),
+            }).catch(() => {})
+          }
           toast?.error?.('Could not confirm delivery', data?.error ?? 'Please try again.')
         }
       } catch {
-        // Network error on the stop-complete call itself — the signature (if
-        // any) was already uploaded successfully above, so its key is baked
-        // into the queued body. Durable queue handles the retry from here.
+        // Network error on the stop-complete call itself — the signature/
+        // photos (if any) were already uploaded successfully above, so their
+        // keys are baked into the queued body. Durable queue handles the
+        // retry from here.
         enqueueAction({ url, body, idempotencyKey, label: `Confirm stop ${stopIndex + 1}` })
+        stopPhotos.forEach((p) => p.dataUrl && URL.revokeObjectURL(p.dataUrl))
+        setPhotosByStop((prev) => { const next = { ...prev }; delete next[stopIndex]; return next })
+        setSignerNameByStop((prev) => { const next = { ...prev }; delete next[stopIndex]; return next })
         toast?.info?.('Saved offline', 'Your confirmation will sync when you\u2019re back online.')
         setDriverNoteByStop((prev) => { const next = { ...prev }; delete next[stopIndex]; return next })
         setSignatureByStop((prev) => { const next = { ...prev }; delete next[stopIndex]; return next })
@@ -1488,31 +1609,48 @@ export default function DriverRoutePage() {
                   {isActive && !isDone && stop.stopType === 'dropoff' && (
                     <div className="mb-3">
                       {signatureByStop[stopIndex] ? (
-                        <div className="rounded-2xl border border-green-200 bg-green-50 px-4 py-3 flex items-center gap-3">
-                          {/* eslint-disable-next-line @next/next/no-img-element -- local data URL preview */}
-                          <img
-                            src={signatureByStop[stopIndex].dataUrl}
-                            alt="Captured signature"
-                            className="w-16 h-10 object-contain bg-white rounded-lg border border-green-200 shrink-0"
-                          />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-bold text-green-700">Signature captured</p>
-                            <p className="text-[10px] text-green-600">Will be saved when you confirm delivery</p>
+                        <div className="rounded-2xl border border-green-200 bg-green-50 px-4 py-3">
+                          <div className="flex items-center gap-3">
+                            {/* eslint-disable-next-line @next/next/no-img-element -- local data URL preview */}
+                            <img
+                              src={signatureByStop[stopIndex].dataUrl}
+                              alt="Captured signature"
+                              className="w-16 h-10 object-contain bg-white rounded-lg border border-green-200 shrink-0"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-bold text-green-700">Signature captured</p>
+                              <p className="text-[10px] text-green-600">Will be saved when you confirm delivery</p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setSignaturePadOpenFor(stopIndex)}
+                              className="text-xs font-semibold text-green-700 underline shrink-0"
+                            >
+                              Redo
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveSignature(stopIndex)}
+                              className="text-xs font-semibold text-red-600 underline shrink-0"
+                            >
+                              Remove
+                            </button>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => setSignaturePadOpenFor(stopIndex)}
-                            className="text-xs font-semibold text-green-700 underline shrink-0"
-                          >
-                            Redo
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveSignature(stopIndex)}
-                            className="text-xs font-semibold text-red-600 underline shrink-0"
-                          >
-                            Remove
-                          </button>
+                          {/* Optional name of the person who signed — only shown
+                              once a signature exists, since a name with no
+                              signature doesn't mean anything. Plain text, sent
+                              alongside the signature key at Confirm time. */}
+                          <input
+                            type="text"
+                            value={signerNameByStop[stopIndex] ?? ''}
+                            onChange={(e) => {
+                              const val = e.target.value.slice(0, 100)
+                              setSignerNameByStop((prev) => ({ ...prev, [stopIndex]: val }))
+                            }}
+                            placeholder="Name of person who signed (optional)"
+                            maxLength={100}
+                            className="w-full mt-2.5 rounded-xl border border-green-200 bg-white px-3 py-2 text-xs text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-200"
+                          />
                         </div>
                       ) : (
                         <button
@@ -1522,6 +1660,57 @@ export default function DriverRoutePage() {
                         >
                           Add Signature (optional)
                         </button>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Optional proof photos — BOTH pickup and dropoff, unlike
+                      signature/signerName above which are dropoff-only. Same
+                      staging pattern: captured/previewed locally, only
+                      uploaded to S3 when the driver taps Confirm. */}
+                  {isActive && !isDone && (stop.stopType === 'pickup' || stop.stopType === 'dropoff') && (
+                    <div className="mb-3">
+                      <label className="text-[10px] font-bold uppercase tracking-wide text-gray-400 mb-1 block">
+                        Add photos (optional, up to {MAX_PHOTOS_PER_STOP})
+                      </label>
+                      {(photosByStop[stopIndex]?.length ?? 0) > 0 && (
+                        <div className="flex gap-2 mb-2 flex-wrap">
+                          {photosByStop[stopIndex].map((photo) => (
+                            <div key={photo.localId} className="relative w-16 h-16 shrink-0">
+                              {/* eslint-disable-next-line @next/next/no-img-element -- local object URL preview */}
+                              <img
+                                src={photo.dataUrl}
+                                alt="Captured proof"
+                                className="w-full h-full object-cover rounded-xl border border-gray-200"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleRemovePhoto(stopIndex, photo.localId)}
+                                className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-600 text-white flex items-center justify-center shadow-sm"
+                                aria-label="Remove photo"
+                              >
+                                <X size={11} />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {(photosByStop[stopIndex]?.length ?? 0) < MAX_PHOTOS_PER_STOP && (
+                        <label className="w-full rounded-2xl py-3 text-sm font-semibold border border-gray-200 text-gray-600 flex items-center justify-center gap-2 cursor-pointer">
+                          <Camera size={16} />
+                          Add Photo
+                          <input
+                            type="file"
+                            accept="image/*"
+                            capture="environment"
+                            className="hidden"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0]
+                              handlePhotoCapture(stopIndex, file)
+                              e.target.value = ''
+                            }}
+                          />
+                        </label>
                       )}
                     </div>
                   )}

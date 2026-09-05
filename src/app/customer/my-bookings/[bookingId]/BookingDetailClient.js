@@ -7,6 +7,7 @@ import Badge from '@/components/ui/Badge'
 import StatusTimeline from '@/components/ui/StatusTimeline'
 import { useToast } from '@/components/ui/Toast'
 import SignatureViewer from '@/components/booking/SignatureViewer'
+import PhotoGallery from '@/components/booking/PhotoGallery'
 import { formatDateTime } from '@/lib/dateFormat'
 import { accountNumber } from '@/lib/accountLabel'
 import {
@@ -330,11 +331,16 @@ export default function BookingDetailClient({ booking: initial, origin }) {
                     )}
                   </div>
                 )}
-                {stop.type === 'dropoff' && stop.signatureKey && (
-                  <div className="mt-2">
-                    <SignatureViewer bookingId={b._id} />
+                {(stop.type === 'dropoff' && stop.signatureKey) || stop.photoKeys?.length > 0 ? (
+                  <div className="mt-2 flex items-center gap-2 flex-wrap">
+                    {stop.type === 'dropoff' && stop.signatureKey && (
+                      <SignatureViewer bookingId={b._id} />
+                    )}
+                    {stop.photoKeys?.length > 0 && (
+                      <PhotoGallery bookingId={b._id} stopType={stop.type} />
+                    )}
                   </div>
-                )}
+                ) : null}
               </div>
 
               <MapPin size={12} className="shrink-0 mt-1"

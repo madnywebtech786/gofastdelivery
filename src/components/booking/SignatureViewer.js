@@ -16,6 +16,7 @@ export default function SignatureViewer({ bookingId }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [url, setUrl] = useState(null)
+  const [signerName, setSignerName] = useState(null)
 
   async function handleOpen() {
     setOpen(true)
@@ -30,6 +31,7 @@ export default function SignatureViewer({ bookingId }) {
       }
       const data = await res.json()
       setUrl(data.url)
+      setSignerName(data.signerName ?? null)
     } catch (err) {
       setError(err.message || 'Could not load signature')
     } finally {
@@ -78,9 +80,12 @@ export default function SignatureViewer({ bookingId }) {
               // image within the available space with no cropping and no
               // scrolling, at whatever size that space allows — never
               // stretched, never clipped.
-              <div className="w-full h-full max-w-4xl bg-white rounded-2xl p-4 flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
+              <div className="w-full h-full max-w-4xl bg-white rounded-2xl p-4 flex flex-col items-center justify-center gap-3" onClick={(e) => e.stopPropagation()}>
                 {/* eslint-disable-next-line @next/next/no-img-element -- remote presigned S3 URL, not an app asset next/image can optimize */}
-                <img src={url} alt="Customer signature" className="max-w-full max-h-full w-auto h-auto object-contain" />
+                <img src={url} alt="Customer signature" className="max-w-full flex-1 min-h-0 w-auto h-auto object-contain" />
+                {signerName && (
+                  <p className="text-sm font-semibold shrink-0" style={{ color: 'var(--fg)' }}>Signed by: {signerName}</p>
+                )}
               </div>
             ) : null}
           </div>

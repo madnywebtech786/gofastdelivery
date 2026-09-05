@@ -9,7 +9,7 @@ import { computeTurnGuidance } from '@/lib/turnGuidance'
 // exceeded it, since the nearest point on a long corridor stayed within range.)
 const OFF_ROUTE_THRESHOLD_M  = 50
 // How long (ms) the driver must stay off-route before we trigger a reroute
-const OFF_ROUTE_DURATION_MS  = 5000
+const OFF_ROUTE_DURATION_MS  = 3000
 // After a reroute fires, pause detection this long so the driver can rejoin the
 // new path before we re-evaluate — prevents a reroute→still-off→reroute loop.
 const REROUTE_COOLDOWN_MS    = 20000
@@ -1224,9 +1224,11 @@ export default function DriverMap({
               boxShadow: '0 4px 24px rgba(0,0,0,0.45)',
             }}
           >
-            {/* Maneuver arrow — large, like Google Maps */}
+            {/* Maneuver arrow — large, like Google Maps. Sized up further
+                per client request (was w-9/52px, text-xl/28px) so the
+                current turn is unmistakable at a glance while driving. */}
             <div
-              className="shrink-0 flex items-center justify-center rounded-lg sm:rounded-xl w-9 h-9 sm:w-[52px] sm:h-[52px] text-xl sm:text-[28px]"
+              className="shrink-0 flex items-center justify-center rounded-lg sm:rounded-xl w-12 h-12 sm:w-17 sm:h-17 text-2xl sm:text-[38px]"
               style={{ background: '#1d4ed8' }}
             >
               {banner.icon}
@@ -1253,7 +1255,7 @@ export default function DriverMap({
               <div className="flex shrink-0 flex-col items-center gap-0.5">
                 <span className="text-gray-300 text-[9px] sm:text-[10px] font-bold">then</span>
                 <div
-                  className="flex items-center justify-center rounded-md sm:rounded-lg w-6 h-6 sm:w-8 sm:h-8 text-sm sm:text-lg font-bold"
+                  className="flex items-center justify-center rounded-md sm:rounded-lg w-8 h-8 sm:w-10 sm:h-10 text-base sm:text-xl font-bold"
                   style={{ background: 'rgba(255,255,255,0.3)', color: '#ffffff' }}
                 >
                   {banner.then}
