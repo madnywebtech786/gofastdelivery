@@ -30,7 +30,12 @@ export default function SignaturePad({ onConfirm, onCancel }) {
 
   function handleDone() {
     if (!canvasRef.current || canvasRef.current.isEmpty()) return
-    const dataUrl = canvasRef.current.getTrimmedCanvas().toDataURL('image/png')
+    // getTrimmedCanvas() is intentionally NOT used here — it has a long-standing
+    // bug on high-DPI screens (devicePixelRatio scaling) where its trim math can
+    // crop to a region outside the actual drawn strokes, producing a blank/white
+    // PNG. Exporting the untrimmed canvas always captures the real signature,
+    // just with some white margin instead of a tight crop.
+    const dataUrl = canvasRef.current.getCanvas().toDataURL('image/png')
     setPreviewDataUrl(dataUrl)
     setPhase('preview')
   }
