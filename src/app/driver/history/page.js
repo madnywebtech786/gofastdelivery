@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Spinner from '@/components/ui/Spinner'
+import Select from '@/components/ui/Select'
+import BarChart from '@/components/ui/BarChart'
 import { formatRelativeDayLabel, formatTime as formatTimeShared } from '@/lib/dateFormat'
 
 function formatDist(m) {
@@ -43,10 +45,13 @@ function groupByDate(bookings) {
 
 export default function DriverHistoryPage() {
   const router = useRouter()
-  const [driverId, setDriverId]   = useState(null)
-  const [stats, setStats]         = useState(null)
-  const [bookings, setBookings]   = useState([])
-  const [loading, setLoading]     = useState(true)
+  const [driverId, setDriverId]           = useState(null)
+  const [stats, setStats]                 = useState(null)
+  const [bookings, setBookings]           = useState([])
+  const [loading, setLoading]             = useState(true)
+  const [distanceRange, setDistanceRange] = useState('month')
+  const [distance, setDistance]           = useState(null)
+  const [distanceLoading, setDistanceLoading] = useState(true)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -79,6 +84,21 @@ export default function DriverHistoryPage() {
     return () => document.removeEventListener('visibilitychange', onVisible)
   }, [load])
 
+  // Km-driven card — fetched separately from `load` so switching the range
+  // filter doesn't re-fetch the booking history list too.
+  const loadDistance = useCallback(async () => {
+    if (!driverId) return
+    setDistanceLoading(true)
+    try {
+      const res = await fetch(`/api/drivers/${driverId}/distance?range=${distanceRange}&t=${Date.now()}`, { cache: 'no-store' })
+      if (res.ok) setDistance(await res.json())
+    } finally {
+      setDistanceLoading(false)
+    }
+  }, [driverId, distanceRange])
+
+  useEffect(() => { loadDistance() }, [loadDistance])
+
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center min-h-[60vh]">
@@ -106,6 +126,16 @@ export default function DriverHistoryPage() {
             <SummaryChip icon="📅" label="Today"  value={stats.completedToday} color="#3b82f6" bg="#eff6ff" />
           </div>
         )}
+      </div>
+
+      {/* Km driven */}
+      <div className="px-4 pt-5">
+        <DistanceCard
+          distance={distance}
+          loading={distanceLoading}
+          range={distanceRange}
+          onRangeChange={setDistanceRange}
+        />
       </div>
 
       {/* Empty state */}
@@ -191,6 +221,70 @@ function SummaryChip({ icon, label, value, color, bg }) {
     <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full" style={{ backgroundColor: bg }}>
       <span>{icon}</span>
       <span className="text-xs font-semibold" style={{ color }}>{value} {label}</span>
+    </div>
+  )
+}
+
+const DISTANCE_RANGE_OPTIONS = [
+  { value: 'day',   label: 'Today' },
+  { value: 'week',  label: 'This Week' },
+  { value: 'month', label: 'This Month' },
+  { value: 'year',  label: 'This Year' },
+]
+const DISTANCE_RANGE_UNIT_LABEL = {
+  day: 'today',
+  week: 'this week',
+  month: 'this month',
+  year: 'this year',
+}
+const DISTANCE_COLOR = '#2563eb'
+
+// Km-driven card — mirrors the admin driver-detail page's distance chart
+// (same range options, same underlying /distance data shape) so a driver can
+// see their own km driven with the same day/week/month/year filters admin has.
+function DistanceCard({ distance, loading, range, onRangeChange }) {
+  const series = distance?.distanceSeries ?? []
+  const chartData = series.map((s) => ({ label: s.label, km: s.meters / 1000 }))
+  const totalKm = (distance?.distanceRangeMeters ?? 0) / 1000
+  const allTimeKm = (distance?.totalDistanceDrivenMeters ?? 0) / 1000
+  const rangeLabel = DISTANCE_RANGE_OPTIONS.find((o) => o.value === range)?.label ?? 'This Month'
+
+  return (
+    <div className="bg-white rounded-2xl px-4 py-4 shadow-sm">
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <p className="text-sm font-bold text-gray-900">Km Driven</p>
+          <p className="text-[11px] text-gray-400 mt-0.5">{allTimeKm.toFixed(1)} km all-time</p>
+        </div>
+        <div className="shrink-0" style={{ width: '132px' }}>
+          <Select value={range} onChange={onRangeChange} options={DISTANCE_RANGE_OPTIONS} />
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-8">
+          <Spinner size="sm" />
+        </div>
+      ) : (
+        <>
+          <div className="flex items-baseline gap-1.5 mb-1">
+            <span className="text-2xl font-black" style={{ color: DISTANCE_COLOR }}>{totalKm.toFixed(1)}</span>
+            <span className="text-xs font-semibold text-gray-400">
+              km {DISTANCE_RANGE_UNIT_LABEL[range] ?? 'this month'}
+            </span>
+          </div>
+          <p className="text-[11px] text-gray-400 mb-3">
+            {rangeLabel} — per {range === 'day' ? 'hour' : range === 'year' ? 'month' : 'day'}
+          </p>
+          <BarChart
+            data={chartData}
+            height={110}
+            color={DISTANCE_COLOR}
+            getValue={(d) => d.km}
+            tooltip={(v) => `${v.toFixed(1)} km`}
+          />
+        </>
+      )}
     </div>
   )
 }

@@ -158,6 +158,12 @@ export default function AdminBookingsClient({ initialStatusFilter, initialPickup
   const toast      = useToast()
   const [isPending, startTransition] = useTransition()
 
+  // Current list URL (path + filters/page), passed to the booking-detail page
+  // as ?from= so its back button returns here instead of the plain,
+  // unfiltered /admin/bookings list — otherwise paging forward, opening a
+  // booking, then going back always dropped the admin back to page 1.
+  const currentListUrl = `${pathname}${searchParams.toString() ? `?${searchParams.toString()}` : ''}`
+
   const [statusFilter, setStatusFilter] = useState(initialStatusFilter ?? 'todays_work')
   // '' means "explicitly cleared, no date restriction" — mirrors the
   // undefined/null distinction the server uses, but as a controlled input
@@ -773,7 +779,7 @@ export default function AdminBookingsClient({ initialStatusFilter, initialPickup
                     </div>
 
                     <Link
-                      href={`/admin/bookings/${b._id}`}
+                      href={`/admin/bookings/${b._id}?from=${encodeURIComponent(currentListUrl)}`}
                       onClick={(e) => e.stopPropagation()}
                       className="shrink-0 mt-1 p-1.5 rounded-lg transition-colors hover:bg-(--surface-2)"
                       style={{ color: 'var(--fg-3)' }}

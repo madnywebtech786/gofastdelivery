@@ -32,8 +32,18 @@ function MetaRow({ label, value }) {
 const cardCls   = 'rounded-xl border border-border bg-white overflow-hidden'
 const headerCls = 'px-5 py-3.5 border-b border-border bg-(--surface-2)'
 
-export default async function AdminBookingDetailPage({ params }) {
+// Only trust `from` as a relative path under /admin/ — anything else (an
+// absolute URL, a protocol-relative "//evil.com", a path outside admin)
+// falls back to the plain bookings list instead of being used as a redirect
+// target. startsWith('/admin/') alone rules out "//evil.com" too, since that
+// string doesn't start with "/admin/".
+function safeBackHref(from) {
+  return typeof from === 'string' && from.startsWith('/admin/') ? from : '/admin/bookings'
+}
+
+export default async function AdminBookingDetailPage({ params, searchParams }) {
   const { bookingId } = await params
+  const sp = await searchParams
   await requireAdmin()
 
   const booking = await findBookingById(bookingId)
@@ -42,11 +52,12 @@ export default async function AdminBookingDetailPage({ params }) {
   const [withAccount] = await attachCustomerAccounts([booking])
   const b = JSON.parse(JSON.stringify(withAccount))
   const canAssign = b.status === 'pending' || b.status === 'picked_up'
+  const backHref = safeBackHref(typeof sp?.from === 'string' ? sp.from : null)
 
   return (
     <div className="space-y-5 max-w-4xl">
       <div className="flex items-center gap-3 anim-fade-up">
-        <Link href="/admin/bookings" className="p-1.5 rounded-lg transition-colors hover:bg-(--surface-2)" style={{ color: 'var(--fg-3)' }}>
+        <Link href={backHref} className="p-1.5 rounded-lg transition-colors hover:bg-(--surface-2)" style={{ color: 'var(--fg-3)' }}>
           <ArrowLeft size={16} />
         </Link>
         <div className="flex items-center gap-3 flex-wrap">

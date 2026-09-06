@@ -120,6 +120,12 @@ export default function AdminHistoryClient({
   const [isPending, startTransition] = useTransition()
   const toast = useToast()
 
+  // Current list URL (path + filters/page), passed to the booking-detail page
+  // as ?from= so its back button returns here instead of the plain,
+  // unfiltered /admin/bookings list — otherwise paging to page 3, opening a
+  // booking, then going back always dropped the admin back to page 1.
+  const currentListUrl = `${pathname}${searchParams.toString() ? `?${searchParams.toString()}` : ''}`
+
   const [statusFilter, setStatusFilter] = useState(initialStatusFilter ?? '')
   const [dateFrom,     setDateFrom]     = useState(initialDateFrom ?? '')
   const [dateTo,       setDateTo]       = useState(initialDateTo ?? '')
@@ -633,7 +639,7 @@ export default function AdminHistoryClient({
 
                   {!selectMode && (
                     <Link
-                      href={`/admin/bookings/${b._id}`}
+                      href={`/admin/bookings/${b._id}?from=${encodeURIComponent(currentListUrl)}`}
                       className="shrink-0 mt-1 p-1.5 rounded-lg transition-colors hover:bg-(--surface-2)"
                       style={{ color: 'var(--fg-3)' }}
                     >
