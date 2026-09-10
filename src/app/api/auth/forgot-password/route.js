@@ -4,7 +4,7 @@ import { checkRateLimit, generateOtp } from '@/lib/redis'
 import { storeOtpDb, canResendOtpDb } from '@/lib/db/otps'
 import { sendPasswordResetOtp } from '@/lib/mailer'
 
-// Rate limit: 5 requests per IP per 15 minutes
+// Rate limit: 5 requests per IP per 15    minutes
 const IP_LIMIT  = 5
 const IP_WINDOW = 900
 
