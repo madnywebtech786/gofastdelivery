@@ -1,10 +1,19 @@
 import { MongoClient } from 'mongodb'
 
-if (!process.env.MONGODB_URI) {
-  throw new Error('MONGODB_URI environment variable is not set')
+// APP_ENV selects which database this instance talks to:
+//   development / testing -> TESTING_MONGODB_URI (staging cluster)
+//   production, or unset  -> MONGODB_URI (real production cluster)
+// Unset defaults to production so existing deploys that haven't set APP_ENV
+// yet keep connecting exactly where they already do today.
+const appEnv = process.env.APP_ENV ?? 'production'
+const usesTestingDb = appEnv === 'development' || appEnv === 'testing'
+
+const uriEnvVar = usesTestingDb ? 'TESTING_MONGODB_URI' : 'MONGODB_URI'
+if (!process.env[uriEnvVar]) {
+  throw new Error(`${uriEnvVar} environment variable is not set (APP_ENV=${appEnv})`)
 }
 
-const uri = process.env.MONGODB_URI
+const uri = process.env[uriEnvVar]
 const options = {
   maxPoolSize: 10,
   serverSelectionTimeoutMS: 5000,
@@ -40,7 +49,7 @@ function getClientPromise() {
 }
 
 /**
- * Returns a handle to the database named in MONGODB_URI's path segment
+ * Returns a handle to the database named in the selected URI's path segment
  * (client.db() with no argument uses that name automatically).
  * Reuses the existing connection if already established.
  */
