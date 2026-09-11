@@ -104,7 +104,6 @@ export default function DriverShell({ children }) {
         >
           {TABS.map((tab) => {
             const active = pathname === tab.href || (tab.href === '/driver/home' && pathname === '/driver')
-            const isNavigate = tab.href === '/driver/route'
 
             return (
               <Link
@@ -113,7 +112,7 @@ export default function DriverShell({ children }) {
                 className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2.5 transition-colors relative"
                 style={{ color: active ? 'var(--accent)' : 'var(--fg-3)' }}
               >
-                {isNavigate ? (
+                {active ? (
                   <div
                     className="w-12 h-12 rounded-2xl flex items-center justify-center -mt-5 shadow-lg transition-all"
                     style={{ background: 'var(--accent)', boxShadow: '0 4px 16px var(--accent-glow)' }}
@@ -121,25 +120,17 @@ export default function DriverShell({ children }) {
                     <span className="text-white">{tab.icon(true)}</span>
                   </div>
                 ) : (
-                  tab.icon(active)
+                  tab.icon(false)
                 )}
                 <span
                   className="text-[10px] font-semibold"
                   style={{
                     color: active ? 'var(--accent)' : 'var(--fg-3)',
-                    marginTop: isNavigate ? '2px' : undefined,
+                    marginTop: active ? '2px' : undefined,
                   }}
                 >
                   {tab.label}
                 </span>
-
-                {/* Active dot indicator */}
-                {active && !isNavigate && (
-                  <span
-                    className="absolute bottom-1 w-1 h-1 rounded-full"
-                    style={{ background: 'var(--accent)' }}
-                  />
-                )}
               </Link>
             )
           })}

@@ -587,6 +587,22 @@ export async function reoptimizeRoute({ driverId, currentLng, currentLat, endPoi
     console.warn('[reoptimize] directions failed — keeping existing polyline, Haversine ETA fallback:', err.message)
   }
 
+  // One-time snapshot of the planned route duration/distance, taken the first
+  // time this route is ever reoptimized with zero completed stops (i.e. the
+  // driver has just set their end-point / opened the route and nothing has
+  // been delivered yet). Written once per route doc and never touched again —
+  // later reoptimizes only shrink totalDurationSeconds as stops complete, so
+  // this is the only point where "estimated time for the whole route" is
+  // actually available. Guarded on completedStops.length === 0 rather than
+  // just "field is null" so a mid-route ORS outage (durationSeconds stays
+  // null, caught above) can't leave this permanently unset — it stays
+  // eligible to be captured on the next successful reoptimize as long as no
+  // stop has completed yet.
+  const initialEstimateFields =
+    route.initialEstimatedDurationSeconds == null && completedStops.length === 0 && durationSeconds != null
+      ? { initialEstimatedDurationSeconds: durationSeconds, initialEstimatedDistanceMeters: distanceMeters }
+      : {}
+
   // If Directions API failed or returned no leg durations, estimate from
   // haversine distances at 40 km/h average urban driving speed.
   if (legDurations.length === 0 && dirCoords.length >= 2) {
@@ -625,6 +641,7 @@ export async function reoptimizeRoute({ driverId, currentLng, currentLat, endPoi
     totalDistanceMeters:  distanceMeters,
     totalDurationSeconds: durationSeconds,
     endPoint:             endPoint ?? null,
+    ...initialEstimateFields,
   })
 
   // Sync the freshly-computed ETA onto each affected booking so the public
@@ -644,6 +661,7 @@ export async function reoptimizeRoute({ driverId, currentLng, currentLat, endPoi
     totalDistanceMeters:  distanceMeters,
     totalDurationSeconds: durationSeconds,
     endPoint:             endPoint ?? null,
+    ...initialEstimateFields,
   }
 
   // Hydrate packageItems onto stops before caching / pushing so the driver

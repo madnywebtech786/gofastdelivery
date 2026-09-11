@@ -1,6 +1,6 @@
 import { ObjectId } from 'mongodb'
 import { getDb } from './client.js'
-import { calgaryStartOfToday, CALGARY_TZ } from '../dateFormat.js'
+import { calgaryStartOfToday, calgaryStartOfDay, calgaryEndOfDay, calgaryDateKey, CALGARY_TZ } from '../dateFormat.js'
 
 const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
@@ -11,38 +11,57 @@ const DISTANCE_RANGES = ['day', 'week', 'month', 'year']
  * calendar day/week/month/year containing "now" — never the server's local
  * timezone (see calgaryStartOfToday doc comment).
  * 'week' starts Monday, matching how most drivers think about a work week.
+ *
+ * Built entirely on calgaryDateKey/calgaryStartOfDay/calgaryEndOfDay — never
+ * a Date object's local getDate()/getDay()/setDate(), which read the Node
+ * PROCESS's own timezone (its `TZ` env, or OS default), not Calgary's. On
+ * Vercel that process timezone happens to be UTC, which coincidentally lines
+ * up with Calgary's calendar date for every instant Calgary is ever behind
+ * UTC by — but any dev machine or script runner with a different TZ (this
+ * repo's own CI/local dev is not guaranteed to be UTC) would silently read
+ * the wrong day-of-month/day-of-week whenever the two clocks disagree, and
+ * quietly shift the day/week window by a day. Same fix already applied to
+ * driverHistoryRangeWindow in db/bookings.js — this brings that one in line
+ * with it. When day/week/month/year math is needed, it happens on calendar-
+ * date STRINGS (immune to any process timezone) via a UTC-noon anchor, and
+ * only the final start/end resolve through the real Calgary-midnight probe.
  */
 function distanceRangeWindow(range) {
-  const todayStart = calgaryStartOfToday()
+  const todayKey = calgaryDateKey()
 
   if (range === 'day') {
-    const end = new Date(todayStart)
-    end.setDate(end.getDate() + 1)
-    return { start: todayStart, end }
+    return { start: calgaryStartOfDay(todayKey), end: calgaryEndOfDay(todayKey) }
   }
 
   if (range === 'week') {
-    // getDay(): 0=Sun..6=Sat. Convert to a Monday-start offset.
-    const dayOfWeek = todayStart.getDay()
+    // UTC-noon anchor for the day-of-week/day-stepping arithmetic — a plain
+    // calendar-date computation immune to the process's own timezone, only
+    // the resulting calendar-date strings are handed back to the real
+    // Calgary-midnight probe below.
+    const noon = new Date(`${todayKey}T12:00:00.000Z`)
+    const dayOfWeek = noon.getUTCDay() // 0=Sun..6=Sat
     const daysSinceMonday = (dayOfWeek + 6) % 7
-    const start = new Date(todayStart)
-    start.setDate(start.getDate() - daysSinceMonday)
-    const end = new Date(start)
-    end.setDate(end.getDate() + 7)
-    return { start, end }
+    const monday = new Date(noon)
+    monday.setUTCDate(monday.getUTCDate() - daysSinceMonday)
+    const sunday = new Date(monday)
+    sunday.setUTCDate(sunday.getUTCDate() + 6)
+    const mondayKey = monday.toISOString().slice(0, 10)
+    const sundayKey = sunday.toISOString().slice(0, 10)
+    return { start: calgaryStartOfDay(mondayKey), end: calgaryEndOfDay(sundayKey) }
   }
 
   if (range === 'year') {
-    const year = Number(todayStart.toLocaleDateString('en-CA', { timeZone: CALGARY_TZ, year: 'numeric' }))
-    return { start: calgaryStartOfToday(new Date(`${year}-01-01T12:00:00Z`)), end: calgaryStartOfToday(new Date(`${year + 1}-01-01T12:00:00Z`)) }
+    const [year] = todayKey.split('-')
+    return { start: calgaryStartOfDay(`${year}-01-01`), end: calgaryEndOfDay(`${year}-12-31`) }
   }
 
   // 'month' (default)
-  const [year, month] = todayStart.toLocaleDateString('en-CA', { timeZone: CALGARY_TZ }).split('-').map(Number)
-  const start = calgaryStartOfToday(new Date(Date.UTC(year, month - 1, 1, 12)))
-  const nextMonth = month === 12 ? { y: year + 1, m: 1 } : { y: year, m: month + 1 }
-  const end = calgaryStartOfToday(new Date(Date.UTC(nextMonth.y, nextMonth.m - 1, 1, 12)))
-  return { start, end }
+  const [year, month] = todayKey.split('-')
+  const lastDay = new Date(Date.UTC(Number(year), Number(month), 0)).getUTCDate()
+  return {
+    start: calgaryStartOfDay(`${year}-${month}-01`),
+    end:   calgaryEndOfDay(`${year}-${month}-${String(lastDay).padStart(2, '0')}`),
+  }
 }
 
 const WEEKDAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -59,10 +78,10 @@ const WEEKDAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 // on every stop-complete/stop-failed/reroute, so on a finished route it's the
 // moment the LAST leg was driven — matching the deliveries-per-day chart
 // (bookings.updatedAt) it's rendered next to on the driver detail page.
-function distanceBucketSpec(range, start) {
+function distanceBucketSpec(range, start, dateField = '$updatedAt') {
   if (range === 'day') {
     return {
-      groupId: { $hour: { date: '$updatedAt', timezone: CALGARY_TZ } },
+      groupId: { $hour: { date: dateField, timezone: CALGARY_TZ } },
       buckets: Array.from({ length: 24 }, (_, h) => ({
         id: h,
         label: h === 0 ? '12am' : h < 12 ? `${h}am` : h === 12 ? '12pm' : `${h - 12}pm`,
@@ -71,21 +90,26 @@ function distanceBucketSpec(range, start) {
   }
   if (range === 'week') {
     return {
-      groupId: { $dayOfWeek: { date: '$updatedAt', timezone: CALGARY_TZ } }, // 1=Sun..7=Sat
+      groupId: { $dayOfWeek: { date: dateField, timezone: CALGARY_TZ } }, // 1=Sun..7=Sat
       // Reorder Mon..Sun to match distanceRangeWindow's Monday-start week.
       buckets: [1, 2, 3, 4, 5, 6, 0].map((wd) => ({ id: wd + 1, label: WEEKDAY_SHORT[wd] })),
     }
   }
   if (range === 'year') {
     return {
-      groupId: { $month: { date: '$updatedAt', timezone: CALGARY_TZ } },
+      groupId: { $month: { date: dateField, timezone: CALGARY_TZ } },
       buckets: MONTHS_SHORT.map((label, i) => ({ id: i + 1, label })),
     }
   }
-  // 'month' — one bucket per calendar day of the selected month.
-  const daysInMonth = new Date(start.getFullYear(), start.getMonth() + 1, 0).getDate()
+  // 'month' — one bucket per calendar day of the selected month. `start` is
+  // the Calgary-midnight instant for day 1 of that month (from
+  // distanceRangeWindow) — read its Calgary calendar date via calgaryDateKey,
+  // never .getFullYear()/.getMonth() (local-to-the-Node-process, not
+  // Calgary; see distanceRangeWindow's own doc comment for why that's unsafe).
+  const [y, m] = calgaryDateKey(start).split('-').map(Number)
+  const daysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate()
   return {
-    groupId: { $dayOfMonth: { date: '$updatedAt', timezone: CALGARY_TZ } },
+    groupId: { $dayOfMonth: { date: dateField, timezone: CALGARY_TZ } },
     buckets: Array.from({ length: daysInMonth }, (_, i) => ({ id: i + 1, label: String(i + 1) })),
   }
 }
@@ -129,7 +153,7 @@ export async function getDriverDistanceForRange(driverId, range = 'month') {
   const { groupId, buckets } = distanceBucketSpec(safeRange, start)
 
   const rows = await db.collection('routes').aggregate([
-    { $match: { driverId: objId, updatedAt: { $gte: start, $lt: end } } },
+    { $match: { driverId: objId, updatedAt: { $gte: start, $lte: end } } },
     { $group: { _id: groupId, meters: { $sum: { $ifNull: ['$drivenDistanceMeters', 0] } } } },
   ]).toArray()
   const byId = new Map(rows.map((r) => [r._id, r.meters]))
@@ -138,6 +162,42 @@ export async function getDriverDistanceForRange(driverId, range = 'month') {
   const distanceMeters = series.reduce((sum, s) => sum + s.meters, 0)
 
   return { range: safeRange, distanceMeters, series }
+}
+
+/**
+ * Sum of routes.initialEstimatedDurationSeconds for routes CREATED (createdAt)
+ * within the given Calgary-anchored range for this driver, plus a bucketed
+ * series for the chart — same shape/granularity as getDriverDistanceForRange.
+ *
+ * Uses createdAt, not updatedAt: unlike drivenDistanceMeters (a running total
+ * that grows across a route's whole life, so it has to be credited to
+ * whichever day it stopped growing), initialEstimatedDurationSeconds is a
+ * single snapshot written once, at route start (see reoptimizeRoute) — the
+ * day the route was created IS the day that estimate belongs to, no
+ * cross-midnight attribution problem to work around.
+ *
+ * Rough estimate by design: it's ORS's one-time planned-route-duration guess
+ * from the moment the driver set their end-point, not measured elapsed time.
+ * Routes created before this field existed have it as null/absent and
+ * contribute 0, same as a route with no completed reoptimize yet.
+ */
+export async function getDriverEstimatedHoursForRange(driverId, range = 'month') {
+  const safeRange = DISTANCE_RANGES.includes(range) ? range : 'month'
+  const db = await getDb()
+  const objId = new ObjectId(driverId)
+  const { start, end } = distanceRangeWindow(safeRange)
+  const { groupId, buckets } = distanceBucketSpec(safeRange, start, '$createdAt')
+
+  const rows = await db.collection('routes').aggregate([
+    { $match: { driverId: objId, createdAt: { $gte: start, $lte: end } } },
+    { $group: { _id: groupId, seconds: { $sum: { $ifNull: ['$initialEstimatedDurationSeconds', 0] } } } },
+  ]).toArray()
+  const byId = new Map(rows.map((r) => [r._id, r.seconds]))
+
+  const series = buckets.map((b) => ({ label: b.label, seconds: byId.get(b.id) ?? 0 }))
+  const durationSeconds = series.reduce((sum, s) => sum + s.seconds, 0)
+
+  return { range: safeRange, durationSeconds, series }
 }
 
 /**
@@ -203,6 +263,9 @@ export async function getDriverStats(driverId, { year, month, distanceRange = 'm
   // Distance-driven stat for the requested range (day/week/month/year, Calgary-anchored)
   const distanceForRange = await getDriverDistanceForRange(driverId, distanceRange)
 
+  // Estimated route-hours stat for the same range — see getDriverEstimatedHoursForRange.
+  const estimatedHoursForRange = await getDriverEstimatedHoursForRange(driverId, distanceRange)
+
   // Per-day completed bookings for selected month+year — window boundaries
   // anchored to Calgary midnight, not UTC midnight (see calgaryStartOfToday).
   const monthStart = calgaryStartOfToday(new Date(Date.UTC(targetYear, targetMonth - 1, 1, 12)))
@@ -252,6 +315,8 @@ export async function getDriverStats(driverId, { year, month, distanceRange = 'm
     distanceRangeMeters: distanceForRange.distanceMeters,
     distanceRange: distanceForRange.range,
     distanceSeries: distanceForRange.series,
+    estimatedHoursRangeSeconds: estimatedHoursForRange.durationSeconds,
+    estimatedHoursSeries: estimatedHoursForRange.series,
     totalCompletedBookings,
     totalRoutes,
     byDay,
@@ -307,6 +372,8 @@ export async function upsertDriverRoute(driverId, routeData) {
   const now = new Date()
   const doc = {
     driverId: new ObjectId(driverId),
+    initialEstimatedDurationSeconds: null,
+    initialEstimatedDistanceMeters:  null,
     ...routeData,
     isActive: true,
     createdAt: now,

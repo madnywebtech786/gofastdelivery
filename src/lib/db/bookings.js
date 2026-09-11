@@ -2,7 +2,7 @@ import { ObjectId } from 'mongodb'
 import { nanoid } from 'nanoid'
 import { getDb } from './client.js'
 import { MAX_PHOTOS_PER_STOP } from '../s3.js'
-import { calgaryStartOfToday, CALGARY_TZ } from '../dateFormat.js'
+import { calgaryStartOfToday, calgaryStartOfDay, calgaryEndOfDay, calgaryDateKey, CALGARY_TZ } from '../dateFormat.js'
 import { findAccountsByIds } from './users.js'
 
 const MAX_PACKAGES = 20
@@ -561,8 +561,18 @@ const FAILED_STATUSES  = ['failed_pickup', 'failed_dropoff']
  */
 export async function getDashboardStats({ days = 30 } = {}) {
   const db = await getDb()
-  const windowStart = calgaryStartOfToday()
-  windowStart.setDate(windowStart.getDate() - (days - 1))
+  // Step back (days - 1) calendar days via a UTC-noon anchor on the Calgary
+  // date STRING, then resolve through the real Calgary-midnight probe — not
+  // calgaryStartOfToday().setDate(...), which reads/writes in the Node
+  // PROCESS's own timezone (its `TZ` env or OS default), not Calgary's. That
+  // happens to work when the process runs in UTC (true on Vercel) but is
+  // wrong on a process with a different TZ — see distanceRangeWindow's doc
+  // comment in db/drivers.js for the same bug class, reproduced and fixed
+  // there.
+  const todayKey = calgaryDateKey()
+  const anchor = new Date(`${todayKey}T12:00:00.000Z`)
+  anchor.setUTCDate(anchor.getUTCDate() - (days - 1))
+  const windowStart = calgaryStartOfDay(anchor.toISOString().slice(0, 10))
 
   const [windowResult] = await db.collection('bookings').aggregate([
     { $match: { createdAt: { $gte: windowStart } } },
@@ -638,12 +648,63 @@ export async function getDashboardStats({ days = 30 } = {}) {
   }
 }
 
+const DRIVER_HISTORY_RANGES = ['day', 'week', 'month', 'year']
+
 /**
- * Get bookings assigned to a driver, optionally filtered by status group.
- * statusGroup: 'active' | 'completed' | 'all'
+ * [start, end) window for a driver-history range filter, anchored to the
+ * Calgary calendar day/week/month/year containing "now" — same reasoning as
+ * distanceRangeWindow in db/drivers.js (not shared code: that helper is
+ * module-private and this is the only other place that needs it). 'week'
+ * starts Monday, matching distanceRangeWindow's convention.
  */
-export async function findBookingsByDriver(driverId, { statusGroup = 'all', limit = 30 } = {}) {
-  const db = await getDb()
+function driverHistoryRangeWindow(range) {
+  const todayKey = calgaryDateKey()
+
+  if (range === 'day') {
+    return { start: calgaryStartOfDay(todayKey), end: calgaryEndOfDay(todayKey) }
+  }
+
+  if (range === 'week') {
+    // Pure calendar-string arithmetic (via a plain UTC-noon Date, so the
+    // Calgary-offset probe inside calgaryStartOfDay/calgaryDateKey never
+    // enters this step) — sidesteps any ambiguity from stepping a real
+    // Calgary-midnight instant across a DST boundary.
+    const noon = new Date(`${todayKey}T12:00:00.000Z`)
+    const dayOfWeek = noon.getUTCDay() // 0=Sun..6=Sat
+    const daysSinceMonday = (dayOfWeek + 6) % 7
+    const monday = new Date(noon)
+    monday.setUTCDate(monday.getUTCDate() - daysSinceMonday)
+    const sunday = new Date(monday)
+    sunday.setUTCDate(sunday.getUTCDate() + 6)
+    const mondayKey = monday.toISOString().slice(0, 10)
+    const sundayKey = sunday.toISOString().slice(0, 10)
+    return { start: calgaryStartOfDay(mondayKey), end: calgaryEndOfDay(sundayKey) }
+  }
+
+  if (range === 'year') {
+    const [year] = todayKey.split('-')
+    return { start: calgaryStartOfDay(`${year}-01-01`), end: calgaryEndOfDay(`${year}-12-31`) }
+  }
+
+  // 'month'
+  const [year, month] = todayKey.split('-')
+  const lastDay = new Date(Date.UTC(Number(year), Number(month), 0)).getUTCDate()
+  return {
+    start: calgaryStartOfDay(`${year}-${month}-01`),
+    end:   calgaryEndOfDay(`${year}-${month}-${String(lastDay).padStart(2, '0')}`),
+  }
+}
+
+/**
+ * Shared filter builder for findBookingsByDriver/countBookingsByDriver.
+ * statusGroup: 'active' | 'completed' | 'all'
+ * range: 'day' | 'week' | 'month' | 'year' | undefined (no date filter — all-time)
+ * Date filtering uses updatedAt, matching the admin History page's own
+ * reasoning (see buildAdminFilter's dateField doc comment) — statusGroup
+ * 'completed' only ever shows delivered bookings, so "on this date" means
+ * the day it was delivered, not the day it was originally placed.
+ */
+function buildDriverHistoryFilter(driverId, { statusGroup = 'all', range } = {}) {
   const filter = { assignedDriverId: new ObjectId(driverId) }
 
   if (statusGroup === 'active') {
@@ -652,12 +713,30 @@ export async function findBookingsByDriver(driverId, { statusGroup = 'all', limi
     filter.status = 'delivered'
   }
 
+  if (DRIVER_HISTORY_RANGES.includes(range)) {
+    const { start, end } = driverHistoryRangeWindow(range)
+    filter.updatedAt = { $gte: start, $lte: end }
+  }
+
+  return filter
+}
+
+/**
+ * Get bookings assigned to a driver, optionally filtered by status group,
+ * a Calgary-anchored date range, and paginated (skip/limit) — same
+ * skip/limit contract as findAllBookings, for the driver-facing history page.
+ */
+export async function findBookingsByDriver(driverId, { statusGroup = 'all', range, limit = 30, skip = 0 } = {}) {
+  const db = await getDb()
+  const filter = buildDriverHistoryFilter(driverId, { statusGroup, range })
+
   return db
     .collection('bookings')
     .find(filter, {
       projection: {
-        _id: 1, status: 1, stops: 1, assignedAt: 1,
-        estimatedDistanceMeters: 1, estimatedDurationSeconds: 1, updatedAt: 1,
+        _id: 1, status: 1, stops: 1, assignedAt: 1, packageDetails: 1,
+        estimatedDistanceMeters: 1, estimatedDurationSeconds: 1, estimatedPrice: 1,
+        trackingToken: 1, senderEmail: 1, receiverEmail: 1, updatedAt: 1, createdAt: 1,
         // Needed so the driver detail page can mark rows the admin hid from
         // the History page. The driver's own counters deliberately still
         // include these (hiding is a view concern, not a deletion — see
@@ -667,8 +746,18 @@ export async function findBookingsByDriver(driverId, { statusGroup = 'all', limi
       },
     })
     .sort({ updatedAt: -1 })
+    .skip(skip)
     .limit(limit)
     .toArray()
+}
+
+/**
+ * Count of findBookingsByDriver's filter, for pagination — same
+ * statusGroup/range args, no skip/limit.
+ */
+export async function countBookingsByDriver(driverId, { statusGroup = 'all', range } = {}) {
+  const db = await getDb()
+  return db.collection('bookings').countDocuments(buildDriverHistoryFilter(driverId, { statusGroup, range }))
 }
 
 /**

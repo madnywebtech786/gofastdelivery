@@ -136,41 +136,124 @@ function StatCard({ icon: Icon, label, value, sub, color = 'var(--accent)' }) {
   )
 }
 
-// Renders a bar chart where bars scale by `count` (always visible, even for $0
-// invoices) and a tooltip shows both count and revenue on hover.
-function InvoiceBars({ data, chartHeight = 140 }) {
-  const maxCount = Math.max(...data.map(d => d.count ?? 0), 1)
+// Renders a filled line/area chart of PAID revenue per bucket (day or
+// month) — a trend line suits a revenue-over-time story better than bars,
+// which read as "how many" rather than "how much". Points are plotted with
+// even horizontal spacing (not a true value-based x-axis — buckets are
+// already evenly spaced calendar units), y-axis scaled to the max revenue
+// in view. Hover any point for exact paid revenue + invoice count that day.
+function InvoiceRevenueChart({ data, chartHeight = 160 }) {
+  const [hoverIdx, setHoverIdx] = useState(null)
+  const maxRevenue = Math.max(...data.map(d => d.revenue ?? 0), 1)
+  const n = data.length
+  const padTop = 16 // room for the value label above the highest point
+
+  // Points in a 0-100 (x) by 0-100 (y) viewBox, y=0 at top (SVG convention).
+  const points = data.map((d, i) => {
+    const x = n > 1 ? (i / (n - 1)) * 100 : 50
+    const revenue = d.revenue ?? 0
+    const valueFrac = revenue / maxRevenue
+    const y = 100 - valueFrac * (100 - (padTop / chartHeight) * 100)
+    return { x, y, revenue, count: d.count ?? 0, label: d.label }
+  })
+
+  const linePath = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ')
+  const areaPath = `${linePath} L ${points[n - 1]?.x ?? 100} 100 L ${points[0]?.x ?? 0} 100 Z`
+
+  // Thin out x-axis labels when there are many buckets (e.g. 31 days) so
+  // they don't overlap — always keep first/last, evenly sample the rest.
+  const labelEvery = n > 15 ? Math.ceil(n / 10) : 1
+
   return (
-    <div className="flex items-end gap-0.5" style={{ height: chartHeight }}>
-      {data.map((d, i) => {
-        const count = d.count ?? 0
-        // Bar height driven by count so zero-revenue invoices still appear
-        const pct = count > 0 ? Math.max((count / maxCount) * 100, 6) : 0
+    <div className="relative" style={{ height: chartHeight }}>
+      <svg
+        viewBox="0 0 100 100"
+        preserveAspectRatio="none"
+        className="w-full"
+        style={{ height: chartHeight - 18 }}
+      >
+        <defs>
+          <linearGradient id="invoiceRevenueFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#16a34a" stopOpacity="0.28" />
+            <stop offset="100%" stopColor="#16a34a" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        {n > 0 && (
+          <>
+            <path d={areaPath} fill="url(#invoiceRevenueFill)" stroke="none" />
+            <path d={linePath} fill="none" stroke="#16a34a" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+            {/* Invisible hover targets — wider than the dots for an easy hit area */}
+            {points.map((p, i) => (
+              <rect
+                key={`hit-${i}`}
+                x={n > 1 ? (i / n) * 100 : 0}
+                y="0"
+                width={n > 1 ? 100 / n : 100}
+                height="100"
+                fill="transparent"
+                onMouseEnter={() => setHoverIdx(i)}
+                onMouseLeave={() => setHoverIdx((cur) => (cur === i ? null : cur))}
+              />
+            ))}
+          </>
+        )}
+      </svg>
+
+      {/* Point dots — plain HTML circles, not SVG, since the chart's viewBox
+          scales x/y independently (preserveAspectRatio="none" to fill the
+          container) which stretches an SVG <circle> into an ellipse. A
+          fixed-pixel-size div positioned by percentage stays a true circle
+          regardless of that scaling. */}
+      {n > 0 && points.map((p, i) => {
+        if (p.revenue <= 0 && hoverIdx !== i) return null
+        const size = hoverIdx === i ? 8 : 5
         return (
-          <div key={i} className="flex-1 flex flex-col items-center gap-1 group relative min-w-0">
-            {/* Tooltip */}
-            {count > 0 && (
-              <div className="absolute bottom-full mb-1.5 left-1/2 -translate-x-1/2 z-10 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">
-                <div className="px-2 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap shadow-lg text-center"
-                  style={{ background: 'var(--fg)', color: 'var(--bg,white)' }}>
-                  <div>{count} invoice{count !== 1 ? 's' : ''}</div>
-                  {(d.revenue ?? 0) > 0 && <div style={{ color: '#86efac' }}>{fmtCAD(d.revenue)} paid</div>}
-                  {(d.total ?? 0) > 0 && <div style={{ color: '#93c5fd' }}>{fmtCAD(d.total)} billed</div>}
-                </div>
-              </div>
-            )}
-            <div className="w-full rounded-t-sm relative overflow-hidden transition-all duration-300"
-              style={{ height: `${pct}%`, minHeight: count > 0 ? '4px' : '0', background: 'var(--accent)', opacity: 0.25 }}>
-              {/* Green fill proportional to paid revenue vs total billed */}
-              {(d.total ?? 0) > 0 && (
-                <div className="absolute bottom-0 left-0 right-0 rounded-t-sm"
-                  style={{ height: `${(d.revenue / d.total) * 100}%`, background: '#16a34a', opacity: 4 }} />
-              )}
-            </div>
-            <span className="text-[9px] font-medium truncate w-full text-center" style={{ color: 'var(--fg-3)' }}>{d.label}</span>
-          </div>
+          <div
+            key={`dot-${i}`}
+            className="absolute rounded-full pointer-events-none"
+            style={{
+              left: `${p.x}%`,
+              top: `${(p.y / 100) * (chartHeight - 18)}px`,
+              width: size, height: size,
+              background: '#16a34a',
+              border: hoverIdx === i ? '1.5px solid white' : 'none',
+              boxShadow: hoverIdx === i ? '0 1px 4px rgba(0,0,0,0.25)' : 'none',
+              transform: 'translate(-50%, -50%)',
+            }}
+          />
         )
       })}
+
+      {/* Tooltip */}
+      {hoverIdx != null && points[hoverIdx] && (
+        <div
+          className="absolute z-10 pointer-events-none px-2.5 py-1.5 rounded-md text-xs font-semibold shadow-lg text-center whitespace-nowrap"
+          style={{
+            background: 'var(--fg)', color: 'white',
+            left: `${points[hoverIdx].x}%`,
+            top: `${(points[hoverIdx].y / 100) * (chartHeight - 18)}px`,
+            transform: 'translate(-50%, -130%)',
+          }}
+        >
+          <div style={{ color: '#86efac' }}>{fmtCAD(points[hoverIdx].revenue)} paid</div>
+          <div className="text-[10px] font-normal opacity-80">
+            {points[hoverIdx].count} invoice{points[hoverIdx].count !== 1 ? 's' : ''}
+          </div>
+        </div>
+      )}
+
+      {/* X-axis labels */}
+      <div className="flex mt-1">
+        {data.map((d, i) => (
+          <span
+            key={i}
+            className="flex-1 text-[9px] font-medium text-center truncate"
+            style={{ color: 'var(--fg-3)', visibility: (i % labelEvery === 0 || i === n - 1) ? 'visible' : 'hidden' }}
+          >
+            {d.label}
+          </span>
+        ))}
+      </div>
     </div>
   )
 }
@@ -204,8 +287,8 @@ function InvoiceStats({ stats, selectedYear, selectedMonth, onYearChange, onMont
 
   const chartData  = view === 'monthly' ? dailyData : monthlyData
   const chartTitle = view === 'monthly'
-    ? `${MONTHS_SHORT[(selectedMonth ?? nowInCalgary.month) - 1]} ${selectedYear} — invoices per day`
-    : `${selectedYear} — invoices per month`
+    ? `${MONTHS_SHORT[(selectedMonth ?? nowInCalgary.month) - 1]} ${selectedYear} — paid revenue per day`
+    : `${selectedYear} — paid revenue per month`
 
   return (
     <div className="space-y-4 anim-fade-up">
@@ -257,16 +340,13 @@ function InvoiceStats({ stats, selectedYear, selectedMonth, onYearChange, onMont
             <span className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--fg-3)' }}>
               <span className="w-3 h-3 rounded-sm inline-block" style={{ background: '#16a34a' }} /> Paid revenue
             </span>
-            <span className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--fg-3)' }}>
-              <span className="w-3 h-3 rounded-sm inline-block" style={{ background: 'var(--accent)', opacity: 0.25 }} /> Invoices
-            </span>
           </div>
         </div>
 
         {/* Chart title */}
         <p className="text-xs font-semibold mb-3 capitalize" style={{ color: 'var(--fg-3)' }}>{chartTitle}</p>
 
-        <InvoiceBars data={chartData} chartHeight={140} />
+        <InvoiceRevenueChart data={chartData} chartHeight={160} />
       </div>
     </div>
   )

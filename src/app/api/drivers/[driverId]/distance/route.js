@@ -1,13 +1,14 @@
 import { NextResponse } from 'next/server'
 import { requireDriver, handleApiError } from '@/lib/dal'
-import { getDriverDistanceForRange, findDriverById } from '@/lib/db/drivers'
+import { getDriverDistanceForRange, getDriverEstimatedHoursForRange, findDriverById } from '@/lib/db/drivers'
 
 /**
  * GET /api/drivers/[driverId]/distance?range=day|week|month|year
  *
- * Driver-facing equivalent of the km-driven chart on the admin driver-detail
- * page — same underlying aggregation (getDriverDistanceForRange), scoped to
- * the calling driver's own id only.
+ * Driver-facing equivalent of the km-driven / estimated-hours charts on the
+ * admin driver-detail page — same underlying aggregations
+ * (getDriverDistanceForRange, getDriverEstimatedHoursForRange), scoped to the
+ * calling driver's own id only.
  */
 export async function GET(request, { params }) {
   try {
@@ -20,8 +21,9 @@ export async function GET(request, { params }) {
 
     const range = new URL(request.url).searchParams.get('range') ?? 'month'
 
-    const [distanceForRange, driver] = await Promise.all([
+    const [distanceForRange, estimatedHoursForRange, driver] = await Promise.all([
       getDriverDistanceForRange(driverId, range),
+      getDriverEstimatedHoursForRange(driverId, range),
       findDriverById(driverId),
     ])
 
@@ -30,6 +32,8 @@ export async function GET(request, { params }) {
       distanceRangeMeters: distanceForRange.distanceMeters,
       distanceRange: distanceForRange.range,
       distanceSeries: distanceForRange.series,
+      estimatedHoursRangeSeconds: estimatedHoursForRange.durationSeconds,
+      estimatedHoursSeries: estimatedHoursForRange.series,
     })
   } catch (err) {
     return handleApiError(err, '[GET /api/drivers/[driverId]/distance]')

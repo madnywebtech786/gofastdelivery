@@ -5,7 +5,7 @@ import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import { useCallback } from 'react'
 import {
   ArrowLeft, Mail, Phone, ChevronLeft, ChevronRight,
-  Truck, Package, Route, TrendingUp, Trash2,
+  Truck, Package, Route, TrendingUp, Trash2, Clock,
 } from 'lucide-react'
 import Link from 'next/link'
 import Select from '@/components/ui/Select'
@@ -169,6 +169,58 @@ function DriverDistanceChart({ stats, distanceRange, onRangeChange }) {
   )
 }
 
+// ── Estimated hours chart — same range picker/state as the distance chart
+// (one route-level range selection drives both, rather than two independent
+// pickers that could disagree). Each bar is the SUM of initialEstimatedDurationSeconds
+// across routes created that day/hour/month — a rough planned-duration estimate
+// taken once per route at start, not measured time actually worked.
+const HOURS_COLOR = '#f59e0b'
+
+function formatHoursLabel(totalSeconds) {
+  const hrs = totalSeconds / 3600
+  return hrs.toFixed(1)
+}
+
+function DriverEstimatedHoursChart({ stats, distanceRange, onRangeChange }) {
+  const series = stats.estimatedHoursSeries ?? []
+  const chartData = series.map((s) => ({ label: s.label, hours: s.seconds / 3600 }))
+  const totalHours = formatHoursLabel(stats.estimatedHoursRangeSeconds ?? 0)
+  const rangeLabel = DISTANCE_RANGE_OPTIONS.find((o) => o.value === distanceRange)?.label ?? 'This Month'
+
+  return (
+    <div className="rounded-2xl border border-border bg-white p-5">
+      {/* Controls */}
+      <div className="flex flex-wrap items-center gap-3 mb-5">
+        <div className="shrink-0" style={{ width: '150px' }}>
+          <Select
+            value={distanceRange}
+            onChange={onRangeChange}
+            options={DISTANCE_RANGE_OPTIONS}
+          />
+        </div>
+
+        <div className="ml-auto text-right">
+          <span className="text-2xl font-black" style={{ color: HOURS_COLOR }}>{totalHours}</span>
+          <span className="text-xs ml-1.5 font-semibold" style={{ color: 'var(--fg-3)' }}>
+            hrs (est.) {DISTANCE_RANGE_UNIT_LABEL[distanceRange] ?? 'this month'}
+          </span>
+        </div>
+      </div>
+
+      <p className="text-xs font-semibold mb-4" style={{ color: 'var(--fg-3)' }}>
+        {rangeLabel} — estimated route hours {distanceRange === 'day' ? 'per hour' : distanceRange === 'year' ? 'per month' : 'per day'}
+      </p>
+      <BarChart
+        data={chartData}
+        height={130}
+        color={HOURS_COLOR}
+        getValue={(d) => d.hours}
+        tooltip={(v) => `${v.toFixed(1)} hrs (est.)`}
+      />
+    </div>
+  )
+}
+
 // ── Main client component ──────────────────────────────────────────────────────
 const STATUS_LABEL = {
   pending:            { label: 'Pending',          color: '#f59e0b' },
@@ -312,6 +364,15 @@ export default function DriverDetailClient({ driver: d, route: r, stats, booking
       {/* ── Distance chart ── */}
       <div className="anim-fade-up s2">
         <DriverDistanceChart
+          stats={stats}
+          distanceRange={distanceRange}
+          onRangeChange={handleDistanceRangeChange}
+        />
+      </div>
+
+      {/* ── Estimated hours chart ── */}
+      <div className="anim-fade-up s2">
+        <DriverEstimatedHoursChart
           stats={stats}
           distanceRange={distanceRange}
           onRangeChange={handleDistanceRangeChange}
