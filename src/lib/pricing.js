@@ -91,22 +91,32 @@ export function calculatePrice({ fromCityName, toCityName, packages, cities, rul
   const bothSatellite = fromCity.zone === 'satellite' && toCity.zone === 'satellite'
   const differentCities = fromCity.nameKey !== toCity.nameKey
 
-  if (bothSatellite && differentCities) {
+  // A direct rule for this exact city pair always wins, satellite or not —
+  // the Calgary-hub reroute below is a FALLBACK for satellite pairs the admin
+  // hasn't configured a direct rate for, not a rule that overrides one they
+  // explicitly set. Checking bothSatellite first (as this used to) silently
+  // ignored any directly-configured satellite-to-satellite rule (e.g. a real
+  // Airdrie→Bearspaw rate) in favour of the generic hub reroute, which is the
+  // opposite of what the admin pricing page's own help text promises.
+  const directRule = findRule(rules, fromCity.nameKey, toCity.nameKey)
+
+  if (directRule) {
+    rule = directRule
+    routeLabel = fromCity.nameKey === toCity.nameKey
+      ? `Within ${fromCity.name}`
+      : `${fromCity.name} → ${toCity.name}`
+  } else if (bothSatellite && differentCities) {
     // Trans-city via Calgary hub: priced at the destination city's Calgary
-    // rate (no separate satellite-pair rules needed). No hub handling fee —
-    // per client decision, satellite-to-satellite no longer carries the $5
-    // surcharge, though the route is still shown as going via the hub.
+    // rate (no separate satellite-pair rule was configured). No hub handling
+    // fee — per client decision, satellite-to-satellite no longer carries the
+    // $5 surcharge, though the route is still shown as going via the hub.
     const hubCity = cities.find((c) => c.zone === 'calgary')
     if (!hubCity) return null
     rule = findRule(rules, hubCity.nameKey, toCity.nameKey)
     if (!rule) return null
     routeLabel = `${fromCity.name} → Calgary Hub → ${toCity.name}`
   } else {
-    rule = findRule(rules, fromCity.nameKey, toCity.nameKey)
-    if (!rule) return null
-    routeLabel = fromCity.nameKey === toCity.nameKey
-      ? `Within ${fromCity.name}`
-      : `${fromCity.name} → ${toCity.name}`
+    return null
   }
 
   let additionalPackagesTotal = 0
