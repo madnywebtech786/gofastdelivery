@@ -761,22 +761,29 @@ export default function DriverRoutePage() {
   }
 
   const MAX_PHOTOS_PER_STOP = 3
-  const MAX_PHOTO_BYTES = 5 * 1024 * 1024
 
   // Purely local — exactly the same staging pattern as
   // handleSignatureConfirm above. Nothing is uploaded to S3 until the driver
   // actually taps Confirm (see handleStopComplete), so a photo taken then
   // discarded, or a stop the driver navigates away from, never leaves an
   // object in storage.
+  //
+  // No raw-file size check here (there used to be one, rejecting anything
+  // over 5MB straight off the camera) — that checked the file BEFORE
+  // conversion, which is the wrong number: a phone camera photo is commonly
+  // 8-15MB at full resolution, but convertPhotoToWebp (called later, in
+  // handleStopComplete) downscales to a 1600px long edge before encoding, so
+  // the actual uploaded size ends up in the low hundreds of KB regardless of
+  // how large the original was. The old check was rejecting perfectly fine
+  // photos based on a size that was never going to be uploaded. The size
+  // that actually matters is checked server-side, post-conversion, in
+  // uploadDeliveryPhoto (lib/s3.js) — its error already surfaces to the
+  // driver via the upload failure handling below in handleStopComplete.
   function handlePhotoCapture(stopIndex, file) {
     if (!file) return
     const existing = photosByStop[stopIndex] ?? []
     if (existing.length >= MAX_PHOTOS_PER_STOP) {
       toast?.error?.('Photo limit reached', `You can add up to ${MAX_PHOTOS_PER_STOP} photos per stop.`)
-      return
-    }
-    if (file.size > MAX_PHOTO_BYTES) {
-      toast?.error?.('Photo too large', 'Please use a photo under 5MB.')
       return
     }
     const localId = `${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -1585,10 +1592,22 @@ export default function DriverRoutePage() {
                     </div>
                   )}
 
-                  {/* Notes */}
+                  {/* Notes — customer's own note (read-only) and, once this
+                      stop has been completed, the driver's own saved note
+                      read back (the textarea below is only offered on the
+                      currently-active, not-yet-completed stop, so this is
+                      the only place a completed stop's driver note is still
+                      visible after moving past it). */}
                   {stop.notes && (
+                    <div className="bg-gray-50 rounded-2xl px-4 py-3 mb-3">
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400 mb-0.5">Customer note</p>
+                      <p className="text-xs text-gray-700">{stop.notes}</p>
+                    </div>
+                  )}
+                  {isDone && stop.driverNote && (
                     <div className="bg-amber-50 rounded-2xl px-4 py-3 mb-3">
-                      <p className="text-xs text-amber-700">{stop.notes}</p>
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-amber-600 mb-0.5">Driver note</p>
+                      <p className="text-xs text-amber-700">{stop.driverNote}</p>
                     </div>
                   )}
 

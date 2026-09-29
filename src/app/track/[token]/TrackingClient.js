@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import BookingStatusListener from '@/components/realtime/BookingStatusListener'
 import OnlineIndicator from '@/components/ui/OnlineIndicator'
+import StopNotes from '@/components/booking/StopNotes'
 import { formatDateTime, formatTime } from '@/lib/dateFormat'
 import { User, Phone, MapPin } from 'lucide-react'
 
@@ -376,6 +377,9 @@ export default function TrackingClient({ initialBooking }) {
                     {stop.contactName && (
                       <p className="text-xs mt-0.5 text-muted">{stop.contactName}</p>
                     )}
+                    <div className="flex flex-wrap gap-1.5 mt-1">
+                      <StopNotes stop={stop} />
+                    </div>
                   </div>
                 </li>
               )

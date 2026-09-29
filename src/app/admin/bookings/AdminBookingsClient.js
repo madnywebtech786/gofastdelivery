@@ -8,6 +8,7 @@ import Button from '@/components/ui/Button'
 import Select from '@/components/ui/Select'
 import DatePicker from '@/components/ui/DatePicker'
 import { useToast } from '@/components/ui/Toast'
+import StopNotes from '@/components/booking/StopNotes'
 import { FILTER_QUERY_MAP } from '@/lib/bookingStatusFilters'
 import { accountLabel } from '@/lib/accountLabel'
 import { formatPickupTime as formatPickupTimeShared, calgaryDateKey } from '@/lib/dateFormat'
@@ -1061,7 +1062,7 @@ export default function AdminBookingsClient({ initialStatusFilter, initialPickup
                           {stop.buzzCode     && <p className="text-xs" style={{ color: 'var(--fg-3)' }}>Unit/Buzz Code: {stop.buzzCode}</p>}
                           {stop.contactName  && <p className="text-xs" style={{ color: 'var(--fg-2)' }}>{stop.contactName}</p>}
                           {stop.contactPhone && <p className="text-xs mono" style={{ color: 'var(--fg-3)' }}>{stop.contactPhone}</p>}
-                          {stop.notes        && <p className="text-xs mt-2 italic" style={{ color: 'var(--fg-3)' }}>{stop.notes}</p>}
+                          <StopNotes stop={stop} />
                         </div>
                       )
                     })()}
@@ -1083,7 +1084,7 @@ export default function AdminBookingsClient({ initialStatusFilter, initialPickup
                           {stop.buzzCode     && <p className="text-xs" style={{ color: 'var(--fg-3)' }}>Unit/Buzz Code: {stop.buzzCode}</p>}
                           {stop.contactName  && <p className="text-xs" style={{ color: 'var(--fg-2)' }}>{stop.contactName}</p>}
                           {stop.contactPhone && <p className="text-xs mono" style={{ color: 'var(--fg-3)' }}>{stop.contactPhone}</p>}
-                          {stop.notes        && <p className="text-xs mt-2 italic" style={{ color: 'var(--fg-3)' }}>{stop.notes}</p>}
+                          <StopNotes stop={stop} />
                         </div>
                       )
                     })()}

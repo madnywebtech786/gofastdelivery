@@ -3,9 +3,28 @@
 import { useState, useTransition, useCallback, useEffect, useRef } from 'react'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import { calgaryDateKey } from '@/lib/dateFormat'
-import { Users, Phone, Mail, Calendar, Search, X, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react'
+import { useToast } from '@/components/ui/Toast'
+import { Users, Phone, Mail, Calendar, Search, X, ChevronLeft, ChevronRight, Loader2, Trash2 } from 'lucide-react'
 
 const PAGE_SIZE = 20
+
+function Modal({ title, onClose, children }) {
+  return (
+    <div className="fixed inset-0 flex items-start justify-center z-50 p-4 overflow-y-auto"
+      style={{ background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(4px)' }}
+      onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-xl my-8 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+        <div className="sticky top-0 flex items-center justify-between px-6 py-4 border-b border-border rounded-t-2xl bg-white z-10">
+          <h2 className="text-base font-bold" style={{ color: 'var(--fg)' }}>{title}</h2>
+          <button onClick={onClose} className="p-1.5 rounded-lg transition-colors" style={{ color: 'var(--fg-3)' }}>
+            <X size={16} />
+          </button>
+        </div>
+        <div className="px-6 py-5">{children}</div>
+      </div>
+    </div>
+  )
+}
 
 function Pagination({ page, total, pageSize, onNavigate }) {
   const totalPages = Math.ceil(total / pageSize)
@@ -45,9 +64,32 @@ export default function CustomersClient({ customers, total, page, search: initia
   const router     = useRouter()
   const pathname   = usePathname()
   const params     = useSearchParams()
+  const toast      = useToast()
   const [isPending, startTransition] = useTransition()
   const [searchInput, setSearchInput] = useState(initialSearch)
+  const [deleteTarget, setDeleteTarget] = useState(null) // customer being confirmed for deletion, or null
+  const [deleting, setDeleting] = useState(false)
   const debounceRef = useRef(null)
+
+  async function handleDeleteCustomer() {
+    if (!deleteTarget) return
+    setDeleting(true)
+    try {
+      const res = await fetch(`/api/customers/${deleteTarget._id}`, { method: 'DELETE' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast?.error?.('Could not delete customer', data?.error ?? 'Try again.')
+        return
+      }
+      toast?.success?.('Customer deleted', `${deleteTarget.name} and their bookings were permanently removed.`)
+      setDeleteTarget(null)
+      router.refresh()
+    } catch {
+      toast?.error?.('Could not delete customer', 'Check your connection and try again.')
+    } finally {
+      setDeleting(false)
+    }
+  }
 
   const navigate = useCallback((overrides) => {
     const next = new URLSearchParams(params.toString())
@@ -142,6 +184,7 @@ export default function CustomersClient({ customers, total, page, search: initia
                   <th className="hidden md:table-cell">Phone</th>
                   <th className="hidden lg:table-cell">Contact Name</th>
                   <th className="hidden lg:table-cell">Joined</th>
+                  <th className="w-10"></th>
                 </tr>
               </thead>
               <tbody>
@@ -184,6 +227,18 @@ export default function CustomersClient({ customers, total, page, search: initia
                         {calgaryDateKey(c.createdAt)}
                       </span>
                     </td>
+                    <td>
+                      <button
+                        onClick={() => setDeleteTarget(c)}
+                        title="Delete customer"
+                        className="p-1.5 rounded-lg transition-colors"
+                        style={{ color: 'var(--fg-3)' }}
+                        onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--danger)'; e.currentTarget.style.background = 'var(--danger-bg)' }}
+                        onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--fg-3)'; e.currentTarget.style.background = 'transparent' }}
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -211,6 +266,14 @@ export default function CustomersClient({ customers, total, page, search: initia
                   <p className="text-xs truncate" style={{ color: 'var(--fg-3)' }}>{c.email}</p>
                   {c.phone && <p className="text-xs mono mt-0.5" style={{ color: 'var(--fg-3)' }}>{c.phone}</p>}
                 </div>
+                <button
+                  onClick={() => setDeleteTarget(c)}
+                  title="Delete customer"
+                  className="p-2 rounded-lg shrink-0"
+                  style={{ color: 'var(--fg-3)' }}
+                >
+                  <Trash2 size={14} />
+                </button>
               </div>
             ))}
           </div>
@@ -220,6 +283,35 @@ export default function CustomersClient({ customers, total, page, search: initia
         </div>
       )}
       </div>
+
+      {/* Delete-customer confirm modal */}
+      {deleteTarget && (
+        <Modal title="Delete Customer?" onClose={() => !deleting && setDeleteTarget(null)}>
+          <p className="text-sm mb-6" style={{ color: 'var(--fg-2)' }}>
+            This will permanently delete <strong>{deleteTarget.name}</strong> ({deleteTarget.email}) and{' '}
+            <strong>all of their bookings</strong>. This cannot be undone. If they have a booking currently
+            in progress with a driver, deletion will be blocked until it's cancelled or completed.
+          </p>
+          <div className="flex gap-3 justify-end">
+            <button
+              onClick={() => setDeleteTarget(null)}
+              disabled={deleting}
+              className="px-4 py-2 rounded-xl text-sm font-semibold border border-border disabled:opacity-50"
+              style={{ color: 'var(--fg-2)' }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleDeleteCustomer}
+              disabled={deleting}
+              className="px-4 py-2 rounded-xl text-sm font-bold transition-all disabled:opacity-60"
+              style={{ background: 'var(--danger)', color: 'white' }}
+            >
+              {deleting ? 'Deleting…' : 'Delete Customer'}
+            </button>
+          </div>
+        </Modal>
+      )}
     </div>
   )
 }

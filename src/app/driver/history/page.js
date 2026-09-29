@@ -326,6 +326,31 @@ function DeliveredCard({ booking: b, onViewDetail }) {
   )
 }
 
+// Clearly-labeled note badges for one stop — matches the amber-box styling
+// already used for the customer's note on the active route page
+// (route/page.js), extended here with the driver's own per-stop note
+// (stop.driverNote) so a driver reviewing history can see what they wrote,
+// not just what the customer wrote. Distinct from the shared token-based
+// StopNotes component used on admin/customer pages — the driver portal uses
+// its own plain-Tailwind palette throughout, not CSS variable tokens.
+function StopNoteBadges({ stop }) {
+  if (!stop?.notes && !stop?.driverNote) return null
+  return (
+    <div className="mt-1 space-y-1">
+      {stop.notes && (
+        <p className="text-xs text-gray-600 bg-gray-100 rounded-lg px-2 py-1 inline-block">
+          <span className="font-semibold">Customer note:</span> {stop.notes}
+        </p>
+      )}
+      {stop.driverNote && (
+        <p className="text-xs text-amber-700 bg-amber-50 rounded-lg px-2 py-1 inline-block">
+          <span className="font-semibold">Driver note:</span> {stop.driverNote}
+        </p>
+      )}
+    </div>
+  )
+}
+
 // Fetches full booking detail on demand (only when a card's "View detail" is
 // tapped) via the existing GET /api/bookings/[bookingId] — already scoped to
 // the calling driver's own assigned bookings (findBookingById driverId
@@ -402,12 +427,12 @@ function BookingDetailModal({ bookingId, onClose }) {
                     <div>
                       <p className="text-sm font-semibold text-gray-800">{pickup?.address ?? '—'}</p>
                       {pickup?.contactName && <p className="text-xs text-gray-400 mt-0.5">{pickup.contactName} · {pickup.contactPhone}</p>}
-                      {pickup?.notes && <p className="text-xs text-gray-400 mt-0.5 italic">"{pickup.notes}"</p>}
+                      <StopNoteBadges stop={pickup} />
                     </div>
                     <div>
                       <p className="text-sm font-semibold text-gray-800">{dropoff?.address ?? '—'}</p>
                       {dropoff?.contactName && <p className="text-xs text-gray-400 mt-0.5">{dropoff.contactName} · {dropoff.contactPhone}</p>}
-                      {dropoff?.notes && <p className="text-xs text-gray-400 mt-0.5 italic">"{dropoff.notes}"</p>}
+                      <StopNoteBadges stop={dropoff} />
                     </div>
                   </div>
                 </div>

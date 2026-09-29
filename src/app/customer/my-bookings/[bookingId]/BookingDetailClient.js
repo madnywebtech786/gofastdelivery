@@ -8,6 +8,7 @@ import StatusTimeline from '@/components/ui/StatusTimeline'
 import { useToast } from '@/components/ui/Toast'
 import SignatureViewer from '@/components/booking/SignatureViewer'
 import PhotoGallery from '@/components/booking/PhotoGallery'
+import StopNotes from '@/components/booking/StopNotes'
 import { formatDateTime } from '@/lib/dateFormat'
 import { accountNumber } from '@/lib/accountLabel'
 import {
@@ -331,6 +332,9 @@ export default function BookingDetailClient({ booking: initial, origin }) {
                     )}
                   </div>
                 )}
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  <StopNotes stop={stop} />
+                </div>
                 {(stop.type === 'dropoff' && stop.signatureKey) || stop.photoKeys?.length > 0 ? (
                   <div className="mt-2 flex items-center gap-2 flex-wrap">
                     {stop.type === 'dropoff' && stop.signatureKey && (

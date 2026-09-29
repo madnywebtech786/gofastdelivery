@@ -4,6 +4,7 @@ import { useState, useMemo } from 'react'
 import Link from 'next/link'
 import Badge from '@/components/ui/Badge'
 import DatePicker from '@/components/ui/DatePicker'
+import StopNotes from '@/components/booking/StopNotes'
 import { formatDate as formatDateShared, formatTime as formatTimeShared, calgaryStartOfDay, calgaryEndOfDay } from '@/lib/dateFormat'
 import {
   Search, PackageOpen, MapPin, ArrowRight,
@@ -292,6 +293,12 @@ export default function HistoryClient({ bookings }) {
                     <span className="text-xs truncate" style={{ color: 'var(--fg-3)' }}>{dropoff?.address ?? '—'}</span>
                   </div>
                 </div>
+                {(pickup?.notes || pickup?.driverNote || dropoff?.notes || dropoff?.driverNote) && (
+                  <div className="flex flex-wrap gap-1.5">
+                    <StopNotes stop={pickup} />
+                    <StopNotes stop={dropoff} />
+                  </div>
+                )}
                 <div className="flex items-center justify-between gap-2">
                   {b.estimatedPrice && (
                     <span className="text-sm font-bold mono" style={{ color: 'var(--accent)' }}>${b.estimatedPrice}</span>

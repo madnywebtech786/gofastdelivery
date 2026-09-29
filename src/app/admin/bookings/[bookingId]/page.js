@@ -8,6 +8,7 @@ import StatusTimeline from '@/components/ui/StatusTimeline'
 import AssignDriverForm from '@/components/booking/AssignDriverForm'
 import SignatureViewer from '@/components/booking/SignatureViewer'
 import PhotoGallery from '@/components/booking/PhotoGallery'
+import StopNotes from '@/components/booking/StopNotes'
 import { formatDateTime as formatDate } from '@/lib/dateFormat'
 import { ArrowLeft, MapPin, User, Phone, CheckCircle2, UserCheck } from 'lucide-react'
 
@@ -114,12 +115,9 @@ export default async function AdminBookingDetailPage({ params, searchParams }) {
                         )}
                       </div>
                     )}
-                    {stop.notes && <p className="text-xs italic mt-0.5" style={{ color: 'var(--fg-3)' }}>{stop.notes}</p>}
-                    {stop.driverNote && (
-                      <p className="text-xs mt-1 px-2 py-1 rounded-lg inline-block" style={{ color: '#92400e', background: '#fef3c7' }}>
-                        Driver note: {stop.driverNote}
-                      </p>
-                    )}
+                    <div className="mt-1 space-y-1">
+                      <StopNotes stop={stop} />
+                    </div>
                     {(stop.type === 'dropoff' && stop.signatureKey) || stop.photoKeys?.length > 0 ? (
                       <div className="mt-2 flex items-center gap-2 flex-wrap">
                         {stop.type === 'dropoff' && stop.signatureKey && (

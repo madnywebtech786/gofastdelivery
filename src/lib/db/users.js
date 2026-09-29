@@ -129,6 +129,53 @@ export async function findAccountsByIds(customerIds) {
   }]))
 }
 
+// Non-terminal booking statuses — a customer with any booking in one of
+// these is currently "in the system" (waiting on or being handled by a
+// driver), so deleting them would either yank a booking out from under an
+// active route or silently orphan it. Duplicated here (not imported from
+// db/bookings.js's BOOKING_STATUSES) because bookings.js already imports
+// findAccountsByIds from this file — importing back would be circular.
+const ACTIVE_BOOKING_STATUSES = ['pending', 'assigned_pickup', 'picked_up', 'assigned_delivery']
+
+/**
+ * Permanently deletes a customer account and everything tied to it:
+ * their bookings and any marketing-subscriber record synced from them.
+ * Invoices are untouched — they aren't linked to customer accounts at all
+ * (see COMPANY_GST_NUMBER's own doc comment / ARCHITECTURE.md §12.2).
+ *
+ * Refuses if the customer has any booking in a non-terminal status (see
+ * ACTIVE_BOOKING_STATUSES) — those need to be cancelled/completed first, so
+ * a driver mid-route never has a booking vanish out from under them.
+ *
+ * True hard delete, not reversible. Returns
+ * { deleted: true, bookingsDeleted, subscriberDeleted } on success, or
+ * { deleted: false, reason, activeCount } if blocked by active bookings.
+ */
+export async function deleteCustomerAccount(customerId) {
+  const db = await getDb()
+  const id = new ObjectId(customerId)
+
+  const activeCount = await db.collection('bookings').countDocuments({
+    customerId: id,
+    status: { $in: ACTIVE_BOOKING_STATUSES },
+  })
+  if (activeCount > 0) {
+    return { deleted: false, reason: 'active_bookings', activeCount }
+  }
+
+  const [bookingsResult, subscriberResult] = await Promise.all([
+    db.collection('bookings').deleteMany({ customerId: id }),
+    db.collection('marketing_subscribers').deleteMany({ customerId: id }),
+  ])
+  await db.collection('users').deleteOne({ _id: id, role: 'customer' })
+
+  return {
+    deleted: true,
+    bookingsDeleted: bookingsResult.deletedCount,
+    subscriberDeleted: subscriberResult.deletedCount,
+  }
+}
+
 export async function createUser({ email, passwordHash, name, role, phone, accountNumber = null, driverProfile = null }) {
   const db = await getDb()
   const now = new Date()

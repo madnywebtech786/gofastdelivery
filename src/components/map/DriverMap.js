@@ -1226,10 +1226,13 @@ export default function DriverMap({
           >
             {/* Maneuver arrow — large, like Google Maps. Sized up further
                 per client request (was w-9/52px, text-xl/28px) so the
-                current turn is unmistakable at a glance while driving. */}
+                current turn is unmistakable at a glance while driving.
+                White background per client request — the arrow glyph itself
+                is unstyled text (defaults to dark), so white gives the best
+                contrast against it, unlike the previous blue fill. */}
             <div
               className="shrink-0 flex items-center justify-center rounded-lg sm:rounded-xl w-12 h-12 sm:w-17 sm:h-17 text-2xl sm:text-[38px]"
-              style={{ background: '#1d4ed8' }}
+              style={{ background: '#ffffff' }}
             >
               {banner.icon}
             </div>

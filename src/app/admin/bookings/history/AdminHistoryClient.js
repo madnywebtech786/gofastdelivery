@@ -7,6 +7,7 @@ import Badge from '@/components/ui/Badge'
 import Select from '@/components/ui/Select'
 import DatePicker from '@/components/ui/DatePicker'
 import { useToast } from '@/components/ui/Toast'
+import StopNotes from '@/components/booking/StopNotes'
 import { accountLabel } from '@/lib/accountLabel'
 import {
   MapPin, Clock, ChevronRight, ChevronLeft, ChevronDown,
@@ -635,6 +636,11 @@ export default function AdminHistoryClient({
                         {b.packageDetails.packages?.length > 1 && ` · ×${b.packageDetails.packages.length} packages`}
                       </p>
                     )}
+
+                    <div className="flex flex-wrap gap-1.5 mt-1.5">
+                      <StopNotes stop={pickup} />
+                      <StopNotes stop={dropoff} />
+                    </div>
                   </div>
 
                   {!selectMode && (

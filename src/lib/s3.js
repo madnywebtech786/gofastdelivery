@@ -87,12 +87,23 @@ const ALLOWED_IMAGE_TYPES = {
 // Driver-captured proof-of-pickup/delivery photos. Private, like signatures —
 // unlike marketing-images/, this bucket prefix has NO public bucket policy,
 // since these are photos of a customer's property/packages, not marketing
-// assets. The client converts the photo to WebP (with EXIF auto-rotation)
-// before upload — see convertPhotoToWebp in src/lib/imageConversion.js — so
-// the server never runs native image-processing code (sharp/libvips proved
-// unreliable to deploy as a Vercel serverless native dependency). The server
-// only validates that what arrived is actually WebP under the size cap.
-const MAX_PHOTO_BYTES = 5 * 1024 * 1024
+// assets. The client converts the photo to WebP (with EXIF auto-rotation,
+// downscaled to a 1600px long edge) before upload — see convertPhotoToWebp
+// in src/lib/imageConversion.js — so the server never runs native
+// image-processing code (sharp/libvips proved unreliable to deploy as a
+// Vercel serverless native dependency). The server only validates that what
+// arrived is actually WebP under the size cap.
+//
+// 4MB, not 5MB: Vercel's serverless functions hard-cap the REQUEST BODY at
+// 4.5MB — a platform limit this app's code cannot raise. The old 5MB check
+// here sat ABOVE that ceiling, so anything 4.5-5MB was silently rejected by
+// the platform (a bare 413, no useful error) before this function ever ran.
+// 4MB leaves a safety margin under 4.5MB so THIS check is the one that
+// fires for a genuinely oversized/corrupted upload, with a real error
+// message — not a mysterious platform-level failure. In normal use this
+// should never be reached: convertPhotoToWebp's 1600px downscale puts a
+// typical phone photo in the low hundreds of KB.
+const MAX_PHOTO_BYTES = 4 * 1024 * 1024
 export const MAX_PHOTOS_PER_STOP = 3
 
 /**
@@ -111,7 +122,7 @@ export async function uploadDeliveryPhoto(buffer, contentType, { driverId, booki
     throw new Error('stopType must be "pickup" or "dropoff"')
   }
   if (buffer.length === 0 || buffer.length > MAX_PHOTO_BYTES) {
-    throw new Error('Photo size is invalid (must be non-empty and under 5MB)')
+    throw new Error('Photo size is invalid (must be non-empty and under 4MB)')
   }
 
   const key = `delivery-photos/${bookingId}/${stopType}-${driverId}-${randomUUID()}.webp`
