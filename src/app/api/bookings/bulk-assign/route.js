@@ -168,47 +168,81 @@ export async function POST(request) {
     }
 
     // ── Branch: new route vs merge into existing ──
-    const existingRoute = await findActiveRoute(driverId)
+    let existingRoute = await findActiveRoute(driverId)
 
     let merged = false
     let finalRouteId
 
     if (existingRoute) {
       merged = true
-      const existingStops    = existingRoute.optimizedStops ?? []
-      const completedStops   = existingStops.filter((s) => s.completedAt)
-      const existingPending  = existingStops.filter((s) => !s.completedAt && s.stopType !== 'endpoint')
-      const endpointStop     = existingStops.find((s) => s.stopType === 'endpoint' && !s.completedAt) // preserve
 
-      if (existingPending.length + newStops.length > MAX_STOPS_PER_ROUTE) {
-        return NextResponse.json({
-          error: `Route would exceed ${MAX_STOPS_PER_ROUTE} pending stops. Wait for driver to complete some first.`,
-        }, { status: 409 })
+      // Optimistic-lock retry: a concurrent reoptimize/stop-complete on this
+      // same route (e.g. the driver's reroute firing off the Pusher push from
+      // a PRIOR bulk-assign, or a GPS-drift reroute) can overwrite
+      // optimizedStops between our read and our write — that write is always
+      // a full $set, so a lost update here silently drops the stops we're
+      // about to add. Re-read and recompute against current state on
+      // conflict rather than risk that. Bounded — this is only ever racing
+      // one or two other short-lived requests in practice.
+      const MAX_MERGE_ATTEMPTS = 5
+      let attempt = 0
+      for (;;) {
+        attempt++
+        const existingStops    = existingRoute.optimizedStops ?? []
+        const completedStops   = existingStops.filter((s) => s.completedAt)
+        const existingPending  = existingStops.filter((s) => !s.completedAt && s.stopType !== 'endpoint')
+        const endpointStop     = existingStops.find((s) => s.stopType === 'endpoint' && !s.completedAt) // preserve
+
+        if (existingPending.length + newStops.length > MAX_STOPS_PER_ROUTE) {
+          return NextResponse.json({
+            error: `Route would exceed ${MAX_STOPS_PER_ROUTE} pending stops. Wait for driver to complete some first.`,
+          }, { status: 409 })
+        }
+
+        // Append new stops to pending queue (reroute will re-optimize)
+        const mergedPending = [...existingPending, ...newStops]
+        const mergedStops = mergedPending.map((s, i) => ({
+          ...s,
+          stopIndex:     completedStops.length + i,
+          originalIndex: i,
+        }))
+
+        const finalStops = [...completedStops, ...mergedStops]
+        if (endpointStop) finalStops.push({ ...endpointStop, stopIndex: finalStops.length })
+
+        // routePhase is a UI hint only — derived from whether any pending stop is a pickup
+        const hasAnyPickup = finalStops.some((s) => !s.completedAt && s.stopType === 'pickup')
+        const finalPhase = hasAnyPickup ? 'pickup' : 'dropoff'
+
+        const writeResult = await mergeIntoActiveRoute(
+          String(existingRoute._id),
+          bookings.map((b) => new ObjectId(b._id)),
+          finalStops,
+          null,
+          finalPhase,
+          existingRoute.updatedAt,
+        )
+
+        if (writeResult.matchedCount > 0) {
+          finalRouteId = String(existingRoute._id)
+          break
+        }
+
+        if (attempt >= MAX_MERGE_ATTEMPTS) {
+          throw Object.assign(
+            new Error('Could not merge into driver route — too many concurrent updates. Please retry.'),
+            { status: 409 },
+          )
+        }
+        // Conflict: route changed since we read it. Re-read fresh state and retry.
+        existingRoute = await findActiveRoute(driverId)
+        if (!existingRoute) {
+          throw Object.assign(
+            new Error('Driver route was deactivated while assigning — please retry.'),
+            { status: 409 },
+          )
+        }
       }
-
-      // Append new stops to pending queue (reroute will re-optimize)
-      const mergedPending = [...existingPending, ...newStops]
-      const mergedStops = mergedPending.map((s, i) => ({
-        ...s,
-        stopIndex:     completedStops.length + i,
-        originalIndex: i,
-      }))
-
-      const finalStops = [...completedStops, ...mergedStops]
-      if (endpointStop) finalStops.push({ ...endpointStop, stopIndex: finalStops.length })
-
-      // routePhase is a UI hint only — derived from whether any pending stop is a pickup
-      const hasAnyPickup = finalStops.some((s) => !s.completedAt && s.stopType === 'pickup')
-      const finalPhase = hasAnyPickup ? 'pickup' : 'dropoff'
-
-      await mergeIntoActiveRoute(
-        String(existingRoute._id),
-        bookings.map((b) => new ObjectId(b._id)),
-        finalStops,
-        null,
-        finalPhase,
-      )
-      finalRouteId = String(existingRoute._id)
     } else {
       // Fresh route — phase is UI-hint: 'pickup' if any pickup stop, else 'dropoff'
       const hasAnyPickup = newStops.some((s) => s.stopType === 'pickup')

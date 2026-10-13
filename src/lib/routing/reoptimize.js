@@ -489,8 +489,12 @@ async function syncBookingEtas(stops) {
  * Endpoint (if present) is always placed last.
  *
  * Returns the updated route doc, or null if no route / nothing to reorder.
+ *
+ * @param {number} [_attempt] - internal: bounds the optimistic-lock retry
+ *   below (not part of the public call signature).
  */
-export async function reoptimizeRoute({ driverId, currentLng, currentLat, endPointOverride = null }) {
+export async function reoptimizeRoute({ driverId, currentLng, currentLat, endPointOverride = null }, _attempt = 1) {
+  const MAX_REOPTIMIZE_ATTEMPTS = 3
   const route = await findActiveRoute(driverId)
   if (!route) return null
 
@@ -635,14 +639,30 @@ export async function reoptimizeRoute({ driverId, currentLng, currentLat, endPoi
     }
   }
 
-  await updateRoute(String(route._id), {
+  // Optimistic lock: only write if nothing (bulk-assign's merge, a stop
+  // completion, another concurrent reroute) touched this route since we read
+  // it above. On conflict, re-run from scratch against current state rather
+  // than silently clobbering whatever changed — e.g. this must never
+  // overwrite stops a bulk-assign just merged in with the pre-merge
+  // snapshot's optimizedStops. Bounded: ORS calls above are real external
+  // requests, so this only retries a small, fixed number of times rather
+  // than looping indefinitely under sustained contention.
+  const writeResult = await updateRoute(String(route._id), {
     optimizedStops:       newOptimizedStops,
     encodedPolyline,
     totalDistanceMeters:  distanceMeters,
     totalDurationSeconds: durationSeconds,
     endPoint:             endPoint ?? null,
     ...initialEstimateFields,
-  })
+  }, route.updatedAt)
+
+  if (writeResult.matchedCount === 0) {
+    if (_attempt >= MAX_REOPTIMIZE_ATTEMPTS) {
+      console.warn(`[reoptimize] gave up after ${MAX_REOPTIMIZE_ATTEMPTS} attempts — route ${route._id} kept changing under us (driverId=${driverId})`)
+      return null
+    }
+    return reoptimizeRoute({ driverId, currentLng, currentLat, endPointOverride }, _attempt + 1)
+  }
 
   // Sync the freshly-computed ETA onto each affected booking so the public
   // tracking page / customer dashboard show the SAME number the driver's app

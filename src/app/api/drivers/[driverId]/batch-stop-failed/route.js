@@ -7,6 +7,7 @@ import { hydrateRouteItems } from '@/lib/routing/hydrate'
 import redis from '@/lib/redis'
 
 const MAX_BATCH_SIZE = 50
+const MAX_WRITE_ATTEMPTS = 5
 
 /**
  * POST /api/drivers/[driverId]/batch-stop-failed
@@ -45,71 +46,96 @@ export async function POST(request, { params }) {
       return NextResponse.json({ error: 'reason is required' }, { status: 400 })
     }
 
-    const route = await findActiveRoute(driverId)
+    let route = await findActiveRoute(driverId)
     if (!route) {
       return NextResponse.json({ error: 'No active route' }, { status: 404 })
     }
 
-    const stops = route.optimizedStops ?? []
-    const uniqueIndexes = [...new Set(stopIndexes)]
-    if (uniqueIndexes.some((i) => i < 0 || i >= stops.length)) {
-      return NextResponse.json({ error: 'Invalid stopIndex in batch' }, { status: 400 })
-    }
-    if (uniqueIndexes.some((i) => stops[i].stopType === 'endpoint')) {
-      return NextResponse.json({ error: 'Cannot fail endpoint stop' }, { status: 400 })
-    }
-
     const now = new Date()
 
-    // Skip stops already completed/failed (idempotent no-op per item, same
-    // guard as the single-stop endpoint).
-    const toFail = uniqueIndexes.filter((i) => !stops[i].completedAt)
+    // The compute-then-write below is wrapped in an optimistic-lock retry —
+    // see stop-complete/route.js for the full rationale (a concurrent
+    // bulk-assign merge or reroute can silently discard this write
+    // otherwise). On a matchedCount:0 conflict we re-read and recompute.
+    // markBookingFailed (below, after the loop) is NOT idempotent the way
+    // the route write is, so the booking-status pass must run exactly once —
+    // after a successful write, not inside the retried section.
+    let stops, toFail, pickupFailingBookingIds, updatedStops, allDone, routeUpdateData
+    let pairedDropoffCancelledCount
 
-    if (toFail.length === 0) {
-      const cacheKey = `driver:${driverId}:route`
-      let cached = null
-      try { cached = await redis.get(cacheKey) } catch { /* swallow */ }
-      const finalRoute = cached ?? await hydrateRouteItems(JSON.parse(JSON.stringify(route)))
-      return NextResponse.json({ success: true, idempotent: true, route: finalRoute })
-    }
-
-    const toFailSet = new Set(toFail)
-
-    // Any pickup_and_dropoff stop in the batch whose pickup is failing also
-    // auto-cancels its paired dropoff — same rule as the single-stop endpoint,
-    // applied per booking. Collect booking IDs whose pickup is failing so both
-    // the paired-dropoff pass below AND the booking-status pass further down
-    // can find them.
-    const pickupFailingBookingIds = new Set(
-      toFail
-        .map((i) => stops[i])
-        .filter((s) => s.stopType === 'pickup' && s.assignmentKind === 'pickup_and_dropoff')
-        .map((s) => String(s.bookingId))
-    )
-
-    let pairedDropoffCancelledCount = 0
-    const updatedStops = stops.map((s, i) => {
-      if (toFailSet.has(i)) {
-        return { ...s, completedAt: now, failedAt: now, failureReason: trimmedReason }
+    for (let attempt = 1; ; attempt++) {
+      stops = route.optimizedStops ?? []
+      const uniqueIndexes = [...new Set(stopIndexes)]
+      if (uniqueIndexes.some((i) => i < 0 || i >= stops.length)) {
+        return NextResponse.json({ error: 'Invalid stopIndex in batch' }, { status: 400 })
       }
-      if (
-        !s.completedAt &&
-        s.stopType === 'dropoff' &&
-        s.assignmentKind === 'pickup_and_dropoff' &&
-        pickupFailingBookingIds.has(String(s.bookingId))
-      ) {
-        pairedDropoffCancelledCount += 1
-        return { ...s, completedAt: now, failedAt: now, failureReason: 'Pickup failed — dropoff skipped' }
+      if (uniqueIndexes.some((i) => stops[i].stopType === 'endpoint')) {
+        return NextResponse.json({ error: 'Cannot fail endpoint stop' }, { status: 400 })
       }
-      return s
-    })
-    const allDone = updatedStops.every((s) => s.completedAt)
 
-    const routeUpdateData = {
-      optimizedStops: updatedStops,
-      ...(allDone ? { isActive: false } : {}),
+      // Skip stops already completed/failed (idempotent no-op per item, same
+      // guard as the single-stop endpoint).
+      toFail = uniqueIndexes.filter((i) => !stops[i].completedAt)
+
+      if (toFail.length === 0) {
+        const cacheKey = `driver:${driverId}:route`
+        let cached = null
+        try { cached = await redis.get(cacheKey) } catch { /* swallow */ }
+        const finalRoute = cached ?? await hydrateRouteItems(JSON.parse(JSON.stringify(route)))
+        return NextResponse.json({ success: true, idempotent: true, route: finalRoute })
+      }
+
+      const toFailSet = new Set(toFail)
+
+      // Any pickup_and_dropoff stop in the batch whose pickup is failing also
+      // auto-cancels its paired dropoff — same rule as the single-stop endpoint,
+      // applied per booking. Collect booking IDs whose pickup is failing so both
+      // the paired-dropoff pass below AND the booking-status pass after the loop
+      // can find them.
+      pickupFailingBookingIds = new Set(
+        toFail
+          .map((i) => stops[i])
+          .filter((s) => s.stopType === 'pickup' && s.assignmentKind === 'pickup_and_dropoff')
+          .map((s) => String(s.bookingId))
+      )
+
+      pairedDropoffCancelledCount = 0
+      updatedStops = stops.map((s, i) => {
+        if (toFailSet.has(i)) {
+          return { ...s, completedAt: now, failedAt: now, failureReason: trimmedReason }
+        }
+        if (
+          !s.completedAt &&
+          s.stopType === 'dropoff' &&
+          s.assignmentKind === 'pickup_and_dropoff' &&
+          pickupFailingBookingIds.has(String(s.bookingId))
+        ) {
+          pairedDropoffCancelledCount += 1
+          return { ...s, completedAt: now, failedAt: now, failureReason: 'Pickup failed — dropoff skipped' }
+        }
+        return s
+      })
+      allDone = updatedStops.every((s) => s.completedAt)
+
+      routeUpdateData = {
+        optimizedStops: updatedStops,
+        ...(allDone ? { isActive: false } : {}),
+      }
+
+      const writeResult = await updateRoute(String(route._id), routeUpdateData, route.updatedAt)
+      if (writeResult.matchedCount > 0) break
+
+      if (attempt >= MAX_WRITE_ATTEMPTS) {
+        return NextResponse.json(
+          { error: 'Route kept changing — please try again.', code: 'ROUTE_CONFLICT' },
+          { status: 409 },
+        )
+      }
+      route = await findActiveRoute(driverId)
+      if (!route) {
+        return NextResponse.json({ error: 'No active route' }, { status: 404 })
+      }
     }
-    await updateRoute(String(route._id), routeUpdateData)
 
     if (typeof drivenMeters === 'number' && drivenMeters > 0) {
       incrementDrivenDistance(driverId, String(route._id), Math.round(drivenMeters)).catch(() => {})
@@ -123,7 +149,8 @@ export async function POST(request, { params }) {
     // writing the booking status twice for one bookingId would race two
     // concurrent updateOne calls against the same document with no defined
     // winner. This mirrors the single-stop endpoint, which only ever fails
-    // one stage per call.
+    // one stage per call. Runs exactly once, after the route write above has
+    // durably succeeded.
     const toFailForBookingUpdate = toFail.filter((i) => {
       const s = stops[i]
       return !(s.stopType === 'dropoff' && pickupFailingBookingIds.has(String(s.bookingId)))

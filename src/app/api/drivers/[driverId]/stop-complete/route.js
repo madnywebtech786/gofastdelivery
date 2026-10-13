@@ -8,6 +8,8 @@ import { pushBookingStatusChange, pushRouteUpdate } from '@/lib/pusher'
 import { hydrateRouteItems } from '@/lib/routing/hydrate'
 import redis from '@/lib/redis'
 
+const MAX_WRITE_ATTEMPTS = 5
+
 /**
  * Decide the next booking status when a stop is completed.
  * Pickup stops → picked_up; dropoff stops → delivered; endpoint → no change.
@@ -37,75 +39,103 @@ export async function POST(request, { params }) {
       return NextResponse.json({ error: 'stopIndex is required' }, { status: 400 })
     }
 
-    const route = await findActiveRoute(driverId)
+    let route = await findActiveRoute(driverId)
     if (!route) {
       return NextResponse.json({ error: 'No active route' }, { status: 404 })
     }
 
-    const stops = route.optimizedStops ?? []
-    if (stopIndex < 0 || stopIndex >= stops.length) {
-      return NextResponse.json({ error: 'Invalid stopIndex' }, { status: 400 })
+    // The compute-then-write below is wrapped in an optimistic-lock retry: a
+    // concurrent bulk-assign merge or reroute can overwrite
+    // route.optimizedStops (both do a full $set) between our read and our
+    // write — without this, that write would silently discard the driver's
+    // stop completion. On a matchedCount:0 conflict we re-read the route and
+    // recompute from fresh state. Bounded — this is only ever racing one or
+    // two other short-lived requests on the same route in practice. Only
+    // this part retries; everything after a successful write (booking status
+    // update, Pusher push, response) runs exactly once.
+    let stop, now, trimmedNote, trimmedSignatureKey, trimmedSignerName, validPhotoKeys
+    let updatedStops, allDone, routeUpdateData
+
+    for (let attempt = 1; ; attempt++) {
+      const stops = route.optimizedStops ?? []
+      if (stopIndex < 0 || stopIndex >= stops.length) {
+        return NextResponse.json({ error: 'Invalid stopIndex' }, { status: 400 })
+      }
+
+      stop = stops[stopIndex]
+      now  = new Date()
+
+      // Idempotency guard — if this stop was already marked complete on a
+      // prior attempt (e.g. offline-queue retry, double-tap, Pusher echo),
+      // return the current route state without touching MongoDB or pushing
+      // events again. Serve from Redis cache (already hydrated) to avoid a
+      // DB round-trip.
+      if (stop.completedAt) {
+        const cacheKey = `driver:${driverId}:route`
+        let cached = null
+        try { cached = await redis.get(cacheKey) } catch { /* swallow */ }
+        const finalRoute = cached ?? await hydrateRouteItems(JSON.parse(JSON.stringify(route)))
+        return NextResponse.json({
+          success: true,
+          idempotent: true,
+          route: finalRoute,
+          newBookingStatus: null,
+        })
+      }
+
+      trimmedNote = typeof driverNote === 'string' ? driverNote.trim().slice(0, 500) : ''
+      trimmedSignatureKey = stop.stopType === 'dropoff' && typeof signatureKey === 'string' ? signatureKey.trim() : ''
+      trimmedSignerName = stop.stopType === 'dropoff' && typeof signerName === 'string' ? signerName.trim().slice(0, 100) : ''
+      // Photos apply to BOTH pickup and dropoff, unlike signature/signerName.
+      // Cap enforced again here (not just client + the photos upload route)
+      // since this is the last write before it becomes durable.
+      validPhotoKeys = (stop.stopType === 'pickup' || stop.stopType === 'dropoff') && Array.isArray(photoKeys)
+        ? photoKeys.filter((k) => typeof k === 'string' && k).slice(0, MAX_PHOTOS_PER_STOP)
+        : []
+
+      updatedStops = stops.map((s, i) =>
+        i === stopIndex
+          ? {
+              ...s,
+              completedAt: now,
+              ...(trimmedNote ? { driverNote: trimmedNote } : {}),
+              ...(trimmedSignatureKey ? { signatureKey: trimmedSignatureKey } : {}),
+              ...(trimmedSignerName ? { signerName: trimmedSignerName } : {}),
+              // Re-sliced to MAX_PHOTOS_PER_STOP after merging with any
+              // pre-existing photoKeys — in practice s.photoKeys should
+              // always be empty here (this block only applies once per stop,
+              // ever, since the idempotency guard above returns early once
+              // completedAt is set), but capping the MERGED array rather
+              // than just validPhotoKeys keeps this correct even if that
+              // assumption ever changes, instead of silently allowing more
+              // than the cap through.
+              ...(validPhotoKeys.length > 0
+                ? { photoKeys: [...(s.photoKeys ?? []), ...validPhotoKeys].slice(0, MAX_PHOTOS_PER_STOP) }
+                : {}),
+            }
+          : s
+      )
+      allDone = updatedStops.every((s) => s.completedAt)
+
+      routeUpdateData = {
+        optimizedStops: updatedStops,
+        ...(allDone ? { isActive: false } : {}),
+      }
+
+      const writeResult = await updateRoute(String(route._id), routeUpdateData, route.updatedAt)
+      if (writeResult.matchedCount > 0) break
+
+      if (attempt >= MAX_WRITE_ATTEMPTS) {
+        return NextResponse.json(
+          { error: 'Route kept changing — please try again.', code: 'ROUTE_CONFLICT' },
+          { status: 409 },
+        )
+      }
+      route = await findActiveRoute(driverId)
+      if (!route) {
+        return NextResponse.json({ error: 'No active route' }, { status: 404 })
+      }
     }
-
-    const stop = stops[stopIndex]
-    const now  = new Date()
-
-    // Idempotency guard — if this stop was already marked complete on a prior
-    // attempt (e.g. offline-queue retry, double-tap, Pusher echo), return the
-    // current route state without touching MongoDB or pushing events again.
-    // Serve from Redis cache (already hydrated) to avoid a DB round-trip.
-    if (stop.completedAt) {
-      const cacheKey = `driver:${driverId}:route`
-      let cached = null
-      try { cached = await redis.get(cacheKey) } catch { /* swallow */ }
-      const finalRoute = cached ?? await hydrateRouteItems(JSON.parse(JSON.stringify(route)))
-      return NextResponse.json({
-        success: true,
-        idempotent: true,
-        route: finalRoute,
-        newBookingStatus: null,
-      })
-    }
-
-    const trimmedNote = typeof driverNote === 'string' ? driverNote.trim().slice(0, 500) : ''
-    const trimmedSignatureKey = stop.stopType === 'dropoff' && typeof signatureKey === 'string' ? signatureKey.trim() : ''
-    const trimmedSignerName = stop.stopType === 'dropoff' && typeof signerName === 'string' ? signerName.trim().slice(0, 100) : ''
-    // Photos apply to BOTH pickup and dropoff, unlike signature/signerName.
-    // Cap enforced again here (not just client + the photos upload route)
-    // since this is the last write before it becomes durable.
-    const validPhotoKeys = (stop.stopType === 'pickup' || stop.stopType === 'dropoff') && Array.isArray(photoKeys)
-      ? photoKeys.filter((k) => typeof k === 'string' && k).slice(0, MAX_PHOTOS_PER_STOP)
-      : []
-
-    const updatedStops = stops.map((s, i) =>
-      i === stopIndex
-        ? {
-            ...s,
-            completedAt: now,
-            ...(trimmedNote ? { driverNote: trimmedNote } : {}),
-            ...(trimmedSignatureKey ? { signatureKey: trimmedSignatureKey } : {}),
-            ...(trimmedSignerName ? { signerName: trimmedSignerName } : {}),
-            // Re-sliced to MAX_PHOTOS_PER_STOP after merging with any
-            // pre-existing photoKeys — in practice s.photoKeys should always
-            // be empty here (this whole block only runs once per stop, ever,
-            // since the idempotency guard above returns early once
-            // completedAt is set), but capping the MERGED array rather than
-            // just validPhotoKeys keeps this correct even if that
-            // assumption ever changes, instead of silently allowing more
-            // than the cap through.
-            ...(validPhotoKeys.length > 0
-              ? { photoKeys: [...(s.photoKeys ?? []), ...validPhotoKeys].slice(0, MAX_PHOTOS_PER_STOP) }
-              : {}),
-          }
-        : s
-    )
-    const allDone = updatedStops.every((s) => s.completedAt)
-
-    const routeUpdateData = {
-      optimizedStops: updatedStops,
-      ...(allDone ? { isActive: false } : {}),
-    }
-    await updateRoute(String(route._id), routeUpdateData)
 
     // Persist distance driven on this leg (sent from client GPS accumulation)
     if (typeof drivenMeters === 'number' && drivenMeters > 0) {

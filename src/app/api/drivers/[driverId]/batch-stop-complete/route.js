@@ -7,6 +7,7 @@ import { hydrateRouteItems } from '@/lib/routing/hydrate'
 import redis from '@/lib/redis'
 
 const MAX_BATCH_SIZE = 50
+const MAX_WRITE_ATTEMPTS = 5
 
 /**
  * Decide the next booking status when a stop is completed.
@@ -54,45 +55,66 @@ export async function POST(request, { params }) {
       return NextResponse.json({ error: 'stopIndexes must be integers' }, { status: 400 })
     }
 
-    const route = await findActiveRoute(driverId)
+    let route = await findActiveRoute(driverId)
     if (!route) {
       return NextResponse.json({ error: 'No active route' }, { status: 404 })
     }
 
-    const stops = route.optimizedStops ?? []
-    const uniqueIndexes = [...new Set(stopIndexes)]
-    if (uniqueIndexes.some((i) => i < 0 || i >= stops.length)) {
-      return NextResponse.json({ error: 'Invalid stopIndex in batch' }, { status: 400 })
-    }
-
     const now = new Date()
 
-    // Split into already-completed (idempotent no-ops) vs. newly-completing —
-    // same guard as the single-stop endpoint, just per-item instead of
-    // short-circuiting the whole request.
-    const toComplete = uniqueIndexes.filter((i) => !stops[i].completedAt)
+    // The compute-then-write below is wrapped in an optimistic-lock retry —
+    // see stop-complete/route.js for the full rationale (a concurrent
+    // bulk-assign merge or reroute can silently discard this write
+    // otherwise). On a matchedCount:0 conflict we re-read and recompute.
+    let stops, toComplete, updatedStops, allDone, routeUpdateData
 
-    if (toComplete.length === 0) {
-      // Every selected stop was already completed (retry/double-tap) — return
-      // current state without touching MongoDB, same as single-stop idempotency.
-      const cacheKey = `driver:${driverId}:route`
-      let cached = null
-      try { cached = await redis.get(cacheKey) } catch { /* swallow */ }
-      const finalRoute = cached ?? await hydrateRouteItems(JSON.parse(JSON.stringify(route)))
-      return NextResponse.json({ success: true, idempotent: true, route: finalRoute })
+    for (let attempt = 1; ; attempt++) {
+      stops = route.optimizedStops ?? []
+      const uniqueIndexes = [...new Set(stopIndexes)]
+      if (uniqueIndexes.some((i) => i < 0 || i >= stops.length)) {
+        return NextResponse.json({ error: 'Invalid stopIndex in batch' }, { status: 400 })
+      }
+
+      // Split into already-completed (idempotent no-ops) vs. newly-completing —
+      // same guard as the single-stop endpoint, just per-item instead of
+      // short-circuiting the whole request.
+      toComplete = uniqueIndexes.filter((i) => !stops[i].completedAt)
+
+      if (toComplete.length === 0) {
+        // Every selected stop was already completed (retry/double-tap) — return
+        // current state without touching MongoDB, same as single-stop idempotency.
+        const cacheKey = `driver:${driverId}:route`
+        let cached = null
+        try { cached = await redis.get(cacheKey) } catch { /* swallow */ }
+        const finalRoute = cached ?? await hydrateRouteItems(JSON.parse(JSON.stringify(route)))
+        return NextResponse.json({ success: true, idempotent: true, route: finalRoute })
+      }
+
+      const toCompleteSet = new Set(toComplete)
+      updatedStops = stops.map((s, i) =>
+        toCompleteSet.has(i) ? { ...s, completedAt: now } : s
+      )
+      allDone = updatedStops.every((s) => s.completedAt)
+
+      routeUpdateData = {
+        optimizedStops: updatedStops,
+        ...(allDone ? { isActive: false } : {}),
+      }
+
+      const writeResult = await updateRoute(String(route._id), routeUpdateData, route.updatedAt)
+      if (writeResult.matchedCount > 0) break
+
+      if (attempt >= MAX_WRITE_ATTEMPTS) {
+        return NextResponse.json(
+          { error: 'Route kept changing — please try again.', code: 'ROUTE_CONFLICT' },
+          { status: 409 },
+        )
+      }
+      route = await findActiveRoute(driverId)
+      if (!route) {
+        return NextResponse.json({ error: 'No active route' }, { status: 404 })
+      }
     }
-
-    const toCompleteSet = new Set(toComplete)
-    const updatedStops = stops.map((s, i) =>
-      toCompleteSet.has(i) ? { ...s, completedAt: now } : s
-    )
-    const allDone = updatedStops.every((s) => s.completedAt)
-
-    const routeUpdateData = {
-      optimizedStops: updatedStops,
-      ...(allDone ? { isActive: false } : {}),
-    }
-    await updateRoute(String(route._id), routeUpdateData)
 
     // Persist distance driven once for the whole batch (see doc comment above).
     if (typeof drivenMeters === 'number' && drivenMeters > 0) {

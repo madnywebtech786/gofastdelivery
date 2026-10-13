@@ -410,11 +410,24 @@ export async function findActiveRoutesByDriverIds(driverIds) {
 
 /**
  * Update an existing route document (called by worker notify endpoint).
+ *
+ * Optimistic concurrency: when `expectedUpdatedAt` is passed, the write only
+ * applies if the route's updatedAt still matches what the caller read before
+ * computing updateData — guards every optimizedStops writer (this function,
+ * mergeIntoActiveRoute) against a lost-update race where two requests read
+ * the same route, each compute a full replacement optimizedStops array from
+ * their own stale snapshot, and the second write silently discards the
+ * first's changes (only assignmentIds is additive/$addToSet; optimizedStops
+ * is always a full $set). A mismatch returns matchedCount:0 — callers that
+ * do read-modify-write on optimizedStops MUST check this and re-read+retry
+ * (or surface a conflict) rather than assume the write landed.
  */
-export async function updateRoute(routeId, updateData) {
+export async function updateRoute(routeId, updateData, expectedUpdatedAt = null) {
   const db = await getDb()
+  const filter = { _id: new ObjectId(routeId) }
+  if (expectedUpdatedAt) filter.updatedAt = expectedUpdatedAt
   return db.collection('routes').updateOne(
-    { _id: new ObjectId(routeId) },
+    filter,
     { $set: { ...updateData, updatedAt: new Date() } }
   )
 }
@@ -428,6 +441,11 @@ export async function updateRoute(routeId, updateData) {
  * @param {Array}      newOptimizedStops - Full re-optimized optimizedStops array
  * @param {object}     routeResult       - { encodedPolyline, distanceMeters, durationSeconds }
  * @param {string}     routePhase        - 'pickup' | 'dropoff'
+ * @param {Date|null}  expectedUpdatedAt - Optimistic lock: only write if the route's
+ *   updatedAt still matches this (the value the caller read before building
+ *   newOptimizedStops). See updateRoute() for why this matters — without it,
+ *   a concurrent reoptimize/stop-complete can silently drop the merged stops.
+ *   Pass null to skip the check (legacy/unprotected behaviour).
  */
 export async function mergeIntoActiveRoute(
   routeId,
@@ -435,10 +453,13 @@ export async function mergeIntoActiveRoute(
   newOptimizedStops,
   routeResult,
   routePhase,
+  expectedUpdatedAt = null,
 ) {
   const db = await getDb()
+  const filter = { _id: new ObjectId(routeId) }
+  if (expectedUpdatedAt) filter.updatedAt = expectedUpdatedAt
   return db.collection('routes').updateOne(
-    { _id: new ObjectId(routeId) },
+    filter,
     {
       $addToSet: { assignmentIds: { $each: bookingObjectIds } },
       $set: {

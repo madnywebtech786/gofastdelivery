@@ -6,6 +6,8 @@ import { pushBookingStatusChange, pushRouteUpdate } from '@/lib/pusher'
 import { hydrateRouteItems } from '@/lib/routing/hydrate'
 import redis from '@/lib/redis'
 
+const MAX_WRITE_ATTEMPTS = 5
+
 /**
  * POST /api/drivers/[driverId]/stop-failed
  * Body: { stopIndex: number, reason?: string }
@@ -32,40 +34,93 @@ export async function POST(request, { params }) {
       return NextResponse.json({ error: 'stopIndex is required' }, { status: 400 })
     }
 
-    const route = await findActiveRoute(driverId)
+    let route = await findActiveRoute(driverId)
     if (!route) {
       return NextResponse.json({ error: 'No active route' }, { status: 404 })
     }
 
-    const stops = route.optimizedStops ?? []
-    if (stopIndex < 0 || stopIndex >= stops.length) {
-      return NextResponse.json({ error: 'Invalid stopIndex' }, { status: 400 })
-    }
-
-    const stop = stops[stopIndex]
-    if (stop.stopType === 'endpoint') {
-      return NextResponse.json({ error: 'Cannot fail endpoint stop' }, { status: 400 })
-    }
-
-    const now = new Date()
-
-    // Idempotency — already marked complete/failed? return current state.
-    // Serve from Redis cache (already hydrated) to avoid a DB round-trip.
-    if (stop.completedAt) {
-      const cacheKey = `driver:${driverId}:route`
-      let cached = null
-      try { cached = await redis.get(cacheKey) } catch { /* swallow */ }
-      const finalRoute = cached ?? await hydrateRouteItems(JSON.parse(JSON.stringify(route)))
-      return NextResponse.json({
-        success: true,
-        idempotent: true,
-        route: finalRoute,
-      })
-    }
-
     const trimmedReason = String(reason ?? '').trim().slice(0, 500)
 
-    // Update booking → failed_pickup / failed_dropoff (clears driver assignment)
+    // The compute-then-write below is wrapped in an optimistic-lock retry —
+    // see stop-complete/route.js for the full rationale (a concurrent
+    // bulk-assign merge or reroute can silently discard this write
+    // otherwise). On a matchedCount:0 conflict we re-read and recompute.
+    // markBookingFailed (below, after the loop) is NOT idempotent the way
+    // the route write is, so it must run exactly once — after a successful
+    // write, not inside the retried section.
+    let stop, now, pairedDropoffCancelled, updatedStops, allDone, routeUpdateData
+
+    for (let attempt = 1; ; attempt++) {
+      const stops = route.optimizedStops ?? []
+      if (stopIndex < 0 || stopIndex >= stops.length) {
+        return NextResponse.json({ error: 'Invalid stopIndex' }, { status: 400 })
+      }
+
+      stop = stops[stopIndex]
+      if (stop.stopType === 'endpoint') {
+        return NextResponse.json({ error: 'Cannot fail endpoint stop' }, { status: 400 })
+      }
+
+      now = new Date()
+
+      // Idempotency — already marked complete/failed? return current state.
+      // Serve from Redis cache (already hydrated) to avoid a DB round-trip.
+      if (stop.completedAt) {
+        const cacheKey = `driver:${driverId}:route`
+        let cached = null
+        try { cached = await redis.get(cacheKey) } catch { /* swallow */ }
+        const finalRoute = cached ?? await hydrateRouteItems(JSON.parse(JSON.stringify(route)))
+        return NextResponse.json({
+          success: true,
+          idempotent: true,
+          route: finalRoute,
+        })
+      }
+
+      // Mark route stop as failed (completedAt + failedAt so it's skipped in
+      // the queue). For pickup_and_dropoff bookings: also cancel the paired
+      // dropoff stop — the pickup never happened, so the dropoff is
+      // unreachable until admin re-assigns.
+      pairedDropoffCancelled = stop.stopType === 'pickup' && stop.assignmentKind === 'pickup_and_dropoff'
+      updatedStops = stops.map((s, i) => {
+        if (i === stopIndex) {
+          return { ...s, completedAt: now, failedAt: now, failureReason: trimmedReason }
+        }
+        if (
+          pairedDropoffCancelled &&
+          !s.completedAt &&
+          s.stopType === 'dropoff' &&
+          s.assignmentKind === 'pickup_and_dropoff' &&
+          s.bookingId === stop.bookingId
+        ) {
+          return { ...s, completedAt: now, failedAt: now, failureReason: 'Pickup failed — dropoff skipped' }
+        }
+        return s
+      })
+      allDone = updatedStops.every((s) => s.completedAt)
+
+      routeUpdateData = {
+        optimizedStops: updatedStops,
+        ...(allDone ? { isActive: false } : {}),
+      }
+
+      const writeResult = await updateRoute(String(route._id), routeUpdateData, route.updatedAt)
+      if (writeResult.matchedCount > 0) break
+
+      if (attempt >= MAX_WRITE_ATTEMPTS) {
+        return NextResponse.json(
+          { error: 'Route kept changing — please try again.', code: 'ROUTE_CONFLICT' },
+          { status: 409 },
+        )
+      }
+      route = await findActiveRoute(driverId)
+      if (!route) {
+        return NextResponse.json({ error: 'No active route' }, { status: 404 })
+      }
+    }
+
+    // Update booking → failed_pickup / failed_dropoff (clears driver assignment).
+    // Runs exactly once, after the route write above has durably succeeded.
     if (stop.bookingId) {
       await markBookingFailed(String(stop.bookingId), {
         stage: stop.stopType === 'dropoff' ? 'dropoff' : 'pickup',
@@ -81,33 +136,6 @@ export async function POST(request, { params }) {
         })
       } catch { /* non-fatal */ }
     }
-
-    // Mark route stop as failed (completedAt + failedAt so it's skipped in the queue).
-    // For pickup_and_dropoff bookings: also cancel the paired dropoff stop — the pickup
-    // never happened, so the dropoff is unreachable until admin re-assigns.
-    const pairedDropoffCancelled = stop.stopType === 'pickup' && stop.assignmentKind === 'pickup_and_dropoff'
-    const updatedStops = stops.map((s, i) => {
-      if (i === stopIndex) {
-        return { ...s, completedAt: now, failedAt: now, failureReason: trimmedReason }
-      }
-      if (
-        pairedDropoffCancelled &&
-        !s.completedAt &&
-        s.stopType === 'dropoff' &&
-        s.assignmentKind === 'pickup_and_dropoff' &&
-        s.bookingId === stop.bookingId
-      ) {
-        return { ...s, completedAt: now, failedAt: now, failureReason: 'Pickup failed — dropoff skipped' }
-      }
-      return s
-    })
-    const allDone = updatedStops.every((s) => s.completedAt)
-
-    const routeUpdateData = {
-      optimizedStops: updatedStops,
-      ...(allDone ? { isActive: false } : {}),
-    }
-    await updateRoute(String(route._id), routeUpdateData)
 
     // Persist distance driven on this leg (sent from client GPS accumulation)
     if (typeof drivenMeters === 'number' && drivenMeters > 0) {

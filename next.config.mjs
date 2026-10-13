@@ -23,7 +23,9 @@ const nextConfig = {
       // wasm-unsafe-eval: the Google Maps VECTOR renderer compiles WebAssembly;
       // without it the map crashes on vector/tilt rendering. This is the narrow,
       // safe grant for WASM only — NOT full 'unsafe-eval'.
-      "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://maps.googleapis.com",
+      // googletagmanager.com: @next/third-parties' <GoogleAnalytics> (root layout)
+      // loads gtag.js from here.
+      "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://maps.googleapis.com https://www.googletagmanager.com",
       // Inline styles required by Tailwind utilities and Google Maps.
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       // Google Maps renders to a canvas; data: for map sprites.
@@ -33,7 +35,9 @@ const nextConfig = {
       // API calls: own origin + Google Maps/Places/Routes APIs + Pusher channels.
       // www.gstatic.com + data: are needed by the vector renderer for style sets
       // and base64 sprite atlases (the shared-label-worker fetches).
-      "connect-src 'self' data: https://maps.googleapis.com https://maps.gstatic.com https://www.gstatic.com https://places.googleapis.com https://routes.googleapis.com wss://*.pusher.com https://sockjs-mt1.pusher.com https://soketi.app",
+      // google-analytics.com + googletagmanager.com: gtag.js (loaded above) sends
+      // its analytics hits here.
+      "connect-src 'self' data: https://maps.googleapis.com https://maps.gstatic.com https://www.gstatic.com https://places.googleapis.com https://routes.googleapis.com https://www.google-analytics.com https://www.googletagmanager.com wss://*.pusher.com https://sockjs-mt1.pusher.com https://soketi.app",
       // No frames allowed anywhere.
       "frame-src 'none'",
       // App fonts are self-hosted by next/font; the Google Maps vector renderer
