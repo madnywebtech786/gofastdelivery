@@ -121,22 +121,51 @@ export async function POST(request, { params }) {
       incrementDrivenDistance(driverId, String(route._id), Math.round(drivenMeters)).catch(() => {})
     }
 
-    // Update each booking's status + push a status-change event, same rules
-    // as the single-stop endpoint, just looped.
-    await Promise.all(
-      toComplete.map(async (i) => {
-        const stop = stops[i]
-        const newBookingStatus = nextBookingStatus(stop)
-        if (!stop.bookingId || !newBookingStatus) return
+    // Update each booking's status + push a status-change event — grouped BY
+    // BOOKING, not per stop.
+    //
+    // A single batch can contain both the pickup AND the dropoff of the same
+    // booking (routine when one address serves as both, or when a driver
+    // confirms a whole pickup_and_dropoff leg at once). Issuing one
+    // updateBookingStatus per stop would then fire two concurrent updateOne
+    // calls against the same document: $push makes both statusHistory
+    // entries land, but $set status is last-write-wins with no defined
+    // winner — so 'picked_up' can overwrite 'delivered' and strand an
+    // already-delivered booking on "Ready to Deliver", which then gets
+    // re-dispatched to a driver. Collapsing to one write per booking,
+    // carrying the terminal status, removes the race entirely.
+    // (batch-stop-failed guards the same hazard via toFailForBookingUpdate.)
+    const byBooking = new Map()
+    for (const i of toComplete) {
+      const stop = stops[i]
+      if (!stop.bookingId || !nextBookingStatus(stop)) continue
+      const key = String(stop.bookingId)
+      if (!byBooking.has(key)) byBooking.set(key, [])
+      byBooking.get(key).push({ index: i, stop })
+    }
 
-        const clearDriver = stop.stopType === 'pickup' && stop.assignmentKind === 'pickup_only'
-        await updateBookingStatus(String(stop.bookingId), newBookingStatus, {
-          note: `Stop ${i + 1} (${stop.stopType}) completed by driver (batch)`,
-          driverId,
-          clearDriver,
-        })
+    await Promise.all(
+      [...byBooking.entries()].map(async ([bookingId, entries]) => {
+        // 'delivered' (dropoff) is terminal and outranks 'picked_up' (pickup)
+        // whenever both legs of one booking complete in the same batch.
+        const dropoffEntry = entries.find((e) => e.stop.stopType === 'dropoff')
+        const finalEntry   = dropoffEntry ?? entries[0]
+        const newBookingStatus = nextBookingStatus(finalEntry.stop)
+
+        // Only a pickup_only pickup releases the driver for re-assignment —
+        // and that kind never has a dropoff stop in the route, so a collapsed
+        // pickup+dropoff pair must never clear the driver.
+        const clearDriver = !dropoffEntry
+          && finalEntry.stop.stopType === 'pickup'
+          && finalEntry.stop.assignmentKind === 'pickup_only'
+
+        // Name every stop the booking actually completed, so collapsing two
+        // stops into one status write doesn't lose them from the audit trail.
+        const note = `${entries.map((e) => `Stop ${e.index + 1} (${e.stop.stopType})`).join(', ')} completed by driver (batch)`
+
+        await updateBookingStatus(bookingId, newBookingStatus, { note, driverId, clearDriver })
         try {
-          await pushBookingStatusChange(String(stop.bookingId), {
+          await pushBookingStatusChange(bookingId, {
             status: newBookingStatus,
             updatedAt: now.toISOString(),
             etaSeconds: null,
