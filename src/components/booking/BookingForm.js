@@ -7,6 +7,7 @@ import Button from '@/components/ui/Button'
 import Select from '@/components/ui/Select'
 import DatePicker from '@/components/ui/DatePicker'
 import { useToast } from '@/components/ui/Toast'
+import PrintLabelModal from '@/components/booking/PrintLabelModal'
 import { placesAutocomplete, placeDetails, reverseGeocode } from '@/lib/google-geocode'
 import { calculatePrice } from '@/lib/pricing'
 import { calgaryDateKey, calgaryTimeKey } from '@/lib/dateFormat'
@@ -78,6 +79,14 @@ function SectionHeading({ children }) {
     </h3>
   )
 }
+
+// The note is printed on the shipping label (src/components/booking/BookingLabel.js),
+// whose Notes block fits three lines at 10pt across a 4in-wide label — roughly
+// 155 characters. Capping the input here keeps what the customer types and what
+// actually gets printed identical, rather than letting the label quietly drop
+// the tail of a longer note. The booking API's own MAX_STRING = 300 still
+// applies behind this as the server-side backstop.
+const NOTES_MAX_CHARS = 150
 
 function Field({ label, required, children }) {
   return (
@@ -329,6 +338,9 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess, init
 
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  // Set to the just-created booking to open the label-print modal. While it
+  // is set, the post-create redirect is deferred — see finishCreateFlow().
+  const [createdBooking, setCreatedBooking] = useState(null)
 
   const hasPickup  = stops.some((s) => s.type === 'pickup')
   const hasDropoff = stops.some((s) => s.type === 'dropoff')
@@ -545,15 +557,12 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess, init
         // Guest flow — delegate navigation/toast to the parent page
         onSuccess(data)
       } else {
-        // Customer portal flow — store ID for MyBookingsClient refresh then navigate
-        if (data._id) sessionStorage.setItem('newBookingId', data._id)
-        const trackShort = data.trackingToken ? `Tracking #${data.trackingToken}` : ''
-        toast.success(
-          'Booking created',
-          trackShort ? `${trackShort} — we'll notify you at every status change.` : `We'll notify you at every status change.`
-        )
-        router.push('/customer/my-bookings')
-        router.refresh()
+        // Customer portal flow — offer the shipping label first. The toast +
+        // redirect that used to fire here now run when the modal is dismissed
+        // (finishCreateFlow), so navigating away can't unmount the label
+        // before the customer has had the chance to print it. The booking is
+        // already saved at this point either way.
+        setCreatedBooking(data)
       }
     } catch {
       setError('Network error. Please try again.')
@@ -562,7 +571,32 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess, init
     }
   }
 
+  // Closes the post-create label modal and completes the create flow with the
+  // toast + redirect it deferred. The customer can still print the label later
+  // from the booking detail page, so dismissing this loses nothing.
+  function finishCreateFlow() {
+    const booking = createdBooking
+    setCreatedBooking(null)
+    if (!booking) return
+
+    // Still set even though we land on the detail page below — MyBookingsClient
+    // consumes it to highlight the new row whenever the customer next opens
+    // the list.
+    if (booking._id) sessionStorage.setItem('newBookingId', booking._id)
+    const trackShort = booking.trackingToken ? `Tracking #${booking.trackingToken}` : ''
+    toast.success(
+      'Booking created',
+      trackShort ? `${trackShort} — we'll notify you at every status change.` : `We'll notify you at every status change.`
+    )
+    // Land on the booking's own page rather than the list: that page carries
+    // the Print Label button, so a customer who dismissed the modal (or
+    // closed it by accident) can get the label back straight away.
+    router.push(booking._id ? `/customer/my-bookings/${booking._id}` : '/customer/my-bookings')
+    router.refresh()
+  }
+
   return (
+    <>
     <form onSubmit={handleSubmit} className="space-y-6">
 
       {/* ── Map ──────────────────────────────────────────────────────────── */}
@@ -683,7 +717,12 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess, init
           </Field>
         </div>
         <Field label="Description / Notes">
-          <textarea value={pickup.notes} onChange={(e) => setPickup((p) => ({ ...p, notes: e.target.value }))} className={inputCls} rows={3} placeholder="Gate code, leave at front desk, etc." disabled={isPickupLocked} />
+          <textarea value={pickup.notes} onChange={(e) => setPickup((p) => ({ ...p, notes: e.target.value }))} className={inputCls} rows={3} maxLength={NOTES_MAX_CHARS} placeholder="Gate code, leave at front desk, etc." disabled={isPickupLocked} />
+          {/* maxLength on its own just stops accepting keystrokes with no
+              explanation, so show the count. */}
+          <p className="mt-1 text-right text-xs text-muted">
+            {pickup.notes.length} / {NOTES_MAX_CHARS}
+          </p>
         </Field>
       </div>
 
@@ -875,5 +914,14 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess, init
         {isEditMode ? 'Save Changes' : 'Create Booking'}
       </Button>
     </form>
+
+    <PrintLabelModal
+      open={!!createdBooking}
+      onClose={finishCreateFlow}
+      booking={createdBooking}
+      title="Booking confirmed"
+      subtitle="Print the shipping label and attach it to your package. You can also print it later from the booking's detail page."
+    />
+    </>
   )
 }

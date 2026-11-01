@@ -4,16 +4,18 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import Badge from '@/components/ui/Badge'
+import Button from '@/components/ui/Button'
 import StatusTimeline from '@/components/ui/StatusTimeline'
 import { useToast } from '@/components/ui/Toast'
 import SignatureViewer from '@/components/booking/SignatureViewer'
 import PhotoGallery from '@/components/booking/PhotoGallery'
 import StopNotes from '@/components/booking/StopNotes'
+import PrintLabelModal from '@/components/booking/PrintLabelModal'
 import { formatDateTime } from '@/lib/dateFormat'
 import { accountNumber } from '@/lib/accountLabel'
 import {
   ArrowLeft, Clock, MapPin, User, Phone, Link2, CheckCircle2,
-  Copy, Trash2, Package, Ruler, ExternalLink, Loader2, Pencil,
+  Copy, Trash2, Package, Ruler, ExternalLink, Loader2, Pencil, Printer,
 } from 'lucide-react'
 
 // Statuses a customer may still edit their own booking's details from —
@@ -43,10 +45,16 @@ export default function BookingDetailClient({ booking: initial, origin }) {
   const [showConfirm, setShowConfirm] = useState(false)
   const [copied, setCopied]         = useState(false)
   const [copiedToken, setCopiedToken] = useState(false)
+  const [showLabel, setShowLabel]     = useState(false)
 
   const trackingUrl = `${origin}/track/${booking.trackingToken}`
   const canCancel   = CANCELLABLE_STATUSES.includes(booking.status)
   const canEdit     = EDITABLE_STATUSES.includes(booking.status)
+  // Everything except cancelled stays printable. A cancelled booking's label
+  // is worse than no label — the customer could attach it and ship a package
+  // no driver will ever collect. failed_pickup deliberately stays printable:
+  // that is exactly when a reprint tends to be needed.
+  const canPrintLabel = booking.status !== 'cancelled'
 
   async function handleCancel() {
     setShowConfirm(false)
@@ -118,6 +126,22 @@ export default function BookingDetailClient({ booking: initial, origin }) {
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          {canPrintLabel && (
+            // The one action on this page a customer actively comes looking
+            // for, so it gets the primary treatment and a text label rather
+            // than sitting as another anonymous icon. h-9 lines it up with
+            // the icon-only Edit/Cancel buttons beside it.
+            <Button
+              variant="primary"
+              size="sm"
+              className="h-9"
+              icon={<Printer size={14} />}
+              onClick={() => setShowLabel(true)}
+              title="Print shipping label"
+            >
+              Print Label
+            </Button>
+          )}
           {canEdit && (
             <Link
               href={`/customer/my-bookings/${b._id}/edit`}
@@ -429,6 +453,9 @@ export default function BookingDetailClient({ booking: initial, origin }) {
           </div>
         </div>
       )}
+
+      {/* ── Print Shipping Label Modal ────────────────────────────── */}
+      <PrintLabelModal open={showLabel} onClose={() => setShowLabel(false)} booking={b} />
     </div>
   )
 }

@@ -42,6 +42,14 @@ const VARIANTS = {
     'hover:bg-[var(--surface-2)] hover:text-[var(--fg)]',
     'focus-visible:ring-[var(--border-2)]',
   ].join(' '),
+  // Filled neutral — for a dismissing action (Close/Cancel) that still needs
+  // to read as a button. Distinct from `secondary`, which is white and so
+  // reads as a peer of whatever real action sits next to it.
+  neutral: [
+    'bg-[var(--surface-3)] text-[var(--fg-2)] border border-[var(--border)]',
+    'hover:bg-[var(--border)] hover:text-[var(--fg)]',
+    'focus-visible:ring-[var(--border-2)]',
+  ].join(' '),
 }
 
 const SIZES = {
