@@ -35,7 +35,7 @@ function findStop(booking, type) {
 
 const S = {
   header: {
-    padding: '0.13in 0.18in',
+    padding: '0.15in 0.18in',
     display: 'flex',
     alignItems: 'center',
     gap: '0.1in',
@@ -43,8 +43,8 @@ const S = {
     flexShrink: 0,
   },
   logo: {
-    width: '0.44in',
-    height: '0.44in',
+    width: '0.5in',
+    height: '0.5in',
     objectFit: 'contain',
     display: 'block',
     flexShrink: 0,
@@ -95,7 +95,9 @@ const S = {
     flexDirection: 'column',
     justifyContent: 'center',
     overflow: 'hidden',
-    borderBottom: `1px solid ${INK}`,
+    // No border-bottom: the footer below draws its own border-top, and when
+    // there are no notes this zone sits directly above it — two adjacent 1px
+    // rules print as one thick, slightly uneven line.
   },
   notesZone: {
     flex: '0.7 1 auto',
@@ -105,7 +107,7 @@ const S = {
     flexDirection: 'column',
     justifyContent: 'center',
     overflow: 'hidden',
-    borderBottom: `1px solid ${INK}`,
+    borderTop: `1px solid ${INK}`,
   },
 
   // Sender and recipient are set IDENTICALLY — same size, weight and colour.
@@ -115,78 +117,58 @@ const S = {
   // zones stay instantly distinguishable at a glance without changing the
   // size of either address.
   zoneLabel: {
-    fontSize: '8.5pt',
+    fontSize: '9.5pt',
     fontWeight: 700,
     letterSpacing: '0.16em',
     textTransform: 'uppercase',
     color: INK,
-    marginBottom: '0.045in',
+    marginBottom: '0.05in',
   },
   zoneLabelStrong: {
-    fontSize: '8.5pt',
+    fontSize: '9.5pt',
     fontWeight: 800,
     letterSpacing: '0.16em',
     textTransform: 'uppercase',
     color: INK,
-    marginBottom: '0.045in',
+    marginBottom: '0.05in',
   },
   partyName: {
-    fontSize: '17pt',
+    fontSize: '22pt',
     fontWeight: 700,
     lineHeight: 1.12,
-    letterSpacing: '-0.3pt',
+    letterSpacing: '-0.4pt',
   },
   partyAddress: {
-    fontSize: '13pt',
+    fontSize: '17pt',
     fontWeight: 600,
     lineHeight: 1.28,
     color: INK,
-    marginTop: '0.045in',
+    marginTop: '0.05in',
     display: '-webkit-box',
     WebkitLineClamp: 3,
     WebkitBoxOrient: 'vertical',
     overflow: 'hidden',
   },
   notesText: {
-    fontSize: '10pt',
+    fontSize: '12pt',
     lineHeight: 1.32,
     color: INK,
     display: '-webkit-box',
-    WebkitLineClamp: 3,
+    // 4 lines, not 3: at 12pt this block fits ~43 chars per line, so the
+    // form's 150-char cap (NOTES_MAX_CHARS in BookingForm.js) needs ~3.5
+    // lines. Three would clip a note the form had already accepted.
+    WebkitLineClamp: 4,
     WebkitBoxOrient: 'vertical',
     overflow: 'hidden',
   },
 
-  trackWrap: {
-    padding: '0.13in 0.18in 0.14in',
-    flexShrink: 0,
-  },
-  trackBox: {
-    border: `2px solid ${INK}`,
-    padding: '0.09in 0.1in 0.1in',
-    textAlign: 'center',
-  },
-  trackLabel: {
-    fontSize: '7.5pt',
-    fontWeight: 700,
-    letterSpacing: '0.18em',
-    textTransform: 'uppercase',
-    color: INK_MUTED,
-  },
-  trackValue: {
-    fontFamily: "'Courier New', Consolas, monospace",
-    fontSize: '29pt',
-    fontWeight: 700,
-    letterSpacing: '0.06em',
-    lineHeight: 1.1,
-    marginTop: '0.03in',
-    wordBreak: 'break-all',
-  },
   footer: {
-    marginTop: '0.06in',
+    padding: '0.1in 0.18in 0.13in',
     fontSize: '8pt',
     color: INK_MUTED,
     textAlign: 'center',
+    borderTop: `1px solid ${INK}`,
+    flexShrink: 0,
   },
   cutHint: {
     fontSize: '7pt',
@@ -279,13 +261,7 @@ export default function BookingLabel({ booking, mode = 'label', logoSrc = '/imag
           </div>
         )}
 
-        <div style={S.trackWrap}>
-          <div style={S.trackBox}>
-            <div style={S.trackLabel}>Tracking ID</div>
-            <div style={S.trackValue}>{booking.trackingToken || '—'}</div>
-          </div>
-          {bookedOn && <div style={S.footer}>Booked {bookedOn}</div>}
-        </div>
+        {bookedOn && <div style={S.footer}>Booked {bookedOn}</div>}
       </div>
 
       {mode === 'sheet' && (
