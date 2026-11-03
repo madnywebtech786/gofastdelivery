@@ -13,8 +13,9 @@ import { formatDateLong } from '@/lib/dateFormat'
 //      so a white-on-black header silently prints as white-on-WHITE — an
 //      invisible company name. Black ink on white can't fail that way, and it
 //      uses a fraction of the toner.
-//   2. No brand green. It renders as an indistinct mid-grey in mono, which is
-//      worse than simply setting the wordmark in black.
+//   2. No brand green in the text. It renders as an indistinct mid-grey in
+//      mono, so every line is set in black. (The logo image is the one
+//      exception — it is the only branding left on the label.)
 // Hierarchy is therefore carried entirely by type weight, size and black
 // rules — which is also exactly how real thermal carrier labels are built.
 const INK        = '#000000'
@@ -29,39 +30,53 @@ const INK_MUTED  = '#444444'   // still solid in mono; avoids washed-out greys
 const LABEL_W = '4in'
 const LABEL_H = '6in'
 
+// Company contact block, printed beside the logo in the header. Kept local
+// rather than shared: the invoice stores its own companyPhone/companyEmail
+// per document, so there is no existing constant to reuse and exactly one
+// consumer here. Values mirror the live site — the phone and email are the
+// public ones from the landing navbar and Contact page
+// (src/components/landing/Navbar.js), NOT the privacy policy's Privacy
+// Officer line, and the URL is APP_BASE_URL without the scheme.
+const COMPANY_WEBSITE = 'www.gfdelivery.ca'
+const COMPANY_PHONE   = '+1 825-488-2316'
+const COMPANY_EMAIL   = 'info@gfdelivery.ca'
+
 function findStop(booking, type) {
   return (booking?.stops ?? []).find((s) => s.type === type) ?? null
 }
 
 const S = {
+  // Two columns: logo on the left, contact details stacked on the right.
+  // space-between pushes them to opposite edges so the contact block reads as
+  // its own column rather than text trailing off the logo.
   header: {
-    padding: '0.15in 0.18in',
+    padding: '0.1in 0.18in',
     display: 'flex',
     alignItems: 'center',
-    gap: '0.1in',
+    justifyContent: 'space-between',
+    gap: '0.14in',
     borderBottom: `3px solid ${INK}`,
     flexShrink: 0,
   },
   logo: {
-    width: '0.5in',
-    height: '0.5in',
+    // The logo is taller than the contact column beside it, so it alone sets
+    // the header height — every extra 0.01in here comes straight off the
+    // content below. 0.8in is the most that still lets the longest realistic
+    // label (3-line addresses + a note at the form's 150-char cap) fit the
+    // 6in page; the surrounding padding was tightened to afford it.
+    width: '0.8in',
+    height: '0.8in',
     objectFit: 'contain',
     display: 'block',
     flexShrink: 0,
   },
-  wordmark: {
-    fontSize: '15pt',
-    fontWeight: 800,
+  contact: {
+    textAlign: 'right',
+    fontSize: '9.5pt',
+    fontWeight: 600,
+    lineHeight: 1.38,
     color: INK,
-    letterSpacing: '-0.3pt',
-    lineHeight: 1.05,
-  },
-  tagline: {
-    fontSize: '6.5pt',
-    color: INK_MUTED,
-    marginTop: '0.018in',
-    letterSpacing: '0.04em',
-    textTransform: 'uppercase',
+    minWidth: 0,
   },
 
   // The three content zones FLEX rather than sitting at their natural height.
@@ -80,7 +95,7 @@ const S = {
   fromZone: {
     flex: '1 1 auto',
     minHeight: 0,
-    padding: '0.1in 0.18in',
+    padding: '0.09in 0.18in',
     display: 'flex',
     flexDirection: 'column',
     justifyContent: 'center',
@@ -90,7 +105,7 @@ const S = {
   toZone: {
     flex: '1 1 auto',
     minHeight: 0,
-    padding: '0.1in 0.18in',
+    padding: '0.09in 0.18in',
     display: 'flex',
     flexDirection: 'column',
     justifyContent: 'center',
@@ -102,7 +117,7 @@ const S = {
   notesZone: {
     flex: '0.7 1 auto',
     minHeight: 0,
-    padding: '0.1in 0.18in',
+    padding: '0.09in 0.18in',
     display: 'flex',
     flexDirection: 'column',
     justifyContent: 'center',
@@ -139,7 +154,10 @@ const S = {
     letterSpacing: '-0.4pt',
   },
   partyAddress: {
-    fontSize: '17pt',
+    // 16pt, not 17: the two-column header is taller than the old wordmark
+    // one, and this gives that height back so the longest realistic label
+    // (3-line addresses + a max-length note) still fits on one page.
+    fontSize: '16pt',
     fontWeight: 600,
     lineHeight: 1.28,
     color: INK,
@@ -163,7 +181,7 @@ const S = {
   },
 
   footer: {
-    padding: '0.1in 0.18in 0.13in',
+    padding: '0.08in 0.18in 0.11in',
     fontSize: '8pt',
     color: INK_MUTED,
     textAlign: 'center',
@@ -222,11 +240,15 @@ export default function BookingLabel({ booking, mode = 'label', logoSrc = '/imag
     <>
       <div style={root}>
         <div style={S.header}>
+          {/* The logo is now the ONLY company branding on the label, so it
+              carries real alt text — if the image fails to load, that text is
+              all that identifies the sender. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={logoSrc} alt="" style={S.logo} />
-          <div>
-            <div style={S.wordmark}>GoFastDelivery Inc.</div>
-            <div style={S.tagline}>Calgary&apos;s Same-Day Courier</div>
+          <img src={logoSrc} alt="Go Fast Delivery Inc." style={S.logo} />
+          <div style={S.contact}>
+            <div>{COMPANY_WEBSITE}</div>
+            <div>{COMPANY_PHONE}</div>
+            <div>{COMPANY_EMAIL}</div>
           </div>
         </div>
 
