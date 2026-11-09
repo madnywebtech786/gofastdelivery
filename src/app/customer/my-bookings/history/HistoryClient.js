@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { Fragment, useState, useMemo } from 'react'
 import Link from 'next/link'
 import Badge from '@/components/ui/Badge'
 import DatePicker from '@/components/ui/DatePicker'
@@ -26,6 +26,45 @@ function formatDate(d) {
 
 function formatTime(d) {
   return formatTimeShared(d)
+}
+
+function hasAnyNote(stop) {
+  return Boolean(stop?.notes || stop?.driverNote)
+}
+
+/**
+ * A booking's notes grouped by leg, so the customer can tell at a glance
+ * whether a note belongs to the pickup or the delivery — the same note text
+ * means different things depending on which end it came from.
+ *
+ * The pills themselves are the shared StopNotes component untouched (customer
+ * note in grey, driver note in amber); this only puts a leg label in front of
+ * them, so there is still exactly one place that decides how a note renders.
+ * Returns null when neither leg has a note, so callers need no own guard.
+ */
+function NotesByLeg({ pickup, dropoff }) {
+  const legs = [
+    { label: 'Pickup',   stop: pickup },
+    { label: 'Delivery', stop: dropoff },
+  ].filter(({ stop }) => hasAnyNote(stop))
+
+  if (legs.length === 0) return null
+
+  return (
+    <div className="space-y-1.5">
+      {legs.map(({ label, stop }) => (
+        <div key={label} className="flex items-start gap-2">
+          <span className="text-[10px] font-bold uppercase tracking-wider shrink-0 pt-1 w-14"
+            style={{ color: 'var(--fg-3)' }}>
+            {label}
+          </span>
+          <div className="flex flex-wrap gap-1.5 min-w-0">
+            <StopNotes stop={stop} />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
 }
 
 export default function HistoryClient({ bookings }) {
@@ -215,10 +254,18 @@ export default function HistoryClient({ bookings }) {
               ) : paged.map((b) => {
                 const pickup  = b.stops?.find((s) => s.type === 'pickup')
                 const dropoff = b.stops?.filter((s) => s.type === 'dropoff').at(-1)
+                const showNotes = hasAnyNote(pickup) || hasAnyNote(dropoff)
+                // When a notes row follows, drop this row's bottom border so
+                // the pair reads as one booking instead of two table rows.
+                // Inline, not a class: .data-table td sets that border in
+                // globals.css at the same specificity, so a utility class
+                // would be a coin-flip on stylesheet order.
+                const cellStyle = showNotes ? { borderBottom: 'none' } : undefined
                 return (
-                  <tr key={b._id} className="group">
-                    <td><Badge status={b.status} /></td>
-                    <td>
+                  <Fragment key={b._id}>
+                  <tr className="group">
+                    <td style={cellStyle}><Badge status={b.status} /></td>
+                    <td style={cellStyle}>
                       <div className="space-y-0.5 min-w-0 max-w-xs">
                         <div className="flex items-center gap-1.5">
                           <MapPin size={10} style={{ color: 'var(--success)', flexShrink: 0 }} />
@@ -234,17 +281,17 @@ export default function HistoryClient({ bookings }) {
                         </div>
                       </div>
                     </td>
-                    <td>
+                    <td style={cellStyle}>
                       <p className="text-xs font-medium" style={{ color: 'var(--fg)' }}>{formatDate(b.createdAt)}</p>
                       <p className="text-xs" style={{ color: 'var(--fg-3)' }}>{formatTime(b.createdAt)}</p>
                     </td>
-                    <td>
+                    <td style={cellStyle}>
                       {b.estimatedPrice
                         ? <span className="text-sm font-bold mono" style={{ color: 'var(--accent)' }}>${b.estimatedPrice}</span>
                         : <span className="text-xs" style={{ color: 'var(--fg-3)' }}>—</span>
                       }
                     </td>
-                    <td>
+                    <td style={cellStyle}>
                       <div className="flex items-center justify-end">
                         <Link href={`/customer/my-bookings/${b._id}`}
                           className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all"
@@ -254,6 +301,14 @@ export default function HistoryClient({ bookings }) {
                       </div>
                     </td>
                   </tr>
+                  {showNotes && (
+                    <tr>
+                      <td colSpan={5} style={{ paddingTop: 0 }}>
+                        <NotesByLeg pickup={pickup} dropoff={dropoff} />
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 )
               })}
             </tbody>
@@ -293,12 +348,7 @@ export default function HistoryClient({ bookings }) {
                     <span className="text-xs truncate" style={{ color: 'var(--fg-3)' }}>{dropoff?.address ?? '—'}</span>
                   </div>
                 </div>
-                {(pickup?.notes || pickup?.driverNote || dropoff?.notes || dropoff?.driverNote) && (
-                  <div className="flex flex-wrap gap-1.5">
-                    <StopNotes stop={pickup} />
-                    <StopNotes stop={dropoff} />
-                  </div>
-                )}
+                <NotesByLeg pickup={pickup} dropoff={dropoff} />
                 <div className="flex items-center justify-between gap-2">
                   {b.estimatedPrice && (
                     <span className="text-sm font-bold mono" style={{ color: 'var(--accent)' }}>${b.estimatedPrice}</span>
