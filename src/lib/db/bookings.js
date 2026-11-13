@@ -60,7 +60,7 @@ export const BOOKING_STATUSES = [
 /**
  * Create a new booking.
  */
-export async function createBooking({ customerId, stops, trackingToken, senderEmail = null, receiverEmail = null, packageDetails = null, estimatedPrice = null }) {
+export async function createBooking({ customerId, stops, trackingToken, senderEmail = null, receiverEmail = null, packageDetails = null, estimatedPrice = null, jobId = null }) {
   const db = await getDb()
   const now = new Date()
   const doc = {
@@ -70,6 +70,11 @@ export async function createBooking({ customerId, stops, trackingToken, senderEm
     stops,
     packageDetails:  normalizePackageDetails(packageDetails),
     estimatedPrice:  estimatedPrice  ?? null,
+    // The customer's own optional reference for this job (a PO number, work
+    // order, etc). Deliberately printed ONLY on the shipping label — it is
+    // not surfaced in the admin, driver or customer UIs, nor in the
+    // confirmation email/SMS.
+    jobId:           jobId || null,
     senderEmail:     senderEmail     || null,
     receiverEmail:   receiverEmail   || null,
     assignedDriverId: null,
@@ -925,7 +930,7 @@ export const CUSTOMER_EDITABLE_STATUSES = ['pending', 'failed_pickup', 'failed_d
  * (not just app code) so a race with a status change can't silently apply a
  * stale edit. Does not touch status/statusHistory/assignment fields.
  */
-export async function updateBookingDetails(bookingId, customerId, { stops, packageDetails, senderEmail, receiverEmail, estimatedPrice }) {
+export async function updateBookingDetails(bookingId, customerId, { stops, packageDetails, senderEmail, receiverEmail, estimatedPrice, jobId }) {
   const db = await getDb()
   const filter = {
     _id: new ObjectId(bookingId),
@@ -940,6 +945,7 @@ export async function updateBookingDetails(bookingId, customerId, { stops, packa
       senderEmail:    senderEmail   || null,
       receiverEmail:  receiverEmail || null,
       estimatedPrice: estimatedPrice ?? null,
+      jobId:          jobId || null,
       updatedAt: new Date(),
     },
   })

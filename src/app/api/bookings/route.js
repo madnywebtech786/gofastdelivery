@@ -20,6 +20,9 @@ const LAT_MAX =  60.0
 const LNG_MIN = -120.0
 const LNG_MAX = -110.0
 const MAX_STRING = 300
+// Customer's optional job reference. Short on purpose — it shares one footer
+// line with the booking date on the 4in shipping label.
+const MAX_JOB_ID = 30
 
 function sanitizeStr(val, max = MAX_STRING) {
   if (val == null) return ''
@@ -115,7 +118,7 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
     }
 
-    const { stops, packageDetails, senderEmail, receiverEmail, estimatedPrice } = body
+    const { stops, packageDetails, senderEmail, receiverEmail, estimatedPrice, jobId } = body
 
     if (!Array.isArray(stops) || stops.length !== 2) {
       return NextResponse.json(
@@ -217,6 +220,9 @@ export async function POST(request) {
       senderEmail:    cleanSenderEmail   || null,
       receiverEmail:  cleanReceiverEmail || null,
       estimatedPrice: price,
+      // Capped shorter than MAX_STRING: this prints on one footer line of a
+      // 4in label, and anything longer would wrap and grow the label.
+      jobId:          sanitizeStr(jobId, MAX_JOB_ID) || null,
     })
 
     // Send confirmation email + SMS — fire-and-forget, never block response

@@ -11,6 +11,9 @@ const LAT_MAX =  60.0
 const LNG_MIN = -120.0
 const LNG_MAX = -110.0
 const MAX_STRING = 300
+// Mirrors MAX_JOB_ID in the create route (src/app/api/bookings/route.js) —
+// kept in step so an edit can't store a job reference a create would reject.
+const MAX_JOB_ID = 30
 
 function sanitizeStr(val, max = MAX_STRING) {
   if (val == null) return ''
@@ -93,7 +96,7 @@ export async function PATCH(request, { params }) {
       return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
     }
 
-    const { stops, senderEmail, receiverEmail } = body
+    const { stops, senderEmail, receiverEmail, jobId } = body
     let { packageDetails } = body
 
     if (!Array.isArray(stops) || stops.length !== 2) {
@@ -223,6 +226,7 @@ export async function PATCH(request, { params }) {
       senderEmail:    cleanSenderEmail   || null,
       receiverEmail:  cleanReceiverEmail || null,
       estimatedPrice: price,
+      jobId:          sanitizeStr(jobId, MAX_JOB_ID) || null,
     })
 
     if (result.matchedCount === 0) {

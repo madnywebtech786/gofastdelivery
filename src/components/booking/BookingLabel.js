@@ -132,7 +132,7 @@ const S = {
   // zones stay instantly distinguishable at a glance without changing the
   // size of either address.
   zoneLabel: {
-    fontSize: '9.5pt',
+    fontSize: '8.5pt',
     fontWeight: 700,
     letterSpacing: '0.16em',
     textTransform: 'uppercase',
@@ -140,7 +140,7 @@ const S = {
     marginBottom: '0.05in',
   },
   zoneLabelStrong: {
-    fontSize: '9.5pt',
+    fontSize: '8.5pt',
     fontWeight: 800,
     letterSpacing: '0.16em',
     textTransform: 'uppercase',
@@ -148,16 +148,13 @@ const S = {
     marginBottom: '0.05in',
   },
   partyName: {
-    fontSize: '22pt',
+    fontSize: '15pt',
     fontWeight: 700,
     lineHeight: 1.12,
     letterSpacing: '-0.4pt',
   },
   partyAddress: {
-    // 16pt, not 17: the two-column header is taller than the old wordmark
-    // one, and this gives that height back so the longest realistic label
-    // (3-line addresses + a max-length note) still fits on one page.
-    fontSize: '16pt',
+    fontSize: '11.5pt',
     fontWeight: 600,
     lineHeight: 1.28,
     color: INK,
@@ -187,6 +184,10 @@ const S = {
     textAlign: 'center',
     borderTop: `1px solid ${INK}`,
     flexShrink: 0,
+  },
+  footerStrong: {
+    fontWeight: 700,
+    color: INK,
   },
   cutHint: {
     fontSize: '7pt',
@@ -283,7 +284,17 @@ export default function BookingLabel({ booking, mode = 'label', logoSrc = '/imag
           </div>
         )}
 
-        {bookedOn && <div style={S.footer}>Booked {bookedOn}</div>}
+        {/* Job ID is the customer's own reference, so it carries a little
+            more weight than the date beside it — it is what they scan for
+            when matching a printed label back to their own records. Both
+            parts are optional; the footer only renders if one is present. */}
+        {(booking.jobId || bookedOn) && (
+          <div style={S.footer}>
+            {booking.jobId && <span style={S.footerStrong}>Job ID {booking.jobId}</span>}
+            {booking.jobId && bookedOn && ' · '}
+            {bookedOn && `Booked ${bookedOn}`}
+          </div>
+        )}
       </div>
 
       {mode === 'sheet' && (

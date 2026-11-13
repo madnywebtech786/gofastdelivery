@@ -88,6 +88,10 @@ function SectionHeading({ children }) {
 // applies behind this as the server-side backstop.
 const NOTES_MAX_CHARS = 150
 
+// Mirrors MAX_JOB_ID in src/app/api/bookings/route.js and the edit route.
+// Short because it shares one footer line with the date on the 4in label.
+const MAX_JOB_ID = 30
+
 function Field({ label, required, children }) {
   return (
     <div>
@@ -341,6 +345,9 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess, init
   // Set to the just-created booking to open the label-print modal. While it
   // is set, the post-create redirect is deferred — see finishCreateFlow().
   const [createdBooking, setCreatedBooking] = useState(null)
+  // Customer's own optional reference for this job. Printed only on the
+  // shipping label — deliberately not surfaced anywhere else.
+  const [jobId, setJobId] = useState(initialBooking?.jobId ?? '')
 
   const hasPickup  = stops.some((s) => s.type === 'pickup')
   const hasDropoff = stops.some((s) => s.type === 'dropoff')
@@ -512,6 +519,7 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess, init
         senderEmail:   senderEmail   || null,
         receiverEmail: receiverEmail || null,
         estimatedPrice: pricingPreview?.price ?? null,
+        jobId: jobId.trim() || null,
       }
 
       const url    = isEditMode ? `/api/bookings/${initialBooking._id}/edit` : apiPath
@@ -551,6 +559,7 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess, init
       setPackageErrors([])
       setSenderEmail('')
       setReceiverEmail('')
+      setJobId('')
       setPricingPreview(null)
 
       if (onSuccess) {
@@ -767,6 +776,30 @@ export default function BookingForm({ apiPath = '/api/bookings', onSuccess, init
         </div>
         <Field label="Receiver Email">
           <input type="email" value={receiverEmail} onChange={(e) => setReceiverEmail(e.target.value)} className={inputCls} placeholder="receiver@example.com" />
+        </Field>
+      </div>
+
+      {/* ── Your Reference ───────────────────────────────────────────────── */}
+      {/* Not disabled by isPickupLocked: that lock exists because pickup and
+          package details can't change once the package is in a driver's
+          hands, and the edit route enforces it server-side for exactly those
+          two. A job reference is the customer's own bookkeeping, so it stays
+          editable for as long as the booking itself is. */}
+      <div className="rounded-xl border border-border bg-surface p-4">
+        <SectionHeading>🔖 Your Reference</SectionHeading>
+        <Field label="Job ID (optional)">
+          <input
+            type="text"
+            value={jobId}
+            onChange={(e) => setJobId(e.target.value)}
+            className={inputCls}
+            maxLength={MAX_JOB_ID}
+            placeholder="e.g. PO-44821"
+          />
+          <p className="mt-1 text-xs text-muted">
+            Your own reference for this job. Printed on the shipping label only — it isn&apos;t
+            shown to the driver and can&apos;t be used to track the package.
+          </p>
         </Field>
       </div>
 
