@@ -286,6 +286,11 @@ export default function CustomerDashboardClient({ recentBookings }) {
                         {dropoff?.address ?? 'Drop-off'}
                       </p>
                     </div>
+                    {b.jobId && (
+                      <p className="text-[11px] font-semibold truncate" style={{ color: 'var(--fg-3)' }}>
+                        Job ID {b.jobId}
+                      </p>
+                    )}
                   </div>
 
                   {/* Date + arrow */}

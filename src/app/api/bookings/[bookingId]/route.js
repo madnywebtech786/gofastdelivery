@@ -23,7 +23,13 @@ export async function GET(request, { params }) {
     const booking = await findBookingById(bookingId, filters)
     if (!booking) return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
 
-    return NextResponse.json(JSON.parse(JSON.stringify(booking)))
+    const result = JSON.parse(JSON.stringify(booking))
+    // Drivers don't see what a booking costs the customer. Stripped here
+    // rather than in findBookingById, which is also used by the
+    // customer/admin-facing callers that must keep this field.
+    if (role === 'driver') delete result.estimatedPrice
+
+    return NextResponse.json(result)
   } catch (err) {
     return handleApiError(err, '[GET /api/bookings/[bookingId]]')
   }

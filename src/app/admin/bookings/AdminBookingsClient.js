@@ -306,7 +306,8 @@ export default function AdminBookingsClient({ initialStatusFilter, initialPickup
     return bookings.filter((b) =>
       b.stops?.some((s) => s.address?.toLowerCase().includes(q) || s.contactName?.toLowerCase().includes(q)) ||
       b.senderEmail?.toLowerCase().includes(q) ||
-      b.receiverEmail?.toLowerCase().includes(q)
+      b.receiverEmail?.toLowerCase().includes(q) ||
+      b.jobId?.toLowerCase().includes(q)
     )
   }, [bookings, search])
 
@@ -558,7 +559,7 @@ export default function AdminBookingsClient({ initialStatusFilter, initialPickup
           <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--fg-3)' }} />
           <input
             type="text"
-            placeholder="Search by address, name or email on this page…"
+            placeholder="Search by address, name, email or job ID on this page…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-border bg-white text-sm focus:outline-none focus:ring-2 focus:border-transparent transition-all"
@@ -752,6 +753,13 @@ export default function AdminBookingsClient({ initialStatusFilter, initialPickup
                             {b.packageDetails.kind}
                             {b.packageDetails.weightLbs > 0 && ` · ${b.packageDetails.weightLbs} lbs`}
                             {b.packageDetails.packages?.length > 1 && ` · ×${b.packageDetails.packages.length} packages`}
+                          </p>
+                        )}
+
+                        {b.jobId && (
+                          <p className="text-xs font-medium mt-0.5 truncate" style={{ color: 'var(--fg-2)' }}>
+                            <span style={{ color: 'var(--fg-3)' }}>Job ID: </span>
+                            {b.jobId}
                           </p>
                         )}
 
@@ -982,6 +990,11 @@ export default function AdminBookingsClient({ initialStatusFilter, initialPickup
                 <p className="text-xs font-semibold mt-0.5 truncate" style={{ color: 'var(--fg-2)' }}>
                   {accountLabel(detailBooking.customerAccount)}
                 </p>
+                {detailBooking.jobId && (
+                  <p className="text-xs font-medium mt-0.5 truncate" style={{ color: 'var(--fg-3)' }}>
+                    Job ID: {detailBooking.jobId}
+                  </p>
+                )}
               </div>
               <button
                 onClick={() => setDetailBooking(null)}

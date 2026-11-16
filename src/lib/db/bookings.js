@@ -230,6 +230,7 @@ function buildAdminFilter({ status, hasDriver, driverId, priceMin, priceMax, sin
       { senderEmail:          re },
       { 'stops.contactName':  re },
       { 'stops.address':      re },
+      { jobId:                re },
     ]
   }
   return filter
@@ -738,9 +739,11 @@ export async function findBookingsByDriver(driverId, { statusGroup = 'all', rang
   return db
     .collection('bookings')
     .find(filter, {
+      // estimatedPrice deliberately excluded — drivers don't see what a
+      // booking costs the customer.
       projection: {
-        _id: 1, status: 1, stops: 1, assignedAt: 1, packageDetails: 1,
-        estimatedDistanceMeters: 1, estimatedDurationSeconds: 1, estimatedPrice: 1,
+        _id: 1, status: 1, stops: 1, assignedAt: 1, packageDetails: 1, jobId: 1,
+        estimatedDistanceMeters: 1, estimatedDurationSeconds: 1,
         trackingToken: 1, senderEmail: 1, receiverEmail: 1, updatedAt: 1, createdAt: 1,
         // Needed so the driver detail page can mark rows the admin hid from
         // the History page. The driver's own counters deliberately still

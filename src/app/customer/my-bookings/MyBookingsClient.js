@@ -76,7 +76,8 @@ export default function MyBookingsClient({ bookings: initial }) {
       const q = search.toLowerCase()
       list = list.filter((b) =>
         b.stops?.some((s) => s.address?.toLowerCase().includes(q)) ||
-        b._id?.toString().includes(q)
+        b._id?.toString().includes(q) ||
+        b.jobId?.toLowerCase().includes(q)
       )
     }
     return list
@@ -240,6 +241,11 @@ export default function MyBookingsClient({ bookings: initial }) {
                               {dropoff?.address ?? '—'}
                             </span>
                           </div>
+                          {b.jobId && (
+                            <p className="text-[11px] font-semibold" style={{ color: 'var(--fg-3)' }}>
+                              Job ID {b.jobId}
+                            </p>
+                          )}
                         </div>
                       </td>
                       <td>
@@ -320,6 +326,11 @@ export default function MyBookingsClient({ bookings: initial }) {
                       <MapPin size={10} style={{ color: 'var(--danger)' }} />
                       <span className="text-xs truncate" style={{ color: 'var(--fg-3)' }}>{dropoff?.address ?? '—'}</span>
                     </div>
+                    {b.jobId && (
+                      <p className="text-[11px] font-semibold" style={{ color: 'var(--fg-3)' }}>
+                        Job ID {b.jobId}
+                      </p>
+                    )}
                   </div>
                   <div className="flex items-center justify-between gap-2">
                     {b.estimatedPrice && (

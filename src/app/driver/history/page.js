@@ -406,12 +406,15 @@ function BookingDetailModal({ bookingId, onClose }) {
             <p className="text-sm text-red-500 text-center py-8">{error}</p>
           ) : booking ? (
             <div className="space-y-5">
-              {/* Status + tracking */}
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-semibold text-green-700 bg-green-50 px-2.5 py-1 rounded-full capitalize">
+              {/* Status + tracking + job ID */}
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] font-semibold text-green-700 bg-green-50 px-2.5 py-1 rounded-full capitalize shrink-0">
                   {booking.status?.replace(/_/g, ' ')}
                 </span>
-                <span className="text-[11px] text-gray-400">{booking.trackingToken}</span>
+                <span className="text-[11px] text-gray-400 text-right truncate">
+                  {booking.jobId && <>Job ID {booking.jobId} · </>}
+                  {booking.trackingToken}
+                </span>
               </div>
 
               {/* Route */}
@@ -463,8 +466,9 @@ function BookingDetailModal({ bookingId, onClose }) {
                 </div>
               )}
 
-              {/* Trip stats */}
-              {(booking.estimatedDistanceMeters || booking.estimatedDurationSeconds || booking.estimatedPrice != null) && (
+              {/* Trip stats — price deliberately excluded; drivers don't see
+                  what a booking costs the customer. */}
+              {(booking.estimatedDistanceMeters || booking.estimatedDurationSeconds) && (
                 <div>
                   <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2">Trip</p>
                   <div className="flex gap-2 flex-wrap">
@@ -476,11 +480,6 @@ function BookingDetailModal({ bookingId, onClose }) {
                     {booking.estimatedDurationSeconds > 0 && (
                       <span className="text-[11px] text-gray-500 bg-gray-100 px-2.5 py-1 rounded-full">
                         ⏱ {formatDur(booking.estimatedDurationSeconds)}
-                      </span>
-                    )}
-                    {booking.estimatedPrice != null && (
-                      <span className="text-[11px] text-gray-500 bg-gray-100 px-2.5 py-1 rounded-full">
-                        ${Number(booking.estimatedPrice).toFixed(2)}
                       </span>
                     )}
                   </div>

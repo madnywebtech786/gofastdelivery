@@ -84,6 +84,10 @@ export default function BookingCard({ booking, href }) {
                 </span>
               </div>
             )}
+
+            {booking.jobId && (
+              <p className="text-xs" style={{ color: 'var(--fg-3)' }}>Job ID {booking.jobId}</p>
+            )}
           </div>
 
           <ArrowRight

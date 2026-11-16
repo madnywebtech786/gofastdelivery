@@ -214,6 +214,12 @@ export default function DriverStopsPage() {
                         #{stop.trackingToken}
                       </p>
                     )}
+                    {/* Job ID — the customer's own optional reference. */}
+                    {stop.jobId && (
+                      <p className="text-xs font-bold mt-0.5" style={{ color: 'var(--fg-3)' }}>
+                        Job ID {stop.jobId}
+                      </p>
+                    )}
 
                     {!done && (stop.contactName || stop.contactPhone || stop.notes) && (
                       <div className="mt-2 space-y-1">

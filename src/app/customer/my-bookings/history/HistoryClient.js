@@ -106,7 +106,8 @@ export default function HistoryClient({ bookings }) {
       const q = search.toLowerCase()
       list = list.filter((b) =>
         b.stops?.some((s) => s.address?.toLowerCase().includes(q)) ||
-        b._id?.toString().includes(q)
+        b._id?.toString().includes(q) ||
+        b.jobId?.toLowerCase().includes(q)
       )
     }
 
@@ -279,6 +280,11 @@ export default function HistoryClient({ bookings }) {
                             {dropoff?.address ?? '—'}
                           </span>
                         </div>
+                        {b.jobId && (
+                          <p className="text-[11px] font-semibold" style={{ color: 'var(--fg-3)' }}>
+                            Job ID {b.jobId}
+                          </p>
+                        )}
                       </div>
                     </td>
                     <td style={cellStyle}>
@@ -347,6 +353,11 @@ export default function HistoryClient({ bookings }) {
                     <MapPin size={10} style={{ color: 'var(--danger)' }} />
                     <span className="text-xs truncate" style={{ color: 'var(--fg-3)' }}>{dropoff?.address ?? '—'}</span>
                   </div>
+                  {b.jobId && (
+                    <p className="text-[11px] font-semibold" style={{ color: 'var(--fg-3)' }}>
+                      Job ID {b.jobId}
+                    </p>
+                  )}
                 </div>
                 <NotesByLeg pickup={pickup} dropoff={dropoff} />
                 <div className="flex items-center justify-between gap-2">

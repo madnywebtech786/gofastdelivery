@@ -1476,6 +1476,7 @@ export default function DriverRoutePage() {
                   <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
                     {routePhase === 'pickup' ? 'Pickup run' : 'Delivery run'} · {activeStopIndex + 1}/{stops.length}
                     {currentStop.trackingToken && <> · #{currentStop.trackingToken}</>}
+                    {currentStop.jobId && <> · Job {currentStop.jobId}</>}
                   </p>
                   <p className="text-sm font-semibold text-gray-900 truncate leading-tight">{currentStop.address}</p>
                 </div>
@@ -1573,6 +1574,10 @@ export default function DriverRoutePage() {
                           the same address when one order has to be failed. */}
                       {stop.trackingToken && (
                         <p className="text-xs font-bold text-gray-500 mt-0.5 tracking-wider">#{stop.trackingToken}</p>
+                      )}
+                      {/* Job ID — the customer's own optional reference. */}
+                      {stop.jobId && (
+                        <p className="text-xs font-bold text-gray-500 mt-0.5">Job ID {stop.jobId}</p>
                       )}
                       {stop.estimatedArrivalAt && !isDone && (
                         <p className="text-xs text-blue-600 font-semibold mt-0.5">ETA {formatETA(stop.estimatedArrivalAt)}</p>

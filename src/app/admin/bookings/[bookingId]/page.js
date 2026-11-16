@@ -146,6 +146,7 @@ export default async function AdminBookingDetailPage({ params, searchParams }) {
               {b.estimatedDurationSeconds && <MetaRow label="Est. Duration" value={formatDuration(b.estimatedDurationSeconds)} />}
               {b.estimatedDistanceMeters  && <MetaRow label="Est. Distance" value={`${(b.estimatedDistanceMeters / 1000).toFixed(1)} km`} />}
               <MetaRow label="Tracking Token" value={<span className="mono text-xs" style={{ color: 'var(--fg-2)' }}>{b.trackingToken}</span>} />
+              {b.jobId && <MetaRow label="Job ID" value={b.jobId} />}
             </div>
           </div>
 

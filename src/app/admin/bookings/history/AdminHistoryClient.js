@@ -353,7 +353,7 @@ export default function AdminHistoryClient({
             <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--fg-3)' }} />
             <input
               type="text"
-              placeholder="Search by name, email or address…"
+              placeholder="Search by name, email, address or job ID…"
               value={search}
               onChange={(e) => onSearchChange(e.target.value)}
               className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-border bg-white text-sm focus:outline-none focus:ring-2 focus:border-transparent transition-all"
@@ -634,6 +634,13 @@ export default function AdminHistoryClient({
                         {b.packageDetails.kind}
                         {b.packageDetails.weightLbs > 0 && ` · ${b.packageDetails.weightLbs} lbs`}
                         {b.packageDetails.packages?.length > 1 && ` · ×${b.packageDetails.packages.length} packages`}
+                      </p>
+                    )}
+
+                    {b.jobId && (
+                      <p className="text-xs font-medium mt-0.5 truncate" style={{ color: 'var(--fg-2)' }}>
+                        <span style={{ color: 'var(--fg-3)' }}>Job ID: </span>
+                        {b.jobId}
                       </p>
                     )}
 

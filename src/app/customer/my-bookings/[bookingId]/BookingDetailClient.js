@@ -208,11 +208,18 @@ export default function BookingDetailClient({ booking: initial, origin }) {
           style={{ background: 'var(--surface-2)' }}>
           <Link2 size={13} style={{ color: 'var(--fg-3)' }} />
           <h2 className="text-sm font-bold" style={{ color: 'var(--fg)' }}>Tracking Number</h2>
-          {accountNumber(b.customerAccount) && (
-            <span className="ml-auto text-xs font-semibold" style={{ color: 'var(--fg-3)' }}>
-              Account {accountNumber(b.customerAccount)}
-            </span>
-          )}
+          <div className="ml-auto flex items-center gap-2">
+            {b.jobId && (
+              <span className="text-xs font-semibold" style={{ color: 'var(--fg-3)' }}>
+                Job ID {b.jobId}
+              </span>
+            )}
+            {accountNumber(b.customerAccount) && (
+              <span className="text-xs font-semibold" style={{ color: 'var(--fg-3)' }}>
+                Account {accountNumber(b.customerAccount)}
+              </span>
+            )}
+          </div>
         </div>
         <div className="px-5 py-4 flex items-center justify-between gap-4">
           <p
