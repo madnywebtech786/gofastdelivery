@@ -1570,6 +1570,10 @@ export default function DriverRoutePage() {
                         )}
                       </div>
                       <p className="text-sm font-semibold text-gray-900 mt-1 leading-snug">{stop.address}</p>
+                      {/* Unit/Buzz code — how to actually get into the building. */}
+                      {stop.buzzCode && (
+                        <p className="text-xs font-semibold text-gray-600 mt-0.5">Unit/Buzz: {stop.buzzCode}</p>
+                      )}
                       {/* Tracking ID — the only way to tell apart two stops at
                           the same address when one order has to be failed. */}
                       {stop.trackingToken && (

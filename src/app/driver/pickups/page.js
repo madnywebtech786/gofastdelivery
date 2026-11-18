@@ -208,6 +208,12 @@ export default function DriverStopsPage() {
                       style={{ color: done ? 'var(--fg-3)' : 'var(--fg)' }}>
                       {stop.address}
                     </p>
+                    {/* Unit/Buzz code — how to actually get into the building. */}
+                    {stop.buzzCode && (
+                      <p className="text-xs font-semibold mt-0.5" style={{ color: 'var(--fg-2)' }}>
+                        Unit/Buzz: {stop.buzzCode}
+                      </p>
+                    )}
                     {/* Tracking ID — tells apart multiple orders sharing one address. */}
                     {stop.trackingToken && (
                       <p className="text-xs font-bold mt-0.5 tracking-wider" style={{ color: 'var(--fg-3)' }}>

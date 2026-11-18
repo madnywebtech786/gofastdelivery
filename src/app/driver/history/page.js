@@ -429,11 +429,13 @@ function BookingDetailModal({ bookingId, onClose }) {
                   <div className="flex-1 min-w-0 space-y-3">
                     <div>
                       <p className="text-sm font-semibold text-gray-800">{pickup?.address ?? '—'}</p>
+                      {pickup?.buzzCode && <p className="text-xs text-gray-500 font-medium mt-0.5">Unit/Buzz: {pickup.buzzCode}</p>}
                       {pickup?.contactName && <p className="text-xs text-gray-400 mt-0.5">{pickup.contactName} · {pickup.contactPhone}</p>}
                       <StopNoteBadges stop={pickup} />
                     </div>
                     <div>
                       <p className="text-sm font-semibold text-gray-800">{dropoff?.address ?? '—'}</p>
+                      {dropoff?.buzzCode && <p className="text-xs text-gray-500 font-medium mt-0.5">Unit/Buzz: {dropoff.buzzCode}</p>}
                       {dropoff?.contactName && <p className="text-xs text-gray-400 mt-0.5">{dropoff.contactName} · {dropoff.contactPhone}</p>}
                       <StopNoteBadges stop={dropoff} />
                     </div>
