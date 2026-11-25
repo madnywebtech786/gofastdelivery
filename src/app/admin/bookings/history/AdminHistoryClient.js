@@ -629,6 +629,13 @@ export default function AdminHistoryClient({
                       </div>
                     </div>
 
+                    {(pickup?.buzzCode || dropoff?.buzzCode) && (
+                      <p className="text-xs font-medium mt-1 truncate" style={{ color: 'var(--fg-2)' }}>
+                        <span style={{ color: 'var(--fg-3)' }}>Unit/Buzz: </span>
+                        {[pickup?.buzzCode, dropoff?.buzzCode].filter(Boolean).join(' · ')}
+                      </p>
+                    )}
+
                     {b.packageDetails?.kind && (
                       <p className="text-xs mt-1.5" style={{ color: 'var(--fg-3)' }}>
                         {b.packageDetails.kind}

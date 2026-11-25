@@ -164,6 +164,15 @@ const S = {
     WebkitBoxOrient: 'vertical',
     overflow: 'hidden',
   },
+  partyBuzzCode: {
+    fontSize: '10pt',
+    fontWeight: 600,
+    color: INK_MUTED,
+    marginTop: '0.03in',
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+  },
   notesText: {
     fontSize: '12pt',
     lineHeight: 1.32,
@@ -258,6 +267,7 @@ export default function BookingLabel({ booking, mode = 'label', logoSrc = '/imag
             <div style={S.zoneLabel}>From</div>
             <div style={S.partyName}>{pickup?.contactName || '—'}</div>
             <div style={S.partyAddress}>{pickup?.address || '—'}</div>
+            {pickup?.buzzCode && <div style={S.partyBuzzCode}>Unit/Buzz: {pickup.buzzCode}</div>}
           </div>
         </div>
 
@@ -266,6 +276,7 @@ export default function BookingLabel({ booking, mode = 'label', logoSrc = '/imag
             <div style={S.zoneLabelStrong}>Deliver to</div>
             <div style={S.partyName}>{dropoff?.contactName || '—'}</div>
             <div style={S.partyAddress}>{dropoff?.address || '—'}</div>
+            {dropoff?.buzzCode && <div style={S.partyBuzzCode}>Unit/Buzz: {dropoff.buzzCode}</div>}
           </div>
         </div>
 

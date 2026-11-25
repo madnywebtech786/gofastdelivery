@@ -52,9 +52,14 @@ export default function BookingCard({ booking, href }) {
                   style={{ background: 'rgba(22,163,74,0.12)' }}>
                   <MapPin size={9} style={{ color: 'var(--success)' }} />
                 </div>
-                <p className="text-sm font-semibold truncate" style={{ color: 'var(--fg)' }}>
-                  {pickupStop?.address ?? 'Pickup location'}
-                </p>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold truncate" style={{ color: 'var(--fg)' }}>
+                    {pickupStop?.address ?? 'Pickup location'}
+                  </p>
+                  {pickupStop?.buzzCode && (
+                    <p className="text-xs truncate" style={{ color: 'var(--fg-3)' }}>Unit/Buzz: {pickupStop.buzzCode}</p>
+                  )}
+                </div>
               </div>
               {/* Connector */}
               <div className="ml-2 pl-1.5 border-l-2 border-dashed border-border h-3" />
@@ -63,9 +68,14 @@ export default function BookingCard({ booking, href }) {
                   style={{ background: 'rgba(220,38,38,0.12)' }}>
                   <MapPin size={9} style={{ color: 'var(--danger)' }} />
                 </div>
-                <p className="text-sm truncate" style={{ color: 'var(--fg-2)' }}>
-                  {dropoffStop?.address ?? 'Drop-off location'}
-                </p>
+                <div className="min-w-0">
+                  <p className="text-sm truncate" style={{ color: 'var(--fg-2)' }}>
+                    {dropoffStop?.address ?? 'Drop-off location'}
+                  </p>
+                  {dropoffStop?.buzzCode && (
+                    <p className="text-xs truncate" style={{ color: 'var(--fg-3)' }}>Unit/Buzz: {dropoffStop.buzzCode}</p>
+                  )}
+                </div>
               </div>
               {extraStops > 0 && (
                 <p className="text-xs pl-6" style={{ color: 'var(--fg-3)' }}>

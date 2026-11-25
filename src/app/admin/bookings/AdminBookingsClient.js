@@ -740,6 +740,13 @@ export default function AdminBookingsClient({ initialStatusFilter, initialPickup
                           </div>
                         </div>
 
+                        {(pickup?.buzzCode || dropoff?.buzzCode) && (
+                          <p className="text-xs font-medium mt-1 truncate" style={{ color: 'var(--fg-2)' }}>
+                            <span style={{ color: 'var(--fg-3)' }}>Unit/Buzz: </span>
+                            {[pickup?.buzzCode, dropoff?.buzzCode].filter(Boolean).join(' · ')}
+                          </p>
+                        )}
+
                         {formatPickupTime(pickup?.pickupTime) && (
                           <div className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-lg mt-2"
                             style={{ background: 'rgba(217,119,6,0.1)', color: '#92400e' }}>

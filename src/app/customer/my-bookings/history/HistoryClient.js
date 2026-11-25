@@ -280,6 +280,11 @@ export default function HistoryClient({ bookings }) {
                             {dropoff?.address ?? '—'}
                           </span>
                         </div>
+                        {(pickup?.buzzCode || dropoff?.buzzCode) && (
+                          <p className="text-[11px] truncate" style={{ color: 'var(--fg-3)' }}>
+                            Unit/Buzz: {[pickup?.buzzCode, dropoff?.buzzCode].filter(Boolean).join(' · ')}
+                          </p>
+                        )}
                         {b.jobId && (
                           <p className="text-[11px] font-semibold" style={{ color: 'var(--fg-3)' }}>
                             Job ID {b.jobId}
@@ -353,6 +358,11 @@ export default function HistoryClient({ bookings }) {
                     <MapPin size={10} style={{ color: 'var(--danger)' }} />
                     <span className="text-xs truncate" style={{ color: 'var(--fg-3)' }}>{dropoff?.address ?? '—'}</span>
                   </div>
+                  {(pickup?.buzzCode || dropoff?.buzzCode) && (
+                    <p className="text-[11px] truncate" style={{ color: 'var(--fg-3)' }}>
+                      Unit/Buzz: {[pickup?.buzzCode, dropoff?.buzzCode].filter(Boolean).join(' · ')}
+                    </p>
+                  )}
                   {b.jobId && (
                     <p className="text-[11px] font-semibold" style={{ color: 'var(--fg-3)' }}>
                       Job ID {b.jobId}

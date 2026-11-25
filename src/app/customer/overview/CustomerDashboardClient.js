@@ -286,6 +286,11 @@ export default function CustomerDashboardClient({ recentBookings }) {
                         {dropoff?.address ?? 'Drop-off'}
                       </p>
                     </div>
+                    {(pickup?.buzzCode || dropoff?.buzzCode) && (
+                      <p className="text-[11px] truncate" style={{ color: 'var(--fg-3)' }}>
+                        Unit/Buzz: {[pickup?.buzzCode, dropoff?.buzzCode].filter(Boolean).join(' · ')}
+                      </p>
+                    )}
                     {b.jobId && (
                       <p className="text-[11px] font-semibold truncate" style={{ color: 'var(--fg-3)' }}>
                         Job ID {b.jobId}
