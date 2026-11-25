@@ -609,32 +609,35 @@ export default function AdminHistoryClient({
                     )}
 
                     <div className="space-y-1">
-                      <div className="flex items-center gap-1.5">
-                        <div className="w-3.5 h-3.5 rounded-full flex items-center justify-center shrink-0"
+                      <div className="flex items-start gap-1.5">
+                        <div className="w-3.5 h-3.5 rounded-full flex items-center justify-center shrink-0 mt-0.5"
                           style={{ background: 'rgba(22,163,74,0.12)' }}>
                           <Circle size={5} style={{ color: 'var(--success)' }} fill="var(--success)" />
                         </div>
-                        <p className="text-sm font-semibold truncate" style={{ color: 'var(--fg)' }}>
-                          {pickup?.address ?? '—'}
-                        </p>
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold truncate" style={{ color: 'var(--fg)' }}>
+                            {pickup?.address ?? '—'}
+                          </p>
+                          {pickup?.buzzCode && (
+                            <p className="text-xs truncate" style={{ color: 'var(--fg-3)' }}>Unit/Buzz: {pickup.buzzCode}</p>
+                          )}
+                        </div>
                       </div>
-                      <div className="flex items-center gap-1.5">
-                        <div className="w-3.5 h-3.5 rounded-full flex items-center justify-center shrink-0"
+                      <div className="flex items-start gap-1.5">
+                        <div className="w-3.5 h-3.5 rounded-full flex items-center justify-center shrink-0 mt-0.5"
                           style={{ background: 'rgba(220,38,38,0.12)' }}>
                           <Circle size={5} style={{ color: 'var(--danger)' }} fill="var(--danger)" />
                         </div>
-                        <p className="text-xs truncate" style={{ color: 'var(--fg-3)' }}>
-                          {dropoff?.address ?? '—'}
-                        </p>
+                        <div className="min-w-0">
+                          <p className="text-xs truncate" style={{ color: 'var(--fg-3)' }}>
+                            {dropoff?.address ?? '—'}
+                          </p>
+                          {dropoff?.buzzCode && (
+                            <p className="text-xs truncate" style={{ color: 'var(--fg-3)' }}>Unit/Buzz: {dropoff.buzzCode}</p>
+                          )}
+                        </div>
                       </div>
                     </div>
-
-                    {(pickup?.buzzCode || dropoff?.buzzCode) && (
-                      <p className="text-xs font-medium mt-1 truncate" style={{ color: 'var(--fg-2)' }}>
-                        <span style={{ color: 'var(--fg-3)' }}>Unit/Buzz: </span>
-                        {[pickup?.buzzCode, dropoff?.buzzCode].filter(Boolean).join(' · ')}
-                      </p>
-                    )}
 
                     {b.packageDetails?.kind && (
                       <p className="text-xs mt-1.5" style={{ color: 'var(--fg-3)' }}>

@@ -229,23 +229,28 @@ export default function MyBookingsClient({ bookings: initial }) {
                       <td><Badge status={b.status} /></td>
                       <td>
                         <div className="space-y-0.5 min-w-0 max-w-xs">
-                          <div className="flex items-center gap-1.5">
-                            <MapPin size={10} style={{ color: 'var(--success)', flexShrink: 0 }} />
-                            <span className="text-xs font-semibold truncate" style={{ color: 'var(--fg)' }}>
-                              {pickup?.address ?? '—'}
-                            </span>
+                          <div className="flex items-start gap-1.5">
+                            <MapPin size={10} style={{ color: 'var(--success)', flexShrink: 0, marginTop: '2px' }} />
+                            <div className="min-w-0">
+                              <span className="text-xs font-semibold truncate block" style={{ color: 'var(--fg)' }}>
+                                {pickup?.address ?? '—'}
+                              </span>
+                              {pickup?.buzzCode && (
+                                <span className="text-[11px] truncate block" style={{ color: 'var(--fg-3)' }}>Unit/Buzz: {pickup.buzzCode}</span>
+                              )}
+                            </div>
                           </div>
-                          <div className="flex items-center gap-1.5">
-                            <MapPin size={10} style={{ color: 'var(--danger)', flexShrink: 0 }} />
-                            <span className="text-xs truncate" style={{ color: 'var(--fg-3)' }}>
-                              {dropoff?.address ?? '—'}
-                            </span>
+                          <div className="flex items-start gap-1.5">
+                            <MapPin size={10} style={{ color: 'var(--danger)', flexShrink: 0, marginTop: '2px' }} />
+                            <div className="min-w-0">
+                              <span className="text-xs truncate block" style={{ color: 'var(--fg-3)' }}>
+                                {dropoff?.address ?? '—'}
+                              </span>
+                              {dropoff?.buzzCode && (
+                                <span className="text-[11px] truncate block" style={{ color: 'var(--fg-3)' }}>Unit/Buzz: {dropoff.buzzCode}</span>
+                              )}
+                            </div>
                           </div>
-                          {(pickup?.buzzCode || dropoff?.buzzCode) && (
-                            <p className="text-[11px] truncate" style={{ color: 'var(--fg-3)' }}>
-                              Unit/Buzz: {[pickup?.buzzCode, dropoff?.buzzCode].filter(Boolean).join(' · ')}
-                            </p>
-                          )}
                           {b.jobId && (
                             <p className="text-[11px] font-semibold" style={{ color: 'var(--fg-3)' }}>
                               Job ID {b.jobId}
@@ -323,19 +328,24 @@ export default function MyBookingsClient({ bookings: initial }) {
                     <span className="text-xs" style={{ color: 'var(--fg-3)' }}>{formatDate(b.createdAt)}</span>
                   </div>
                   <div className="space-y-1">
-                    <div className="flex items-center gap-1.5">
-                      <MapPin size={10} style={{ color: 'var(--success)' }} />
-                      <span className="text-xs font-semibold truncate" style={{ color: 'var(--fg)' }}>{pickup?.address ?? '—'}</span>
+                    <div className="flex items-start gap-1.5">
+                      <MapPin size={10} style={{ color: 'var(--success)', marginTop: '2px' }} />
+                      <div className="min-w-0">
+                        <span className="text-xs font-semibold truncate block" style={{ color: 'var(--fg)' }}>{pickup?.address ?? '—'}</span>
+                        {pickup?.buzzCode && (
+                          <span className="text-[11px] truncate block" style={{ color: 'var(--fg-3)' }}>Unit/Buzz: {pickup.buzzCode}</span>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-1.5">
-                      <MapPin size={10} style={{ color: 'var(--danger)' }} />
-                      <span className="text-xs truncate" style={{ color: 'var(--fg-3)' }}>{dropoff?.address ?? '—'}</span>
+                    <div className="flex items-start gap-1.5">
+                      <MapPin size={10} style={{ color: 'var(--danger)', marginTop: '2px' }} />
+                      <div className="min-w-0">
+                        <span className="text-xs truncate block" style={{ color: 'var(--fg-3)' }}>{dropoff?.address ?? '—'}</span>
+                        {dropoff?.buzzCode && (
+                          <span className="text-[11px] truncate block" style={{ color: 'var(--fg-3)' }}>Unit/Buzz: {dropoff.buzzCode}</span>
+                        )}
+                      </div>
                     </div>
-                    {(pickup?.buzzCode || dropoff?.buzzCode) && (
-                      <p className="text-[11px] truncate" style={{ color: 'var(--fg-3)' }}>
-                        Unit/Buzz: {[pickup?.buzzCode, dropoff?.buzzCode].filter(Boolean).join(' · ')}
-                      </p>
-                    )}
                     {b.jobId && (
                       <p className="text-[11px] font-semibold" style={{ color: 'var(--fg-3)' }}>
                         Job ID {b.jobId}

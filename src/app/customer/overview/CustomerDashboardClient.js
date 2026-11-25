@@ -274,23 +274,28 @@ export default function CustomerDashboardClient({ recentBookings }) {
 
                   {/* Route */}
                   <div className="flex-1 min-w-0 space-y-0.5">
-                    <div className="flex items-center gap-1.5">
-                      <MapPin size={10} style={{ color: 'var(--success)', flexShrink: 0 }} />
-                      <p className="text-xs font-semibold truncate" style={{ color: 'var(--fg)' }}>
-                        {pickup?.address ?? 'Pickup'}
-                      </p>
+                    <div className="flex items-start gap-1.5">
+                      <MapPin size={10} style={{ color: 'var(--success)', flexShrink: 0, marginTop: '2px' }} />
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold truncate" style={{ color: 'var(--fg)' }}>
+                          {pickup?.address ?? 'Pickup'}
+                        </p>
+                        {pickup?.buzzCode && (
+                          <p className="text-[11px] truncate" style={{ color: 'var(--fg-3)' }}>Unit/Buzz: {pickup.buzzCode}</p>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-1.5">
-                      <MapPin size={10} style={{ color: 'var(--danger)', flexShrink: 0 }} />
-                      <p className="text-xs truncate" style={{ color: 'var(--fg-3)' }}>
-                        {dropoff?.address ?? 'Drop-off'}
-                      </p>
+                    <div className="flex items-start gap-1.5">
+                      <MapPin size={10} style={{ color: 'var(--danger)', flexShrink: 0, marginTop: '2px' }} />
+                      <div className="min-w-0">
+                        <p className="text-xs truncate" style={{ color: 'var(--fg-3)' }}>
+                          {dropoff?.address ?? 'Drop-off'}
+                        </p>
+                        {dropoff?.buzzCode && (
+                          <p className="text-[11px] truncate" style={{ color: 'var(--fg-3)' }}>Unit/Buzz: {dropoff.buzzCode}</p>
+                        )}
+                      </div>
                     </div>
-                    {(pickup?.buzzCode || dropoff?.buzzCode) && (
-                      <p className="text-[11px] truncate" style={{ color: 'var(--fg-3)' }}>
-                        Unit/Buzz: {[pickup?.buzzCode, dropoff?.buzzCode].filter(Boolean).join(' · ')}
-                      </p>
-                    )}
                     {b.jobId && (
                       <p className="text-[11px] font-semibold truncate" style={{ color: 'var(--fg-3)' }}>
                         Job ID {b.jobId}
